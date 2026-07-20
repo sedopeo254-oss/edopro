@@ -135,6 +135,7 @@ public:
 	A(tBackGround_duel_topdown)
 	A(tField[2][4])
 	A(tFieldTransparent[2][4])
+	A(tField3v1)
 	A(tSettings)
 	A(tCheckBox[3])
 #undef A

@@ -244,6 +244,14 @@ bool ImageManager::Initial() {
 	ASSERT_TEXTURE_LOADED(tFieldTransparent[1][3], "field-transparentSP4");
 	ASSIGN_DEFAULT(tFieldTransparent[1][3]);
 
+	// Dedicated four-seat board for the Serenity/Tristan/Duke vs Nezbitt mode.
+	// Keep a safe fallback so third-party texture packs can omit this optional
+	// asset without making texture initialization fail.
+	tField3v1 = loadTextureAnySize(EPRO_TEXT("field-3v1"sv));
+	if(!tField3v1)
+		tField3v1 = tField[0][3];
+	ASSIGN_DEFAULT(tField3v1);
+
 	tSettings = loadTextureAnySize(EPRO_TEXT("settings"sv));
 	ASSERT_TEXTURE_LOADED(tSettings, "settings");
 	ASSIGN_DEFAULT(tSettings);
@@ -325,6 +333,7 @@ void ImageManager::ChangeTextures(epro::path_stringview _path) {
 	REPLACE_TEXTURE_ANY_SIZE(tFieldTransparent[1][2], "field-transparentSP");
 	REPLACE_TEXTURE_ANY_SIZE(tField[1][3], "fieldSP4");
 	REPLACE_TEXTURE_ANY_SIZE(tFieldTransparent[1][3], "field-transparentSP4");
+	REPLACE_TEXTURE_ANY_SIZE(tField3v1, "field-3v1");
 	REPLACE_TEXTURE_ANY_SIZE(tSettings, "settings");
 	REPLACE_TEXTURE_ANY_SIZE(tCheckBox[0], "checkbox_16");
 	REPLACE_TEXTURE_ANY_SIZE(tCheckBox[1], "checkbox_32");

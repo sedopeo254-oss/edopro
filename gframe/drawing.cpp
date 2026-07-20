@@ -87,25 +87,24 @@ void Game::DrawBackGround() {
 		return texture1 || texture2;
 	};
 
-	//draw field
-	DrawTextureRect(matManager.vField, DrawFieldSpell() ? imageManager.tFieldTransparent[three_columns][tfield] : imageManager.tField[three_columns][tfield]);
+	// Draw the dedicated four-seat board only for 3-vs-1. When Swap reverses
+	// the viewpoint, rotate the texture as well so the board artwork and the
+	// logical top/left/right/bottom seats always stay aligned.
 	if(dInfo.HasFieldFlag(DUEL_3_V_1)) {
-		auto DrawLogicalField = [&](float left, float top, float right, float bottom, irr::video::SColor color) {
-			const float z = 0.004f;
-			driver->draw3DLine(irr::core::vector3df{ left, top, z }, irr::core::vector3df{ right, top, z }, color);
-			driver->draw3DLine(irr::core::vector3df{ right, top, z }, irr::core::vector3df{ right, bottom, z }, color);
-			driver->draw3DLine(irr::core::vector3df{ right, bottom, z }, irr::core::vector3df{ left, bottom, z }, color);
-			driver->draw3DLine(irr::core::vector3df{ left, bottom, z }, irr::core::vector3df{ left, top, z }, color);
-		};
+		Materials::QuadVertex custom_field{};
 		const bool team_top = LocalPlayer(0) == 1;
-		const irr::video::SColor serenity{ 0xff4f7dff };
-		const irr::video::SColor tristan{ 0xffffd34f };
-		const irr::video::SColor duke{ 0xff57e389 };
-		const irr::video::SColor nezbitt{ 0xffff5555 };
-		DrawLogicalField(1.0f, -3.05f, 7.85f, -0.45f, team_top ? serenity : nezbitt);
-		DrawLogicalField(1.0f, 0.45f, 7.85f, 3.05f, team_top ? nezbitt : serenity);
-		DrawLogicalField(0.15f, -2.90f, 2.15f, 2.90f, team_top ? tristan : duke);
-		DrawLogicalField(5.85f, -2.90f, 7.85f, 2.90f, team_top ? duke : tristan);
+		for(size_t i = 0; i < 4; ++i) {
+			custom_field[i] = matManager.vField[i];
+			if(!team_top) {
+				custom_field[i].TCoords.X = 1.0f - custom_field[i].TCoords.X;
+				custom_field[i].TCoords.Y = 1.0f - custom_field[i].TCoords.Y;
+			}
+		}
+		DrawTextureRect(custom_field, imageManager.tField3v1);
+	} else {
+		DrawTextureRect(matManager.vField, DrawFieldSpell()
+			? imageManager.tFieldTransparent[three_columns][tfield]
+			: imageManager.tField[three_columns][tfield]);
 	}
 
 	driver->setMaterial(matManager.mBackLine);
@@ -548,6 +547,92 @@ void Game::DrawMisc() {
 		driver->setTransform(irr::video::ETS_WORLD, it);
 		driver->drawVertexPrimitiveList(matManager.vChainNum, 4, matManager.iRectangle, 2);
 	}
+	// 3-vs-1 has four independent LP/resource panels. Reusing the normal
+	// two-team HUD stacked three names under one LP bar, which made inactive
+	// players look disabled and hid whose resources belonged to whom.
+	if(dInfo.HasFieldFlag(DUEL_3_V_1)) {
+		const auto& team1_names = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
+		const auto& team2_names = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
+		const std::array<irr::video::SColor, 4> player_colors{
+			irr::video::SColor{ 0xff4f7dff }, irr::video::SColor{ 0xffffd34f },
+			irr::video::SColor{ 0xff57e389 }, irr::video::SColor{ 0xffff5555 }
+		};
+		auto PlayerName = [&](uint8_t logical) -> const std::wstring& {
+			static const std::wstring unknown = L"Player";
+			if(logical < dInfo.team1)
+				return logical < team1_names.size() ? team1_names[logical] : unknown;
+			const auto index = static_cast<size_t>(logical - dInfo.team1);
+			return index < team2_names.size() ? team2_names[index] : unknown;
+		};
+		auto Counts = [&](uint8_t logical) {
+			std::array<uint32_t, 5> counts{
+				dInfo.logical_deck_count[logical], dInfo.logical_hand_count[logical],
+				dInfo.logical_extra_count[logical], dInfo.logical_grave_count[logical],
+				dInfo.logical_banish_count[logical]
+			};
+			const auto core_side = static_cast<uint8_t>(logical < dInfo.team1 ? 0 : 1);
+			if(dInfo.logical_active[core_side] == logical) {
+				const auto local_side = LocalPlayer(core_side);
+				counts = { static_cast<uint32_t>(dField.deck[local_side].size()),
+					static_cast<uint32_t>(dField.hand[local_side].size()),
+					static_cast<uint32_t>(dField.extra[local_side].size()),
+					static_cast<uint32_t>(dField.grave[local_side].size()),
+					static_cast<uint32_t>(dField.remove[local_side].size()) };
+			}
+			return counts;
+		};
+		for(uint8_t logical = 0; logical < 4; ++logical) {
+			const irr::s32 left = 330 + logical * 165;
+			const auto panel = Resize(left, 8, left + 157, 64);
+			const bool eliminated = (dInfo.eliminated_player_mask & (1u << logical))
+				|| !(dInfo.active_player_mask & (1u << logical));
+			const bool current = logical == dInfo.logical_turn_player;
+			driver->draw2DRectangle(eliminated ? irr::video::SColor{ 0xd0401010 }
+				: irr::video::SColor{ 0xc010151d }, panel);
+			driver->draw2DRectangle(player_colors[logical], Resize(left, 8, left + 4, 64));
+			driver->draw2DRectangleOutline(panel, current ? irr::video::SColor{ 0xffffd060 } : player_colors[logical]);
+
+			const auto lp = std::max(0, dInfo.logical_lp[logical]);
+			const auto lp_text = dInfo.logical_strLP[logical].empty()
+				? epro::to_wstring(lp) : dInfo.logical_strLP[logical];
+			DrawShadowText(textFont, lp_text, Resize(left + 7, 10, left + 54, 28),
+				Resize(0, 1, 1, 0), 0xffffffff, 0xff000000, false, true);
+			const auto name = epro::format(L"{}P{} {}", current ? L"> " : L"", logical + 1, PlayerName(logical));
+			const auto name_rect = Resize(left + 55, 10, left + 153, 28);
+			textFont->drawustring(name, name_rect, eliminated ? 0xffff7070 : current ? 0xffffd060 : 0xffffffff,
+				false, true, &name_rect);
+
+			const auto bar = Resize(left + 7, 30, left + 153, 37);
+			driver->draw2DRectangle(irr::video::SColor{ 0xff202020 }, bar);
+			const auto ratio = std::clamp(lp / static_cast<double>(std::max(1, dInfo.startlp)), 0.0, 1.0);
+			const auto fill = Resize(left + 7, 30, left + 7 + static_cast<irr::s32>(146 * ratio), 37);
+			if(lp > 0)
+				driver->draw2DRectangle(player_colors[logical], fill);
+			driver->draw2DRectangleOutline(bar, 0xff808080);
+
+			const auto counts = Counts(logical);
+			const auto resources = eliminated
+				? epro::format(L"OUT  D{} H{} X{} G{} B{}", counts[0], counts[1], counts[2], counts[3], counts[4])
+				: epro::format(L"D{} H{} X{} G{} B{}", counts[0], counts[1], counts[2], counts[3], counts[4]);
+			const auto resources_rect = Resize(left + 7, 39, left + 153, 60);
+			textFont->drawustring(resources, resources_rect, eliminated ? 0xffff7070 : 0xffe0e0e0,
+				false, true, &resources_rect);
+		}
+		if(lpframe > 0 && delta_frames) {
+			dInfo.lp[lpplayer] -= lpd * delta_frames;
+			dInfo.strLP[lpplayer] = epro::to_wstring(std::max(0, dInfo.lp[lpplayer]));
+			lpcalpha -= 0x19 * delta_frames;
+			lpframe -= delta_frames;
+		}
+		if(lpcstring.size()) {
+			if(lpplayer == 0)
+				DrawShadowText(lpcFont, lpcstring, Resize(400, 470, 920, 520), Resize(0, 2, 2, 0), (lpcalpha << 24) | lpccolor, (lpcalpha << 24) | 0x00ffffff, true);
+			else
+				DrawShadowText(lpcFont, lpcstring, Resize(400, 160, 920, 210), Resize(0, 2, 2, 0), (lpcalpha << 24) | lpccolor, (lpcalpha << 24) | 0x00ffffff, true);
+		}
+		DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(635, 65, 685, 100),
+			Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0x80000000, true);
+	} else {
 	//lp bar
 	const auto& self = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
 	const auto& oppo = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
@@ -698,6 +783,7 @@ void Game::DrawMisc() {
 			active_players += mask & 1u;
 		DrawShadowText(textFont, epro::format(L"Battle Royale ({}/4)", active_players), Resize(590, 40, 730, 61),
 			Resize(0, 1, 1, 0), 0xffffffff, 0x80000000, true, true);
+	}
 	}
 #undef DRAWRECT
 #undef LPCOLOR

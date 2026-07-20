@@ -61,7 +61,10 @@ jobs:
         run: ./travis/build.sh
       - name: Package binary
         shell: bash
-        run: ./travis/predeploy.sh
+        run: |
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
       - uses: actions/upload-artifact@v4
         with:
           name: edopro-multiplayer-linux-x64
@@ -110,7 +113,10 @@ jobs:
         run: ./travis/build.sh
       - name: Package binary
         shell: bash
-        run: ./travis/predeploy.sh
+        run: |
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
       - uses: actions/upload-artifact@v4
         with:
           name: edopro-multiplayer-windows-x86

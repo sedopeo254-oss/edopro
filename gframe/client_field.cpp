@@ -842,60 +842,102 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 		const bool horizontal = layout == FieldLayout::TOP || layout == FieldLayout::BOTTOM;
 		const float direction = (layout == FieldLayout::TOP || layout == FieldLayout::LEFT) ? -1.0f : 1.0f;
 		const float stack = 0.004f * static_cast<float>(sequence);
-		pcard->draw_scale = horizontal ? 0.62f : 0.58f;
+		const bool private_pile = base_location == LOCATION_DECK || base_location == LOCATION_EXTRA
+			|| base_location == LOCATION_GRAVE || base_location == LOCATION_REMOVED;
+		// The original proof-of-concept used near full-size cards. Under the
+		// perspective camera that made hands cross the whole board. These scales
+		// are sized for the dedicated field-3v1 artwork.
+		pcard->draw_scale = base_location == LOCATION_HAND ? 0.38f : private_pile ? 0.46f : 0.43f;
 		t->Z = 0.015f + stack;
-		if(horizontal) {
-			const float ysign = layout == FieldLayout::TOP ? -1.0f : 1.0f;
+		if(layout == FieldLayout::TOP) {
 			switch(base_location) {
 			case LOCATION_MZONE:
-				t->X = local_sequence < 5 ? 2.35f + 0.82f * local_sequence : (local_sequence == 5 ? 3.25f : 4.75f);
-				t->Y = ysign * (local_sequence < 5 ? 1.43f : 0.82f);
+				t->X = local_sequence < 5 ? 2.42f + 0.66f * local_sequence : (local_sequence == 5 ? 3.35f : 4.55f);
+				t->Y = local_sequence < 5 ? -1.98f : -1.72f;
 				break;
 			case LOCATION_SZONE:
-				t->X = local_sequence < 5 ? 2.35f + 0.82f * local_sequence : (local_sequence == 5 ? 1.55f : local_sequence == 6 ? 1.65f : 6.45f);
-				t->Y = ysign * 2.08f;
+				if(local_sequence < 5) {
+					t->X = 2.42f + 0.66f * local_sequence;
+					t->Y = -2.52f;
+				} else {
+					t->X = local_sequence == 5 ? 1.67f : local_sequence == 6 ? 2.12f : 5.48f;
+					t->Y = local_sequence == 5 ? -1.98f : -2.52f;
+				}
 				break;
-			case LOCATION_DECK: t->X = 6.85f; t->Y = ysign * 2.10f; break;
-			case LOCATION_EXTRA: t->X = 1.15f; t->Y = ysign * 2.10f; break;
-			case LOCATION_GRAVE: t->X = 6.85f; t->Y = ysign * 1.40f; break;
-			case LOCATION_REMOVED: t->X = 7.50f; t->Y = ysign * 1.40f; break;
+			case LOCATION_DECK: t->X = 6.02f; t->Y = -3.50f; break;
+			case LOCATION_EXTRA: t->X = 6.02f; t->Y = -2.73f; break;
+			case LOCATION_GRAVE: t->X = 1.67f; t->Y = -2.73f; break;
+			case LOCATION_REMOVED: t->X = 1.67f; t->Y = -3.50f; break;
 			case LOCATION_HAND: {
 				const auto count = std::max<size_t>(1, hand[controler].size());
-				const float spacing = std::min(0.55f, 3.6f / static_cast<float>(count));
-				t->X = 4.0f + (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
-				t->Y = ysign * 2.82f;
+				const float spacing = std::min(0.48f, 2.55f / static_cast<float>(count));
+				t->X = 4.02f + (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
+				t->Y = -3.08f;
 				break;
 			}
-			default: t->X = 4.0f; t->Y = ysign * 2.45f; break;
+			default: t->X = 4.02f; t->Y = -2.80f; break;
+			}
+		} else if(layout == FieldLayout::BOTTOM) {
+			switch(base_location) {
+			case LOCATION_MZONE:
+				t->X = local_sequence < 5 ? 2.75f + 0.66f * local_sequence : (local_sequence == 5 ? 3.45f : 4.65f);
+				t->Y = local_sequence < 5 ? 1.84f : 1.62f;
+				break;
+			case LOCATION_SZONE:
+				if(local_sequence < 5) {
+					t->X = 2.75f + 0.66f * local_sequence;
+					t->Y = 2.38f;
+				} else {
+					t->X = local_sequence == 5 ? 6.36f : local_sequence == 6 ? 2.42f : 5.70f;
+					t->Y = local_sequence == 5 ? 1.58f : 2.38f;
+				}
+				break;
+			case LOCATION_DECK: t->X = 1.90f; t->Y = 3.28f; break;
+			case LOCATION_EXTRA: t->X = 1.90f; t->Y = 2.52f; break;
+			case LOCATION_GRAVE: t->X = 6.36f; t->Y = 2.53f; break;
+			case LOCATION_REMOVED: t->X = 6.36f; t->Y = 3.28f; break;
+			case LOCATION_HAND: {
+				const auto count = std::max<size_t>(1, hand[controler].size());
+				const float spacing = std::min(0.48f, 2.70f / static_cast<float>(count));
+				t->X = 4.05f + (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
+				t->Y = 3.00f;
+				break;
+			}
+			default: t->X = 4.05f; t->Y = 2.78f; break;
 			}
 		} else {
-			const float xsign = layout == FieldLayout::LEFT ? -1.0f : 1.0f;
-			const float outer = layout == FieldLayout::LEFT ? 0.45f : 7.55f;
-			const float monster_x = layout == FieldLayout::LEFT ? 1.35f : 6.65f;
-			const float spell_x = layout == FieldLayout::LEFT ? 0.70f : 7.30f;
+			const bool left = layout == FieldLayout::LEFT;
+			const float monster_x = left ? 0.82f : 7.16f;
+			const float spell_x = left ? 0.28f : 7.70f;
+			const float hand_x = left ? -0.27f : 8.25f;
 			switch(base_location) {
 			case LOCATION_MZONE:
-				t->X = local_sequence < 5 ? monster_x : (layout == FieldLayout::LEFT ? 2.05f : 5.95f);
-				t->Y = local_sequence < 5 ? -1.55f + 0.78f * local_sequence : (local_sequence == 5 ? -0.55f : 0.55f);
+				t->X = local_sequence < 5 ? monster_x : (left ? 1.02f : 6.96f);
+				t->Y = local_sequence < 5 ? -1.18f + 0.65f * local_sequence : (local_sequence == 5 ? -0.38f : 0.78f);
 				break;
 			case LOCATION_SZONE:
-				t->X = spell_x;
-				t->Y = local_sequence < 5 ? -1.55f + 0.78f * local_sequence : (local_sequence == 5 ? -2.30f : 2.30f);
+				if(local_sequence < 5) {
+					t->X = spell_x;
+					t->Y = -1.18f + 0.65f * local_sequence;
+				} else {
+					t->X = local_sequence == 5 ? (left ? 1.04f : 6.78f) : spell_x;
+					t->Y = local_sequence == 5 ? (left ? 2.54f : -2.13f)
+						: (local_sequence == 6 ? -1.55f : 1.55f);
+				}
 				break;
-			case LOCATION_DECK: t->X = outer; t->Y = 2.65f; break;
-			case LOCATION_EXTRA: t->X = outer; t->Y = -2.65f; break;
-			case LOCATION_GRAVE: t->X = monster_x; t->Y = 2.65f; break;
-			case LOCATION_REMOVED: t->X = monster_x; t->Y = -2.65f; break;
+			case LOCATION_DECK: t->X = left ? -0.45f : 8.36f; t->Y = left ? -2.13f : 2.55f; break;
+			case LOCATION_EXTRA: t->X = left ? 0.33f : 7.56f; t->Y = left ? -2.13f : 2.55f; break;
+			case LOCATION_GRAVE: t->X = left ? 0.27f : 7.55f; t->Y = left ? 2.54f : -2.13f; break;
+			case LOCATION_REMOVED: t->X = left ? -0.47f : 8.34f; t->Y = left ? 2.54f : -2.13f; break;
 			case LOCATION_HAND: {
 				const auto count = std::max<size_t>(1, hand[controler].size());
-				const float spacing = std::min(0.48f, 3.4f / static_cast<float>(count));
-				t->X = outer;
-				t->Y = (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
+				const float spacing = std::min(0.46f, 2.55f / static_cast<float>(count));
+				t->X = hand_x;
+				t->Y = 0.18f + (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
 				break;
 			}
-			default: t->X = outer; t->Y = 0.0f; break;
+			default: t->X = hand_x; t->Y = 0.0f; break;
 			}
-			(void)xsign;
 		}
 
 		float attack_rotation = 0.0f;
