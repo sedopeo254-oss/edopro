@@ -193,11 +193,15 @@ bool ImageManager::Initial() {
 	ASSIGN_DEFAULT(tFieldTransparent[0][1]);
 
 	tField[0][2] = loadTextureAnySize(EPRO_TEXT("field"sv));
-	ASSERT_TEXTURE_LOADED(tField[0][2], "field");
+	// Some legacy texture packs omit the default field while still providing
+	// the MR2 layout. Keep those packs usable instead of aborting texture setup.
+	if(!tField[0][2])
+		tField[0][2] = tField[0][0];
 	ASSIGN_DEFAULT(tField[0][2]);
 
 	tFieldTransparent[0][2] = loadTextureAnySize(EPRO_TEXT("field-transparent"sv));
-	ASSERT_TEXTURE_LOADED(tFieldTransparent[0][2], "field-transparent");
+	if(!tFieldTransparent[0][2])
+		tFieldTransparent[0][2] = tFieldTransparent[0][0];
 	ASSIGN_DEFAULT(tFieldTransparent[0][2]);
 
 	tField[0][3] = loadTextureAnySize(EPRO_TEXT("field4"sv));
