@@ -70,7 +70,6 @@ jobs:
       BUILD_CONFIG: release
       ARCH: x86
       BUNDLED_CORE: "1"
-      VS_GEN: vs2022
       DXSDK_DIR: /c/d3d9sdk/
       VCPKG_ROOT: /c/vcpkg2
       VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
@@ -79,6 +78,28 @@ jobs:
         with:
           submodules: recursive
       - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $installPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $components = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          $componentArgs = $components | ForEach-Object { " --add " + $_ }
+          $arguments = @(
+            "modify",
+            "--installPath", "`"$installPath`"",
+            $componentArgs,
+            "--quiet",
+            "--norestart",
+            "--nocache"
+          )
+          $process = Start-Process -FilePath "vs_installer.exe" -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Visual Studio Installer exited with code $($process.ExitCode)"
+          }
       - name: Install Premake
         shell: bash
         run: ./travis/install-premake5.sh
