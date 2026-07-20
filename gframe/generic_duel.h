@@ -80,6 +80,8 @@ protected:
 		}
 	};
 	bool CheckReady();
+	bool IsMultiplayerMode() const;
+	void StartMultiplayerDuel();
 	int8_t GetFirstFree(int8_t start = 0);
 	void SetAtPos(DuelPlayer* dp, size_t pos);
 	duelist& GetAtPos(uint8_t pos);

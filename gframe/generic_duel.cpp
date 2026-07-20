@@ -75,6 +75,19 @@ bool GenericDuel::CheckReady() {
 	}
 	return ready1 && ready2;
 }
+bool GenericDuel::IsMultiplayerMode() const {
+	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+	return duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+}
+void GenericDuel::StartMultiplayerDuel() {
+	IteratePlayers([](DuelPlayer* dueler) {
+		dueler->state = 0xff;
+	});
+	auto* player = players.home.front().player;
+	player->state = CTOS_TP_RESULT;
+	TPResult(player, 0);
+}
 int8_t GenericDuel::GetFirstFree(int8_t start) {
 	int8_t tot_size = static_cast<int8_t>(players.home.size() + players.opposing.size());
 	for(int8_t i = start, j = 0; j < tot_size; i = (i+1) % tot_size, j++) {
@@ -427,13 +440,17 @@ void GenericDuel::UpdateDeck(DuelPlayer* dp, void* pdata, uint32_t len) {
 			dueler.ready = true;
 			NetServer::SendPacketToPlayer(dp, STOC_DUEL_START);
 			if(CheckReady()) {
-				DuelPlayer* player =  match_result[match_result.size() - 1] == 0 ? players.opposing.front() : players.home.front();
-				NetServer::SendPacketToPlayer(player, STOC_SELECT_TP);
-				IteratePlayers([](DuelPlayer* dueler) {
-					dueler->state = 0xff;
-				});
-				player->state = CTOS_TP_RESULT;
-				duel_stage = DUEL_STAGE_FIRSTGO;
+				if(IsMultiplayerMode()) {
+					StartMultiplayerDuel();
+				} else {
+					DuelPlayer* player = match_result[match_result.size() - 1] == 0 ? players.opposing.front() : players.home.front();
+					NetServer::SendPacketToPlayer(player, STOC_SELECT_TP);
+					IteratePlayers([](DuelPlayer* dueler) {
+						dueler->state = 0xff;
+					});
+					player->state = CTOS_TP_RESULT;
+					duel_stage = DUEL_STAGE_FIRSTGO;
+				}
 			}
 		} else {
 			STOC_ErrorMsg scem{ ERROR_TYPE::SIDEERROR };
@@ -451,9 +468,7 @@ void GenericDuel::StartDuel(DuelPlayer* dp) {
 	OrderPlayers(players.home);
 	OrderPlayers(players.opposing, players.home_size);
 	players.home_iterator = players.home.begin();
-	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
-		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-	const bool multiplayer_mode = duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+	const bool multiplayer_mode = IsMultiplayerMode();
 	if(relay || multiplayer_mode)
 		players.opposing_iterator = players.opposing.begin();
 	else
@@ -465,6 +480,10 @@ void GenericDuel::StartDuel(DuelPlayer* dp) {
 	for(auto& obs : observers) {
 		obs->state = CTOS_LEAVE_GAME;
 		NetServer::ReSendToPlayer(obs);
+	}
+	if(multiplayer_mode) {
+		StartMultiplayerDuel();
+		return;
 	}
 	NetServer::SendPacketToPlayer(players.home.front(), STOC_SELECT_HAND);
 	NetServer::ReSendToPlayer(players.opposing.front());
@@ -536,14 +555,19 @@ void GenericDuel::RematchResult(DuelPlayer* dp, uint8_t rematch) {
 		NetServer::SendPacketToPlayer(dp, STOC_DUEL_START);
 		if(CheckReady()) {
 			seeking_rematch = false;
-			DuelPlayer* player = match_result[match_result.size() - 1] == 0 ? players.opposing.front() : players.home.front();
+			const auto last_result = match_result.back();
 			match_result.clear();
-			NetServer::SendPacketToPlayer(player, STOC_SELECT_TP);
-			IteratePlayers([](DuelPlayer* dueler) {
-				dueler->state = 0xff;
-			});
-			player->state = CTOS_TP_RESULT;
-			duel_stage = DUEL_STAGE_FIRSTGO;
+			if(IsMultiplayerMode()) {
+				StartMultiplayerDuel();
+			} else {
+				DuelPlayer* player = last_result == 0 ? players.opposing.front() : players.home.front();
+				NetServer::SendPacketToPlayer(player, STOC_SELECT_TP);
+				IteratePlayers([](DuelPlayer* dueler) {
+					dueler->state = 0xff;
+				});
+				player->state = CTOS_TP_RESULT;
+				duel_stage = DUEL_STAGE_FIRSTGO;
+			}
 		}
 	}
 }
@@ -551,8 +575,11 @@ void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 	if(dp->state != CTOS_TP_RESULT)
 		return;
 	duel_stage = DUEL_STAGE_DUELING;
+	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+	const bool multiplayer_mode = IsMultiplayerMode();
 	if(swapped) tp = 1 - tp;
-	if((!swapped && ((tp == 1 && players.opposing.front() == dp) || (tp == 0 && players.home.front() == dp))) ||
+	if(!multiplayer_mode && ((!swapped && ((tp == 1 && players.opposing.front() == dp) || (tp == 0 && players.home.front() == dp))) ||
 		(swapped && ((tp == 0 && players.opposing.front() == dp) || (tp == 1 && players.home.front() == dp)))) {
 		std::swap(players.opposing, players.home);
 		std::swap(players.home_size, players.opposing_size);
@@ -567,9 +594,6 @@ void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 		swapped = !swapped;
 	}
 	players.home_iterator = players.home.begin();
-	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
-		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-	const bool multiplayer_mode = duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
 	if(relay || multiplayer_mode)
 		players.opposing_iterator = players.opposing.begin();
 	else
