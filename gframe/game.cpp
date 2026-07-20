@@ -1948,13 +1948,13 @@ static inline irr::core::matrix4 BuildProjectionMatrix(irr::f32 left, irr::f32 r
 irr::core::vector3df getTarget() {
 	return { FIELD_X, 0.f, 0.f };
 }
-irr::core::vector3df getPosition() {
-	if(gGameConfig->topdown_view)
+irr::core::vector3df getPosition(bool topdown) {
+	if(topdown)
 		return { FIELD_X, 0.f, FIELD_Z * 1.4f };
 	return { FIELD_X, FIELD_Y, FIELD_Z };
 }
-irr::core::vector3df getUpVector() {
-	if(gGameConfig->topdown_view)
+irr::core::vector3df getUpVector(bool topdown) {
+	if(topdown)
 		return { 0.f, -1.f, 0.f };
 	return { 0.f, 0.f, 1.f };
 }
@@ -1972,9 +1972,11 @@ bool Game::MainLoop() {
 		const float ratio = ((float)window_size.Width / (float)window_size.Height);
 		camera->setProjectionMatrix(BuildProjectionMatrix(CAMERA_BOTTOM, CAMERA_TOP, ratio));
 	};
-	auto UpdateCameraPosition = [this] {
-		camera->setPosition(getPosition());
-		camera->setUpVector(getUpVector());
+	bool force_3v1_topdown = false;
+	auto UpdateCameraPosition = [this, &force_3v1_topdown] {
+		const bool topdown = gGameConfig->topdown_view || force_3v1_topdown;
+		camera->setPosition(getPosition(topdown));
+		camera->setUpVector(getUpVector(topdown));
 		if(dInfo.isInDuel)
 			dField.RefreshAllCards();
 	};
@@ -2118,7 +2120,7 @@ bool Game::MainLoop() {
 			else
 				gSoundManager->PlayBGM(SoundManager::BGM::DUEL, gGameConfig->loopMusic);
 			auto bg_texture = imageManager.tBackGround;
-			if(current_topdown && imageManager.tBackGround_duel_topdown)
+			if((current_topdown || force_3v1_topdown) && imageManager.tBackGround_duel_topdown)
 				bg_texture = imageManager.tBackGround_duel_topdown;
 			DrawBackImage(bg_texture, resized);
 			DrawBackGround();
@@ -2154,6 +2156,11 @@ bool Game::MainLoop() {
 		} else if(should_refresh_hands && dInfo.isInDuel) {
 			should_refresh_hands = false;
 			dField.RefreshHandHitboxes();
+		}
+		const bool should_force_3v1_topdown = dInfo.isInDuel && dInfo.HasFieldFlag(DUEL_3_V_1);
+		if(force_3v1_topdown != should_force_3v1_topdown) {
+			force_3v1_topdown = should_force_3v1_topdown;
+			UpdateCameraPosition();
 		}
 #if !EDOPRO_ANDROID
 		// text width is actual size, other pixels are relative to the assumed 1024x640

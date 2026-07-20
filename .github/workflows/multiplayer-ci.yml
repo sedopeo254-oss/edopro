@@ -31,9 +31,52 @@ jobs:
           sh ./ocgcore/tests/run_multiplayer_state_tests.sh
           sh ./ocgcore/tests/run_multiplayer_field_tests.sh
 
+  windbot-compat:
+    name: WindBot 3-vs-1 compatibility
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ProjectIgnis/windbot
+          ref: fa0ae767967afc6a820784837f11cd3fabb9c47c
+          path: windbot
+          submodules: recursive
+      - name: Apply expanded-field compatibility patch
+        shell: bash
+        run: git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
+      - name: Pull Mono builder image
+        shell: bash
+        run: |
+          docker pull ghcr.io/projectignis/mono_xamarin_builder_monodroid:master
+          docker image tag ghcr.io/projectignis/mono_xamarin_builder_monodroid:master monodroid
+      - name: Build patched WindBot
+        shell: bash
+        working-directory: windbot
+        run: |
+          docker run --rm --volume "$PWD:/project" monodroid -t:restore -p:RestorePackagesPath=./.nuget WindBot.sln
+          ./ci/install-patched-mono-runtime.sh
+          docker run --rm --volume "$PWD:/project" monodroid -m -p:Configuration=Release WindBot.sln -p:Posix=true
+      - name: Package patched WindBot
+        shell: bash
+        run: |
+          mkdir -p windbot-package/WindBot
+          cp -r windbot/bin/Release/. windbot-package/WindBot/
+          rm -f windbot-package/WindBot/mscorlib* windbot-package/WindBot/libWindbot*
+          cp windbot/COPYING windbot/LICENSE windbot/bots.json windbot-package/WindBot/
+          cp -r windbot/Decks windbot/Dialogs windbot-package/WindBot/
+          test -f windbot-package/WindBot/WindBot.exe
+          test -f windbot-package/WindBot/ExecutorBase.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windbot-multiplayer-3v1
+          path: windbot-package/
+          if-no-files-found: error
+
   linux-bundled:
     name: Linux bundled client
     runs-on: ubuntu-24.04
+    needs: windbot-compat
     env:
       TRAVIS_OS_NAME: linux
       BUILD_CONFIG: release
@@ -65,6 +108,10 @@ jobs:
           ./travis/predeploy.sh
           mkdir -p deploy/textures
           cp textures/field-3v1.png deploy/textures/field-3v1.png
+      - uses: actions/download-artifact@v4
+        with:
+          name: windbot-multiplayer-3v1
+          path: deploy/
       - uses: actions/upload-artifact@v4
         with:
           name: edopro-multiplayer-linux-x64
@@ -74,6 +121,7 @@ jobs:
   windows-bundled:
     name: Windows bundled client
     runs-on: windows-2022
+    needs: windbot-compat
     env:
       TRAVIS_OS_NAME: windows
       BUILD_CONFIG: release
@@ -117,6 +165,10 @@ jobs:
           ./travis/predeploy.sh
           mkdir -p deploy/textures
           cp textures/field-3v1.png deploy/textures/field-3v1.png
+      - uses: actions/download-artifact@v4
+        with:
+          name: windbot-multiplayer-3v1
+          path: deploy/
       - uses: actions/upload-artifact@v4
         with:
           name: edopro-multiplayer-windows-x86

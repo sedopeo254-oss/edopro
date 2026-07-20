@@ -944,8 +944,11 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 		switch(layout) {
 		case FieldLayout::TOP: attack_rotation = irr::core::PI; break;
 		case FieldLayout::BOTTOM: attack_rotation = 0.0f; break;
-		case FieldLayout::LEFT: attack_rotation = -irr::core::HALF_PI; break;
-		case FieldLayout::RIGHT: attack_rotation = irr::core::HALF_PI; break;
+		// A card's printed top edge must point toward the centre of the table.
+		// The first version used the opposite signs here, so left/right cards
+		// faced outwards and their Defense Position rotation looked incorrect.
+		case FieldLayout::LEFT: attack_rotation = irr::core::HALF_PI; break;
+		case FieldLayout::RIGHT: attack_rotation = -irr::core::HALF_PI; break;
 		}
 		*r = { 0.0f, 0.0f, attack_rotation - ((pcard->position & POS_DEFENSE) ? irr::core::HALF_PI : 0.0f) };
 		if(location != LOCATION_OVERLAY && base_location != LOCATION_GRAVE
