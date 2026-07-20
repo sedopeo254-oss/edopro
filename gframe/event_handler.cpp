@@ -118,7 +118,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 			case BUTTON_REPLAY_SWAP: {
 				if(mainGame->dInfo.isReplay)
 					ReplayMode::SwapField();
-				else if (mainGame->dInfo.player_type == 7)
+				else if (mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated)
 					DuelClient::SwapField();
 				break;
 			}
@@ -148,7 +148,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					SingleMode::StopPlay(false);
 					break;
 				}
-				if(mainGame->dInfo.player_type == 7) {
+				if(mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated) {
 					if(mainGame->wFileSave->isVisible()) {
 						mainGame->saveReplay = false;
 						mainGame->HideElement(mainGame->wFileSave);

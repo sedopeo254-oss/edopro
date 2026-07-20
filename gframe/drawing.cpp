@@ -528,7 +528,11 @@ void Game::DrawMisc() {
 	//lp bar
 	const auto& self = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
 	const auto& oppo = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
-	const auto lpframe_pos = ((dInfo.turn % 2 && dInfo.isFirst) || (!(dInfo.turn % 2) && !dInfo.isFirst)) ?
+	const bool multiplayer_mode = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) || dInfo.HasFieldFlag(DUEL_3_V_1);
+	const bool local_side_has_turn = multiplayer_mode
+		? ((dInfo.logical_turn_player < dInfo.team1) == dInfo.isTeam1)
+		: ((dInfo.turn % 2 && dInfo.isFirst) || (!(dInfo.turn % 2) && !dInfo.isFirst));
+	const auto lpframe_pos = local_side_has_turn ?
 						Resize(327, 8, 630, 51 + static_cast<irr::s32>(23 * (self.size() - 1))) :
 						Resize(689, 8, 991, 51 + static_cast<irr::s32>(23 * (oppo.size() - 1)));
 	driver->draw2DRectangle(skin::DUELFIELD_TURNPLAYER_COLOR_VAL, lpframe_pos);
@@ -591,30 +595,68 @@ void Game::DrawMisc() {
 	irr::core::recti p1size = Resize(335, 31, 629, 50);
 	irr::core::recti p2size = Resize(986, 31, 986, 50);
 	{
+		auto logical_player = [&](bool local_side, size_t player_index) {
+			const bool original_team1 = local_side ? !dInfo.isTeam1 : dInfo.isTeam1;
+			return static_cast<uint8_t>(original_team1 ? player_index : dInfo.team1 + player_index);
+		};
+		auto status_text = [&](const std::wstring& player, uint8_t logical) {
+			if(!multiplayer_mode)
+				return player;
+			if((dInfo.eliminated_player_mask & (1u << logical))
+					|| !(dInfo.active_player_mask & (1u << logical))) {
+				const wchar_t* reason = L"OUT";
+				switch(dInfo.elimination_reason[logical]) {
+				case 1: reason = L"LP"; break;
+				case 2: reason = L"DECK"; break;
+				case 3: reason = L"FF"; break;
+				case 4: reason = L"EFFECT"; break;
+				}
+				return epro::format(L"[X-{}] {}", reason, player);
+			}
+			if(logical == dInfo.logical_turn_player)
+				return epro::format(L"> {}", player);
+			return player;
+		};
+		auto status_color = [&](uint8_t logical, bool current) -> irr::video::SColor {
+			if(!multiplayer_mode)
+				return current ? 0xffffffff : 0xff808080;
+			if((dInfo.eliminated_player_mask & (1u << logical))
+					|| !(dInfo.active_player_mask & (1u << logical)))
+				return 0xffff6060;
+			if(logical == dInfo.logical_turn_player)
+				return 0xffffd060;
+			return current ? 0xffffffff : 0xff808080;
+		};
 		int i = 0;
 		for (const auto& player : self) {
-			if (i++ == dInfo.current_player[0])
-				textFont->drawustring(player, p1size, 0xffffffff, false, false, 0);
-			else
-				textFont->drawustring(player, p1size, 0xff808080, false, false, 0);
+			const bool current = i == dInfo.current_player[0];
+			const auto logical = logical_player(false, i++);
+			textFont->drawustring(status_text(player, logical), p1size, status_color(logical, current), false, false, 0);
 			p1size += irr::core::vector2di{ 0, p1size.getHeight() + ResizeY(4) };
 		}
 		i = 0;
 		const auto basecorner = p2size.UpperLeftCorner.X;
 		for (const auto& player : oppo) {
-			const irr::core::ustring utext(player);
+			const bool current = i == dInfo.current_player[1];
+			const auto logical = logical_player(true, i++);
+			const irr::core::ustring utext(status_text(player, logical));
 			auto cld = textFont->getDimensionustring(utext);
 			p2size.UpperLeftCorner.X = basecorner - cld.Width;
-			if (i++ == dInfo.current_player[1])
-				textFont->drawustring(utext, p2size, 0xffffffff, false, false, 0);
-			else
-				textFont->drawustring(utext, p2size, 0xff808080, false, false, 0);
+			textFont->drawustring(utext, p2size, status_color(logical, current), false, false, 0);
 			p2size += irr::core::vector2di{ 0, p2size.getHeight() + ResizeY(4) };
 		}
 	}
 	/*driver->draw2DRectangle(Resize(632, 10, 688, 30), 0x00000000, 0x00000000, 0xffffffff, 0xffffffff);
 	driver->draw2DRectangle(Resize(632, 30, 688, 50), 0xffffffff, 0xffffffff, 0x00000000, 0x00000000);*/
 	DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(635, 5, 685, 40), Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0x80000000, true);
+	if(multiplayer_mode) {
+		uint8_t active_players = 0;
+		for(uint8_t mask = dInfo.active_player_mask & 0x0f; mask; mask >>= 1)
+			active_players += mask & 1u;
+		const auto mode_name = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) ? L"Battle Royale" : L"3 vs 1";
+		DrawShadowText(textFont, epro::format(L"{} ({}/4)", mode_name, active_players), Resize(590, 40, 730, 61),
+			Resize(0, 1, 1, 0), 0xffffffff, 0x80000000, true, true);
+	}
 #undef DRAWRECT
 #undef LPCOLOR
 #undef SKCOLOR

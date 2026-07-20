@@ -3610,9 +3610,10 @@ void Game::ReloadElementsStrings() {
 
 	if(is_building) {
 		btnLeaveGame->setText(gDataManager->GetSysString(1306).data());
-	} else if(!dInfo.isReplay && !dInfo.isSingleMode && dInfo.player_type < (dInfo.team1 + dInfo.team2)) {
+	} else if(!dInfo.isReplay && !dInfo.isSingleMode && !dInfo.local_player_eliminated
+			&& dInfo.player_type < (dInfo.team1 + dInfo.team2)) {
 		btnLeaveGame->setText(gDataManager->GetSysString(1351).data());
-	} else if(dInfo.player_type == 7) {
+	} else if(dInfo.player_type == 7 || dInfo.local_player_eliminated) {
 		btnLeaveGame->setText(gDataManager->GetSysString(1350).data());
 	} else if(dInfo.isSingleMode) {
 		btnLeaveGame->setText(gDataManager->GetSysString(1210).data());

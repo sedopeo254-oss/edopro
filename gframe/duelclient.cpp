@@ -961,6 +961,7 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 		mainGame->dInfo.time_player = 2;
 		mainGame->dInfo.current_player[0] = 0;
 		mainGame->dInfo.current_player[1] = 0;
+		mainGame->dInfo.local_player_eliminated = false;
 		mainGame->dInfo.isReplaySwapped = false;
 		mainGame->is_building = false;
 		mainGame->mTopMenu->setVisible(false);
@@ -1647,6 +1648,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dInfo.elimination_reason[player] = reason;
 		}
 		mainGame->dInfo.active_player_mask = active_mask & 0x0f;
+		if(player == mainGame->dInfo.player_type) {
+			mainGame->dInfo.local_player_eliminated = true;
+			std::lock_guard<epro::mutex> lock(mainGame->gMutex);
+			mainGame->btnLeaveGame->setText(gDataManager->GetSysString(1350).data());
+			mainGame->btnSpectatorSwap->setVisible(true);
+		}
 		break;
 	}
 	case MSG_MULTIPLAYER_NEW_TURN: {
@@ -1687,11 +1694,16 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.active_player_mask = (mainGame->dInfo.duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1)) ? 0x0f : 0x03;
 		mainGame->dInfo.eliminated_player_mask = 0;
 		mainGame->dInfo.logical_turn_player = 0;
+		mainGame->dInfo.local_player_eliminated = false;
 		for(auto& reason : mainGame->dInfo.elimination_reason)
 			reason = 0;
 		mainGame->dInfo.isFirst = (playertype & 0xf) ? false : true;
 		if(playertype & 0xf0)
 			mainGame->dInfo.player_type = 7;
+		if(mainGame->dInfo.player_type < 7) {
+			mainGame->btnLeaveGame->setText(gDataManager->GetSysString(1351).data());
+			mainGame->btnSpectatorSwap->setVisible(false);
+		}
 		if(!mainGame->dInfo.isRelay) {
 			if(mainGame->dInfo.isFirst) {
 				if(mainGame->dInfo.isTeam1)
