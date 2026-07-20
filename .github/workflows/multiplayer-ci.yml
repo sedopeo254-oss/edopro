@@ -27,7 +27,9 @@ jobs:
           submodules: recursive
       - name: Run multiplayer state tests
         shell: bash
-        run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+        run: |
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
 
   linux-bundled:
     name: Linux bundled client

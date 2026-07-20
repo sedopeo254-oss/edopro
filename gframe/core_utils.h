@@ -43,6 +43,7 @@ public:
 struct loc_info {
 	uint8_t controler;
 	uint8_t location;
+	uint8_t duelist;
 	uint32_t sequence;
 	uint32_t position;
 };

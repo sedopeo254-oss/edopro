@@ -61,7 +61,7 @@ void Game::DrawBackGround() {
 	};
 	const int three_columns = dInfo.HasFieldFlag(DUEL_3_COLUMNS_FIELD);
 	auto DrawFieldSpell = [&]() -> bool {
-		if(!gGameConfig->draw_field_spell)
+		if(!gGameConfig->draw_field_spell || dInfo.HasFieldFlag(DUEL_3_V_1))
 			return false;
 		uint32_t fieldcode1 = 0;
 		if(dField.szone[0][5] && dField.szone[0][5]->position & POS_FACEUP)
@@ -89,6 +89,24 @@ void Game::DrawBackGround() {
 
 	//draw field
 	DrawTextureRect(matManager.vField, DrawFieldSpell() ? imageManager.tFieldTransparent[three_columns][tfield] : imageManager.tField[three_columns][tfield]);
+	if(dInfo.HasFieldFlag(DUEL_3_V_1)) {
+		auto DrawLogicalField = [&](float left, float top, float right, float bottom, irr::video::SColor color) {
+			const float z = 0.004f;
+			driver->draw3DLine(irr::core::vector3df{ left, top, z }, irr::core::vector3df{ right, top, z }, color);
+			driver->draw3DLine(irr::core::vector3df{ right, top, z }, irr::core::vector3df{ right, bottom, z }, color);
+			driver->draw3DLine(irr::core::vector3df{ right, bottom, z }, irr::core::vector3df{ left, bottom, z }, color);
+			driver->draw3DLine(irr::core::vector3df{ left, bottom, z }, irr::core::vector3df{ left, top, z }, color);
+		};
+		const bool team_top = LocalPlayer(0) == 1;
+		const irr::video::SColor serenity{ 0xff4f7dff };
+		const irr::video::SColor tristan{ 0xffffd34f };
+		const irr::video::SColor duke{ 0xff57e389 };
+		const irr::video::SColor nezbitt{ 0xffff5555 };
+		DrawLogicalField(1.0f, -3.05f, 7.85f, -0.45f, team_top ? serenity : nezbitt);
+		DrawLogicalField(1.0f, 0.45f, 7.85f, 3.05f, team_top ? nezbitt : serenity);
+		DrawLogicalField(0.15f, -2.90f, 2.15f, 2.90f, team_top ? tristan : duke);
+		DrawLogicalField(5.85f, -2.90f, 7.85f, 2.90f, team_top ? duke : tristan);
+	}
 
 	driver->setMaterial(matManager.mBackLine);
 	//select field
@@ -152,6 +170,10 @@ void Game::DrawBackGround() {
 		material.DiffuseColor = endalpha << 24;
 		material.AmbientColor = color;
 	};
+	// 3-vs-1 uses four transformed logical fields. The standard two-field
+	// hover/link geometry cannot index the expanded allied sequences.
+	if(dInfo.HasFieldFlag(DUEL_3_V_1))
+		return;
 	//current sel
 	if(dField.hovered_location == 0 || dField.hovered_location == LOCATION_HAND || dField.hovered_location == POSITION_HINT)
 		return;
@@ -356,6 +378,7 @@ void Game::DrawCard(ClientCard* pcard) {
 			pcard->curRot += (pcard->dRot * movetime);
 			pcard->mTransform.setTranslation(pcard->curPos);
 			pcard->mTransform.setRotationRadians(pcard->curRot);
+			pcard->mTransform.setScale(irr::core::vector3df{ pcard->draw_scale, pcard->draw_scale, pcard->draw_scale });
 		}
 		if(pcard->is_fading)
 			pcard->curAlpha += pcard->dAlpha * movetime;
@@ -602,6 +625,26 @@ void Game::DrawMisc() {
 		auto status_text = [&](const std::wstring& player, uint8_t logical) {
 			if(!multiplayer_mode)
 				return player;
+			std::wstring player_with_lp = player;
+			if(logical < 4) {
+				auto deck = dInfo.logical_deck_count[logical];
+				auto hand = dInfo.logical_hand_count[logical];
+				auto extra = dInfo.logical_extra_count[logical];
+				auto grave = dInfo.logical_grave_count[logical];
+				auto banish = dInfo.logical_banish_count[logical];
+				const auto core_side = static_cast<uint8_t>(logical < dInfo.team1 ? 0 : 1);
+				if(dInfo.logical_active[core_side] == logical) {
+					const auto local_side = LocalPlayer(core_side);
+					deck = static_cast<uint32_t>(dField.deck[local_side].size());
+					hand = static_cast<uint32_t>(dField.hand[local_side].size());
+					extra = static_cast<uint32_t>(dField.extra[local_side].size());
+					grave = static_cast<uint32_t>(dField.grave[local_side].size());
+					banish = static_cast<uint32_t>(dField.remove[local_side].size());
+				}
+				player_with_lp = dInfo.HasFieldFlag(DUEL_3_V_1)
+					? epro::format(L"{}  LP:{}  D{} H{} X{} G{} B{}", player, dInfo.logical_strLP[logical], deck, hand, extra, grave, banish)
+					: epro::format(L"{}  LP:{}", player, dInfo.logical_strLP[logical]);
+			}
 			if((dInfo.eliminated_player_mask & (1u << logical))
 					|| !(dInfo.active_player_mask & (1u << logical))) {
 				const wchar_t* reason = L"OUT";
@@ -611,11 +654,11 @@ void Game::DrawMisc() {
 				case 3: reason = L"FF"; break;
 				case 4: reason = L"EFFECT"; break;
 				}
-				return epro::format(L"[X-{}] {}", reason, player);
+				return epro::format(L"[X-{}] {}", reason, player_with_lp);
 			}
 			if(logical == dInfo.logical_turn_player)
-				return epro::format(L"> {}", player);
-			return player;
+				return epro::format(L"> {}", player_with_lp);
+			return player_with_lp;
 		};
 		auto status_color = [&](uint8_t logical, bool current) -> irr::video::SColor {
 			if(!multiplayer_mode)
@@ -649,12 +692,11 @@ void Game::DrawMisc() {
 	/*driver->draw2DRectangle(Resize(632, 10, 688, 30), 0x00000000, 0x00000000, 0xffffffff, 0xffffffff);
 	driver->draw2DRectangle(Resize(632, 30, 688, 50), 0xffffffff, 0xffffffff, 0x00000000, 0x00000000);*/
 	DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(635, 5, 685, 40), Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0x80000000, true);
-	if(multiplayer_mode) {
+	if(dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 		uint8_t active_players = 0;
 		for(uint8_t mask = dInfo.active_player_mask & 0x0f; mask; mask >>= 1)
 			active_players += mask & 1u;
-		const auto mode_name = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) ? L"Battle Royale" : L"3 vs 1";
-		DrawShadowText(textFont, epro::format(L"{} ({}/4)", mode_name, active_players), Resize(590, 40, 730, 61),
+		DrawShadowText(textFont, epro::format(L"Battle Royale ({}/4)", active_players), Resize(590, 40, 730, 61),
 			Resize(0, 1, 1, 0), 0xffffffff, 0x80000000, true, true);
 	}
 #undef DRAWRECT
@@ -664,7 +706,7 @@ void Game::DrawMisc() {
 	ClientCard* pcard;
 	const size_t pzones[]{ dInfo.GetPzoneIndex(0), dInfo.GetPzoneIndex(1) };
 	for (size_t p = 0; p < 2; ++p) {
-		for (size_t i = 0; i < 7; ++i) {
+		for (size_t i = 0; i < dField.mzone[p].size(); ++i) {
 			pcard = dField.mzone[p][i];
 			if (pcard && pcard->code != 0 && (p == 0 || (pcard->position & POS_FACEUP)))
 				DrawStatus(pcard);
@@ -675,6 +717,8 @@ void Game::DrawMisc() {
 			if (pcard && (pcard->type & TYPE_PENDULUM) && !pcard->equipTarget)
 				DrawPendScale(pcard);
 		}
+		if(dInfo.HasFieldFlag(DUEL_3_V_1))
+			continue;
 		if (dField.extra[p].size()) {
 			const auto str = (dField.extra_p_count[p]) ? epro::format(L"{}({})", dField.extra[p].size(), dField.extra_p_count[p]) : epro::format(L"{}", dField.extra[p].size());
 			DrawStackIndicator(str, matManager.getExtra()[p], (p == 1));

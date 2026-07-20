@@ -1218,6 +1218,19 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 				pbufw += 4;
 			}
 		}
+		if(IsMultiplayerMode()) {
+			const auto gcount = BufferIO::Read<uint32_t>(pbufw);
+			const auto rcount = BufferIO::Read<uint32_t>(pbufw);
+			for(uint32_t i = 0; i < gcount + rcount; ++i) {
+				/*int code = */BufferIO::Read<uint32_t>(pbufw);
+				const int pos = BufferIO::Read<uint32_t>(pbufw);
+				if(!(pos & POS_FACEUP)) {
+					pbufw -= 8;
+					BufferIO::Write<uint32_t>(pbufw, 0);
+					pbufw += 4;
+				}
+			}
+		}
 		SEND(nullptr);
 		for(auto& dueler : (player == 1) ? players.home : players.opposing)
 			NetServer::ReSendToPlayer(dueler);

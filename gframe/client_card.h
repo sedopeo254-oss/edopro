@@ -21,6 +21,7 @@ public:
 	irr::core::recti hand_collision;
 	irr::f32 curAlpha = 255;
 	irr::f32 dAlpha;
+	irr::f32 draw_scale = 1.0f;
 	int32_t aniFrame;
 	bool is_moving;
 	bool refresh_on_stop;

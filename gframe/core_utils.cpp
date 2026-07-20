@@ -190,7 +190,7 @@ void Query::GenerateBuffer(std::vector<uint8_t>& buffer, bool is_for_public_buff
 				BufferIO::insert_value<uint8_t>(buffer, info.controler);
 				BufferIO::insert_value<uint8_t>(buffer, info.location);
 				BufferIO::insert_value<uint32_t>(buffer, info.sequence);
-				BufferIO::insert_value<uint32_t>(buffer, info.position);
+				BufferIO::insert_value<uint32_t>(buffer, info.position | (static_cast<uint32_t>(info.duelist) << 24));
 				break;
 			}
 			case QUERY_TARGET_CARD: {
@@ -199,7 +199,7 @@ void Query::GenerateBuffer(std::vector<uint8_t>& buffer, bool is_for_public_buff
 					BufferIO::insert_value<uint8_t>(buffer, info.controler);
 					BufferIO::insert_value<uint8_t>(buffer, info.location);
 					BufferIO::insert_value<uint32_t>(buffer, info.sequence);
-					BufferIO::insert_value<uint32_t>(buffer, info.position);
+					BufferIO::insert_value<uint32_t>(buffer, info.position | (static_cast<uint32_t>(info.duelist) << 24));
 				}
 				break;
 			}
@@ -289,6 +289,9 @@ loc_info ReadLocInfo(const uint8_t*& p, bool compat) {
 		info.sequence = BufferIO::Read<uint32_t>(p);
 		info.position = BufferIO::Read<uint32_t>(p);
 	}
+	info.duelist = compat ? 0 : static_cast<uint8_t>(info.position >> 24);
+	if(!compat)
+		info.position &= 0x00ffffff;
 	return info;
 }
 
@@ -303,6 +306,9 @@ loc_info ReadLocInfo(uint8_t*& p, bool compat) {
 		info.sequence = BufferIO::Read<uint32_t>(p);
 		info.position = BufferIO::Read<uint32_t>(p);
 	}
+	info.duelist = compat ? 0 : static_cast<uint8_t>(info.position >> 24);
+	if(!compat)
+		info.position &= 0x00ffffff;
 	return info;
 }
 

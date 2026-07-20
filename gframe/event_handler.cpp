@@ -118,7 +118,8 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 			case BUTTON_REPLAY_SWAP: {
 				if(mainGame->dInfo.isReplay)
 					ReplayMode::SwapField();
-				else if (mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated)
+				else if(mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated
+						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 					DuelClient::SwapField();
 				break;
 			}
@@ -1344,10 +1345,18 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 			case MSG_SELECT_DISFIELD: {
 				if (!(hovered_location & LOCATION_ONFIELD))
 					break;
-				uint32_t flag = 1 << (hovered_sequence + (hovered_controler << 4) + ((hovered_location == LOCATION_MZONE) ? 0 : 8));
-				if(hovered_location == LOCATION_MZONE && (hovered_sequence == 5 || hovered_sequence == 6)) {
+				uint32_t response_sequence = hovered_sequence;
+				if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && hovered_controler == mainGame->LocalPlayer(0)) {
+					const uint32_t stride = hovered_location == LOCATION_MZONE ? 7 : 8;
+					const auto field_duelist = static_cast<uint8_t>(hovered_sequence / stride);
+					if(field_duelist != mainGame->dInfo.logical_active[0])
+						break;
+					response_sequence %= stride;
+				}
+				uint32_t flag = 1 << (response_sequence + (hovered_controler << 4) + ((hovered_location == LOCATION_MZONE) ? 0 : 8));
+				if(hovered_location == LOCATION_MZONE && (response_sequence == 5 || response_sequence == 6)) {
 					if((flag & selectable_field) == 0 && selectable_field & 0x600000)
-						flag = 1 << ((11 - hovered_sequence) + (1 << 4));
+						flag = 1 << ((11 - response_sequence) + (1 << 4));
 				}
 				if (flag & selectable_field) {
 					if (flag & selected_field) {
@@ -2477,6 +2486,37 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 		const auto& boardx = coords.X;
 		const auto& boardy = coords.Y;
 		hovered_location = 0;
+		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+			float best_distance = 0.24f;
+			auto CheckZone = [&](uint8_t controler, uint8_t location, uint32_t sequence) {
+				ClientCard probe{};
+				probe.controler = controler;
+				probe.location = location;
+				probe.sequence = sequence;
+				probe.position = POS_FACEUP_ATTACK;
+				irr::core::vector3df position;
+				irr::core::vector3df rotation;
+				GetCardDrawCoordinates(&probe, &position, &rotation);
+				const float dx = boardx - position.X;
+				const float dy = boardy - position.Y;
+				const float distance = dx * dx + dy * dy;
+				if(distance >= best_distance)
+					return;
+				best_distance = distance;
+				hovered_controler = controler;
+				hovered_location = location;
+				hovered_sequence = sequence;
+			};
+			for(uint8_t controler = 0; controler < 2; ++controler) {
+				for(uint32_t sequence = 0; sequence < mzone[controler].size(); ++sequence)
+					CheckZone(controler, LOCATION_MZONE, sequence);
+				for(uint32_t sequence = 0; sequence < szone[controler].size(); ++sequence)
+					CheckZone(controler, LOCATION_SZONE, sequence);
+				for(const auto location : { LOCATION_DECK, LOCATION_EXTRA, LOCATION_GRAVE, LOCATION_REMOVED })
+					CheckZone(controler, static_cast<uint8_t>(location), 0);
+			}
+			return;
+		}
 		if(boardx >= matManager.getExtra()[0][0].Pos.X && boardx <= matManager.getExtra()[0][1].Pos.X) {
 			if(boardy >= matManager.getExtra()[0][0].Pos.Y && boardy <= matManager.getExtra()[0][2].Pos.Y) {
 				hovered_controler = 0;

@@ -82,6 +82,13 @@ struct DuelInfo {
 	bool local_player_eliminated{ false };
 	int current_player[2];
 	int lp[2];
+	int logical_lp[4]{ 0, 0, 0, 0 };
+	uint32_t logical_deck_count[4]{ 0, 0, 0, 0 };
+	uint32_t logical_hand_count[4]{ 0, 0, 0, 0 };
+	uint32_t logical_extra_count[4]{ 0, 0, 0, 0 };
+	uint32_t logical_grave_count[4]{ 0, 0, 0, 0 };
+	uint32_t logical_banish_count[4]{ 0, 0, 0, 0 };
+	uint8_t logical_active[2]{ 0, 1 };
 	int startlp;
 	int duel_field;
 	uint64_t duel_params;
@@ -97,6 +104,7 @@ struct DuelInfo {
 	std::vector<std::wstring> selfnames;
 	std::vector<std::wstring> opponames;
 	std::wstring strLP[2];
+	std::wstring logical_strLP[4];
 	std::wstring vic_string;
 	uint8_t player_type;
 	uint8_t time_player;
@@ -106,6 +114,9 @@ struct DuelInfo {
 	bool isReplaySwapped;
 	bool HasFieldFlag(uint64_t flag) const {
 		return (flag & duel_params) == flag;
+	}
+	uint8_t GetLogicalPlayer(uint8_t core_side) const {
+		return core_side < 2 && logical_active[core_side] < 4 ? logical_active[core_side] : 0xff;
 	}
 	uint8_t GetPzoneIndex(uint8_t seq) const {
 		if(seq > 1)

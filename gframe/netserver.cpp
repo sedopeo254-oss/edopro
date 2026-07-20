@@ -368,8 +368,8 @@ void NetServer::HandleCTOSPacket(DuelPlayer* dp, uint8_t* data, uint32_t len) {
 			pkt.info.team2 = 2;
 			pkt.info.duel_flag_low &= ~DUEL_RELAY;
 		} else if(multiplayer_flags == DUEL_3_V_1) {
-			pkt.info.team1 = 1;
-			pkt.info.team2 = 3;
+			pkt.info.team1 = 3;
+			pkt.info.team2 = 1;
 			pkt.info.duel_flag_low &= ~DUEL_RELAY;
 		}
 		pkt.info.team1 = std::max(1, std::min(pkt.info.team1, 3));

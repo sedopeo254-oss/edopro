@@ -646,6 +646,13 @@ void ClientField::ReplaySwap() {
 	std::swap(extra[0], extra[1]);
 	std::swap(extra_p_count[0], extra_p_count[1]);
 	std::swap(skills[0], skills[1]);
+	mainGame->dInfo.isFirst = !mainGame->dInfo.isFirst;
+	mainGame->dInfo.isTeam1 = !mainGame->dInfo.isTeam1;
+	mainGame->dInfo.isReplaySwapped = !mainGame->dInfo.isReplaySwapped;
+	std::swap(mainGame->dInfo.lp[0], mainGame->dInfo.lp[1]);
+	std::swap(mainGame->dInfo.strLP[0], mainGame->dInfo.strLP[1]);
+	std::swap(mainGame->dInfo.current_player[0], mainGame->dInfo.current_player[1]);
+	std::swap(player_desc_hints[0], player_desc_hints[1]);
 	for(int p = 0; p < 2; ++p) {
 		resetloc(deck[p]);
 		resetloc(hand[p]);
@@ -657,13 +664,6 @@ void ClientField::ReplaySwap() {
 		reset(skills[p]);
 	}
 	resetloc(overlay_cards);
-	mainGame->dInfo.isFirst = !mainGame->dInfo.isFirst;
-	mainGame->dInfo.isTeam1 = !mainGame->dInfo.isTeam1;
-	mainGame->dInfo.isReplaySwapped = !mainGame->dInfo.isReplaySwapped;
-	std::swap(mainGame->dInfo.lp[0], mainGame->dInfo.lp[1]);
-	std::swap(mainGame->dInfo.strLP[0], mainGame->dInfo.strLP[1]);
-	std::swap(mainGame->dInfo.current_player[0], mainGame->dInfo.current_player[1]);
-	std::swap(player_desc_hints[0], player_desc_hints[1]);
 	for(auto& chit : chains) {
 		chit.controler = 1 - chit.controler;
 		chit.UpdateDrawCoordinates();
@@ -699,6 +699,17 @@ void ClientField::RefreshAllCards() {
 	mainGame->should_refresh_hands = true;
 }
 void ClientField::GetChainDrawCoordinates(uint8_t controler, uint8_t location, uint32_t sequence, irr::core::vector3df* t) {
+	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+		ClientCard probe{};
+		probe.controler = controler;
+		probe.location = location & (~LOCATION_OVERLAY);
+		probe.sequence = sequence;
+		probe.position = POS_FACEUP_ATTACK;
+		irr::core::vector3df rotation;
+		GetCardDrawCoordinates(&probe, t, &rotation);
+		t->Z += 0.02f;
+		return;
+	}
 	if ((location & (~LOCATION_OVERLAY)) == LOCATION_HAND) {
 		t->X = 2.95f;
 		t->Y = (controler == 0) ? 3.15f : (-3.15f);
@@ -802,6 +813,118 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 	const int& controler = pcard->overlayTarget ? pcard->overlayTarget->controler : pcard->controler;
 	const int& sequence = pcard->sequence;
 	const int& location = pcard->location;
+	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+		enum class FieldLayout { TOP, BOTTOM, LEFT, RIGHT };
+		const auto allied_local = mainGame->LocalPlayer(0);
+		const bool allied = controler == allied_local;
+		const int base_location = location == LOCATION_OVERLAY && pcard->overlayTarget
+			? static_cast<int>(pcard->overlayTarget->location) : location;
+		const uint32_t base_sequence = location == LOCATION_OVERLAY && pcard->overlayTarget
+			? pcard->overlayTarget->sequence : static_cast<uint32_t>(sequence);
+		const uint32_t stride = base_location == LOCATION_MZONE ? 7u : base_location == LOCATION_SZONE ? 8u : 0u;
+		uint8_t logical = allied ? mainGame->dInfo.logical_active[0] : mainGame->dInfo.logical_active[1];
+		if(allied && stride)
+			logical = static_cast<uint8_t>(base_sequence / stride);
+		if(!allied)
+			logical = 3;
+		const bool team_top = allied_local == 1;
+		FieldLayout layout;
+		if(logical == 3)
+			layout = team_top ? FieldLayout::BOTTOM : FieldLayout::TOP;
+		else if(logical == 0)
+			layout = team_top ? FieldLayout::TOP : FieldLayout::BOTTOM;
+		else if(logical == 1)
+			layout = team_top ? FieldLayout::LEFT : FieldLayout::RIGHT;
+		else
+			layout = team_top ? FieldLayout::RIGHT : FieldLayout::LEFT;
+
+		const uint32_t local_sequence = stride ? base_sequence % stride : base_sequence;
+		const bool horizontal = layout == FieldLayout::TOP || layout == FieldLayout::BOTTOM;
+		const float direction = (layout == FieldLayout::TOP || layout == FieldLayout::LEFT) ? -1.0f : 1.0f;
+		const float stack = 0.004f * static_cast<float>(sequence);
+		pcard->draw_scale = horizontal ? 0.62f : 0.58f;
+		t->Z = 0.015f + stack;
+		if(horizontal) {
+			const float ysign = layout == FieldLayout::TOP ? -1.0f : 1.0f;
+			switch(base_location) {
+			case LOCATION_MZONE:
+				t->X = local_sequence < 5 ? 2.35f + 0.82f * local_sequence : (local_sequence == 5 ? 3.25f : 4.75f);
+				t->Y = ysign * (local_sequence < 5 ? 1.43f : 0.82f);
+				break;
+			case LOCATION_SZONE:
+				t->X = local_sequence < 5 ? 2.35f + 0.82f * local_sequence : (local_sequence == 5 ? 1.55f : local_sequence == 6 ? 1.65f : 6.45f);
+				t->Y = ysign * 2.08f;
+				break;
+			case LOCATION_DECK: t->X = 6.85f; t->Y = ysign * 2.10f; break;
+			case LOCATION_EXTRA: t->X = 1.15f; t->Y = ysign * 2.10f; break;
+			case LOCATION_GRAVE: t->X = 6.85f; t->Y = ysign * 1.40f; break;
+			case LOCATION_REMOVED: t->X = 7.50f; t->Y = ysign * 1.40f; break;
+			case LOCATION_HAND: {
+				const auto count = std::max<size_t>(1, hand[controler].size());
+				const float spacing = std::min(0.55f, 3.6f / static_cast<float>(count));
+				t->X = 4.0f + (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
+				t->Y = ysign * 2.82f;
+				break;
+			}
+			default: t->X = 4.0f; t->Y = ysign * 2.45f; break;
+			}
+		} else {
+			const float xsign = layout == FieldLayout::LEFT ? -1.0f : 1.0f;
+			const float outer = layout == FieldLayout::LEFT ? 0.45f : 7.55f;
+			const float monster_x = layout == FieldLayout::LEFT ? 1.35f : 6.65f;
+			const float spell_x = layout == FieldLayout::LEFT ? 0.70f : 7.30f;
+			switch(base_location) {
+			case LOCATION_MZONE:
+				t->X = local_sequence < 5 ? monster_x : (layout == FieldLayout::LEFT ? 2.05f : 5.95f);
+				t->Y = local_sequence < 5 ? -1.55f + 0.78f * local_sequence : (local_sequence == 5 ? -0.55f : 0.55f);
+				break;
+			case LOCATION_SZONE:
+				t->X = spell_x;
+				t->Y = local_sequence < 5 ? -1.55f + 0.78f * local_sequence : (local_sequence == 5 ? -2.30f : 2.30f);
+				break;
+			case LOCATION_DECK: t->X = outer; t->Y = 2.65f; break;
+			case LOCATION_EXTRA: t->X = outer; t->Y = -2.65f; break;
+			case LOCATION_GRAVE: t->X = monster_x; t->Y = 2.65f; break;
+			case LOCATION_REMOVED: t->X = monster_x; t->Y = -2.65f; break;
+			case LOCATION_HAND: {
+				const auto count = std::max<size_t>(1, hand[controler].size());
+				const float spacing = std::min(0.48f, 3.4f / static_cast<float>(count));
+				t->X = outer;
+				t->Y = (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
+				break;
+			}
+			default: t->X = outer; t->Y = 0.0f; break;
+			}
+			(void)xsign;
+		}
+
+		float attack_rotation = 0.0f;
+		switch(layout) {
+		case FieldLayout::TOP: attack_rotation = irr::core::PI; break;
+		case FieldLayout::BOTTOM: attack_rotation = 0.0f; break;
+		case FieldLayout::LEFT: attack_rotation = -irr::core::HALF_PI; break;
+		case FieldLayout::RIGHT: attack_rotation = irr::core::HALF_PI; break;
+		}
+		*r = { 0.0f, 0.0f, attack_rotation - ((pcard->position & POS_DEFENSE) ? irr::core::HALF_PI : 0.0f) };
+		if(location != LOCATION_OVERLAY && base_location != LOCATION_GRAVE
+				&& ((base_location == LOCATION_DECK && deck_reversed == pcard->is_reversed)
+					|| (base_location != LOCATION_DECK && pcard->position & POS_FACEDOWN)))
+			r->Y = irr::core::PI;
+		if(location == LOCATION_OVERLAY) {
+			t->X += horizontal ? (-0.10f + 0.04f * sequence) : direction * 0.08f;
+			t->Y += horizontal ? direction * 0.06f : (-0.10f + 0.04f * sequence);
+			t->Z = 0.008f + sequence * 0.0001f;
+		}
+		if(setTrans) {
+			pcard->mTransform.setTranslation(*t);
+			pcard->mTransform.setRotationRadians(*r);
+			pcard->mTransform.setScale(irr::core::vector3df{ pcard->draw_scale, pcard->draw_scale, pcard->draw_scale });
+			if(pcard->location == LOCATION_HAND && !pcard->is_hovered)
+				getCardScreenCoordinates(pcard);
+		}
+		return;
+	}
+	pcard->draw_scale = 1.0f;
 	auto GetPos = [&]()->const irr::video::S3DVertex* {
 		switch(location) {
 		case LOCATION_DECK:		return matManager.getDeck()[controler];
