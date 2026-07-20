@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: multiplayer-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
   DEPLOY_DIR: deploy
@@ -82,21 +86,14 @@ jobs:
         shell: pwsh
         run: |
           Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
-          $installPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
-          $components = @(
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
             "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
             "Microsoft.VisualStudio.Component.WinXP"
           )
-          $componentArgs = $components | ForEach-Object { " --add " + $_ }
-          $arguments = @(
-            "modify",
-            "--installPath", "`"$installPath`"",
-            $componentArgs,
-            "--quiet",
-            "--norestart",
-            "--nocache"
-          )
-          $process = Start-Process -FilePath "vs_installer.exe" -ArgumentList $arguments -Wait -PassThru
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
           if ($process.ExitCode -ne 0) {
             throw "Visual Studio Installer exited with code $($process.ExitCode)"
           }
