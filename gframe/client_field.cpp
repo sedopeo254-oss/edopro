@@ -24,6 +24,54 @@
 
 namespace ygo {
 
+namespace {
+
+enum class FieldSeat : uint8_t {
+	TOP,
+	BOTTOM,
+	LEFT,
+	RIGHT
+};
+
+struct SeatTransform {
+	float attack_rotation;
+	bool horizontal;
+	float overlay_direction;
+	float hand_center_x;
+	float hand_center_y;
+	float hand_axis_x;
+	float hand_axis_y;
+	float hand_max_spacing;
+	float hand_span;
+};
+
+// Every four-seat card path uses this table. Keeping the seat orientation and
+// hand basis together prevents private cards from falling back to the old
+// two-player top/bottom assumptions.
+static const SeatTransform SEAT_TRANSFORMS[] = {
+	{ irr::core::PI,       true,  -1.0f, 4.02f, -3.08f, 1.0f, 0.0f, 0.48f, 2.55f }, // TOP
+	{ 0.0f,                true,   1.0f, 4.05f,  3.00f, 1.0f, 0.0f, 0.48f, 2.70f }, // BOTTOM
+	{ irr::core::HALF_PI,  false, -1.0f, -0.27f, 0.18f, 0.0f, 1.0f, 0.46f, 2.55f }, // LEFT
+	{ -irr::core::HALF_PI, false,  1.0f, 8.25f,  0.18f, 0.0f, 1.0f, 0.46f, 2.55f }  // RIGHT
+};
+
+const SeatTransform& GetSeatTransform(FieldSeat seat) {
+	return SEAT_TRANSFORMS[static_cast<uint8_t>(seat)];
+}
+
+FieldSeat Resolve3v1Seat(uint8_t logical_player, uint8_t allied_local) {
+	const bool team_top = allied_local == 1;
+	if(logical_player == 3)
+		return team_top ? FieldSeat::BOTTOM : FieldSeat::TOP;
+	if(logical_player == 0)
+		return team_top ? FieldSeat::TOP : FieldSeat::BOTTOM;
+	if(logical_player == 1)
+		return team_top ? FieldSeat::LEFT : FieldSeat::RIGHT;
+	return team_top ? FieldSeat::RIGHT : FieldSeat::LEFT;
+}
+
+}
+
 ClientField::ClientField() {
 	panel = nullptr;
 	hovered_card = nullptr;
@@ -814,7 +862,6 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 	const int& sequence = pcard->sequence;
 	const int& location = pcard->location;
 	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
-		enum class FieldLayout { TOP, BOTTOM, LEFT, RIGHT };
 		const auto allied_local = mainGame->LocalPlayer(0);
 		const bool allied = controler == allied_local;
 		const int base_location = location == LOCATION_OVERLAY && pcard->overlayTarget
@@ -827,20 +874,10 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 			logical = static_cast<uint8_t>(base_sequence / stride);
 		if(!allied)
 			logical = 3;
-		const bool team_top = allied_local == 1;
-		FieldLayout layout;
-		if(logical == 3)
-			layout = team_top ? FieldLayout::BOTTOM : FieldLayout::TOP;
-		else if(logical == 0)
-			layout = team_top ? FieldLayout::TOP : FieldLayout::BOTTOM;
-		else if(logical == 1)
-			layout = team_top ? FieldLayout::LEFT : FieldLayout::RIGHT;
-		else
-			layout = team_top ? FieldLayout::RIGHT : FieldLayout::LEFT;
+		const auto seat = Resolve3v1Seat(logical, allied_local);
+		const auto& seat_transform = GetSeatTransform(seat);
 
 		const uint32_t local_sequence = stride ? base_sequence % stride : base_sequence;
-		const bool horizontal = layout == FieldLayout::TOP || layout == FieldLayout::BOTTOM;
-		const float direction = (layout == FieldLayout::TOP || layout == FieldLayout::LEFT) ? -1.0f : 1.0f;
 		const float stack = 0.004f * static_cast<float>(sequence);
 		const bool private_pile = base_location == LOCATION_DECK || base_location == LOCATION_EXTRA
 			|| base_location == LOCATION_GRAVE || base_location == LOCATION_REMOVED;
@@ -849,7 +886,14 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 		// are sized for the dedicated field-3v1 artwork.
 		pcard->draw_scale = base_location == LOCATION_HAND ? 0.38f : private_pile ? 0.46f : 0.43f;
 		t->Z = 0.015f + stack;
-		if(layout == FieldLayout::TOP) {
+		if(base_location == LOCATION_HAND) {
+			const auto count = std::max<size_t>(1, hand[controler].size());
+			const float spacing = std::min(seat_transform.hand_max_spacing,
+				seat_transform.hand_span / static_cast<float>(count));
+			const float offset = (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
+			t->X = seat_transform.hand_center_x + seat_transform.hand_axis_x * offset;
+			t->Y = seat_transform.hand_center_y + seat_transform.hand_axis_y * offset;
+		} else if(seat == FieldSeat::TOP) {
 			switch(base_location) {
 			case LOCATION_MZONE:
 				t->X = local_sequence < 5 ? 2.42f + 0.66f * local_sequence : (local_sequence == 5 ? 3.35f : 4.55f);
@@ -868,16 +912,9 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 			case LOCATION_EXTRA: t->X = 6.02f; t->Y = -2.73f; break;
 			case LOCATION_GRAVE: t->X = 1.67f; t->Y = -2.73f; break;
 			case LOCATION_REMOVED: t->X = 1.67f; t->Y = -3.50f; break;
-			case LOCATION_HAND: {
-				const auto count = std::max<size_t>(1, hand[controler].size());
-				const float spacing = std::min(0.48f, 2.55f / static_cast<float>(count));
-				t->X = 4.02f + (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
-				t->Y = -3.08f;
-				break;
-			}
 			default: t->X = 4.02f; t->Y = -2.80f; break;
 			}
-		} else if(layout == FieldLayout::BOTTOM) {
+		} else if(seat == FieldSeat::BOTTOM) {
 			switch(base_location) {
 			case LOCATION_MZONE:
 				t->X = local_sequence < 5 ? 2.75f + 0.66f * local_sequence : (local_sequence == 5 ? 3.45f : 4.65f);
@@ -896,20 +933,12 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 			case LOCATION_EXTRA: t->X = 1.90f; t->Y = 2.52f; break;
 			case LOCATION_GRAVE: t->X = 6.36f; t->Y = 2.53f; break;
 			case LOCATION_REMOVED: t->X = 6.36f; t->Y = 3.28f; break;
-			case LOCATION_HAND: {
-				const auto count = std::max<size_t>(1, hand[controler].size());
-				const float spacing = std::min(0.48f, 2.70f / static_cast<float>(count));
-				t->X = 4.05f + (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
-				t->Y = 3.00f;
-				break;
-			}
 			default: t->X = 4.05f; t->Y = 2.78f; break;
 			}
 		} else {
-			const bool left = layout == FieldLayout::LEFT;
+			const bool left = seat == FieldSeat::LEFT;
 			const float monster_x = left ? 0.82f : 7.16f;
 			const float spell_x = left ? 0.28f : 7.70f;
-			const float hand_x = left ? -0.27f : 8.25f;
 			switch(base_location) {
 			case LOCATION_MZONE:
 				t->X = local_sequence < 5 ? monster_x : (left ? 1.02f : 6.96f);
@@ -929,41 +958,24 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 			case LOCATION_EXTRA: t->X = left ? 0.33f : 7.56f; t->Y = left ? -2.13f : 2.55f; break;
 			case LOCATION_GRAVE: t->X = left ? 0.27f : 7.55f; t->Y = left ? 2.54f : -2.13f; break;
 			case LOCATION_REMOVED: t->X = left ? -0.47f : 8.34f; t->Y = left ? 2.54f : -2.13f; break;
-			case LOCATION_HAND: {
-				const auto count = std::max<size_t>(1, hand[controler].size());
-				const float spacing = std::min(0.46f, 2.55f / static_cast<float>(count));
-				t->X = hand_x;
-				t->Y = 0.18f + (static_cast<float>(sequence) - (count - 1) / 2.0f) * spacing;
-				break;
-			}
-			default: t->X = hand_x; t->Y = 0.0f; break;
+			default: t->X = seat_transform.hand_center_x; t->Y = 0.0f; break;
 			}
 		}
 
-		float attack_rotation = 0.0f;
-		switch(layout) {
-		case FieldLayout::TOP: attack_rotation = irr::core::PI; break;
-		case FieldLayout::BOTTOM: attack_rotation = 0.0f; break;
-		// A card's printed top edge must point toward the centre of the table.
-		// The first version used the opposite signs here, so left/right cards
-		// faced outwards and their Defense Position rotation looked incorrect.
-		case FieldLayout::LEFT: attack_rotation = irr::core::HALF_PI; break;
-		case FieldLayout::RIGHT: attack_rotation = -irr::core::HALF_PI; break;
-		}
 		// Defense Position changes the orientation of monsters only. Hands,
 		// Decks, Extra Decks and face-down Spells/Traps commonly carry the
 		// POS_FACEDOWN_DEFENSE bit too; rotating those as Defense Position
 		// turns top/bottom cards sideways and cancels the left/right seat turn.
 		const bool rotate_for_defense = base_location == LOCATION_MZONE
 			&& (pcard->position & POS_DEFENSE);
-		*r = { 0.0f, 0.0f, attack_rotation - (rotate_for_defense ? irr::core::HALF_PI : 0.0f) };
+		*r = { 0.0f, 0.0f, seat_transform.attack_rotation - (rotate_for_defense ? irr::core::HALF_PI : 0.0f) };
 		if(location != LOCATION_OVERLAY && base_location != LOCATION_GRAVE
 				&& ((base_location == LOCATION_DECK && deck_reversed == pcard->is_reversed)
 					|| (base_location != LOCATION_DECK && pcard->position & POS_FACEDOWN)))
 			r->Y = irr::core::PI;
 		if(location == LOCATION_OVERLAY) {
-			t->X += horizontal ? (-0.10f + 0.04f * sequence) : direction * 0.08f;
-			t->Y += horizontal ? direction * 0.06f : (-0.10f + 0.04f * sequence);
+			t->X += seat_transform.horizontal ? (-0.10f + 0.04f * sequence) : seat_transform.overlay_direction * 0.08f;
+			t->Y += seat_transform.horizontal ? seat_transform.overlay_direction * 0.06f : (-0.10f + 0.04f * sequence);
 			t->Z = 0.008f + sequence * 0.0001f;
 		}
 		if(setTrans) {

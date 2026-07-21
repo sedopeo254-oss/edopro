@@ -1665,6 +1665,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_MULTIPLAYER_NEW_TURN: {
 		const uint8_t logical_player = BufferIO::Read<uint8_t>(pbuf);
+		bool active_seat_changed = false;
 		mainGame->dInfo.active_player_mask = BufferIO::Read<uint8_t>(pbuf) & 0x0f;
 		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && len >= 2 + 4 * 6 * sizeof(uint32_t)) {
 			for(uint8_t logical = 0; logical < 4; ++logical) {
@@ -1681,6 +1682,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		const auto field_side = static_cast<uint8_t>(logical_player < mainGame->dInfo.team1 ? 0 : 1);
 		if(logical_player < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
 			const auto outgoing = mainGame->dInfo.logical_active[field_side];
+			active_seat_changed = outgoing != logical_player;
 			const auto local_side = mainGame->LocalPlayer(field_side);
 			if(outgoing < 4) {
 				mainGame->dInfo.logical_deck_count[outgoing] = static_cast<uint32_t>(mainGame->dField.deck[local_side].size());
@@ -1698,6 +1700,13 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(opposing_index < mainGame->dInfo.team2)
 				mainGame->dInfo.current_player[mainGame->LocalPlayer(1)] = opposing_index;
 		}
+		// Private locations are stored in the engine's two physical field
+		// containers, but in 3-v-1 they are rendered at the active logical
+		// player's seat. Rebuild every transform as soon as that seat changes;
+		// otherwise hands keep the previous seat rotation until another card
+		// event happens, producing the diagonal fans seen on left/right turns.
+		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && active_seat_changed)
+			mainGame->dField.RefreshAllCards();
 		break;
 	}
 	case MSG_WAITING: {
