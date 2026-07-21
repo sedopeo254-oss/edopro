@@ -950,7 +950,13 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 		case FieldLayout::LEFT: attack_rotation = irr::core::HALF_PI; break;
 		case FieldLayout::RIGHT: attack_rotation = -irr::core::HALF_PI; break;
 		}
-		*r = { 0.0f, 0.0f, attack_rotation - ((pcard->position & POS_DEFENSE) ? irr::core::HALF_PI : 0.0f) };
+		// Defense Position changes the orientation of monsters only. Hands,
+		// Decks, Extra Decks and face-down Spells/Traps commonly carry the
+		// POS_FACEDOWN_DEFENSE bit too; rotating those as Defense Position
+		// turns top/bottom cards sideways and cancels the left/right seat turn.
+		const bool rotate_for_defense = base_location == LOCATION_MZONE
+			&& (pcard->position & POS_DEFENSE);
+		*r = { 0.0f, 0.0f, attack_rotation - (rotate_for_defense ? irr::core::HALF_PI : 0.0f) };
 		if(location != LOCATION_OVERLAY && base_location != LOCATION_GRAVE
 				&& ((base_location == LOCATION_DECK && deck_reversed == pcard->is_reversed)
 					|| (base_location != LOCATION_DECK && pcard->position & POS_FACEDOWN)))
