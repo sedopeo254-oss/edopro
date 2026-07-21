@@ -38,7 +38,7 @@ public:
 	void Sending(CoreUtils::Packet& packet, int& return_value, bool& record, bool& record_last);
 	void AfterParsing(const CoreUtils::Packet& packet, int& return_value, bool& record, bool& record_last);
 	void DuelEndProc();
-	void WaitforResponse(uint8_t player, const CoreUtils::Packet& packet);
+	DuelPlayer* WaitforResponse(uint8_t player, const CoreUtils::Packet& packet);
 	void RefreshMzone(uint8_t player, uint32_t flag = 0x3981fff);
 	void RefreshSzone(uint8_t player, uint32_t flag = 0x3f81fff);
 	void RefreshHand(uint8_t player, uint32_t flag = 0x3781fff);
@@ -138,6 +138,7 @@ protected:
 		std::vector<duelist>::iterator home_iterator, opposing_iterator;
 	} players;
 	DuelPlayer* cur_player[2];
+	DuelPlayer* response_player{ nullptr };
 	std::set<DuelPlayer*> observers;
 	uint8_t hand_result[2];
 	uint8_t last_response;

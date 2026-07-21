@@ -984,8 +984,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	case MSG_SELECT_BATTLECMD:
 	case MSG_SELECT_IDLECMD: {
 		player = BufferIO::Read<uint8_t>(pbuf);
-		WaitforResponse(player, packet);
-		SEND(cur_player[player]);
+		SEND(WaitforResponse(player, packet));
 		record = false;
 		return_value = 1;
 		break;
@@ -1019,8 +1018,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	case MSG_ANNOUNCE_CARD:
 	case MSG_ANNOUNCE_NUMBER: {
 		player = BufferIO::Read<uint8_t>(pbuf);
-		WaitforResponse(player, packet);
-		SEND(cur_player[player]);
+		SEND(WaitforResponse(player, packet));
 		record = false;
 		return_value = 1;
 		break;
@@ -1036,8 +1034,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			if(info.controler != player)
 				BufferIO::Write<uint32_t>(pbufw, 0);
 		}
-		WaitforResponse(player, packet);
-		SEND(cur_player[player]);
+		SEND(WaitforResponse(player, packet));
 		record = false;
 		return_value = 1;
 		break;
@@ -1054,8 +1051,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			if(controler != player)
 				BufferIO::Write<uint32_t>(pbufw, 0);
 		}
-		WaitforResponse(player, packet);
-		SEND(cur_player[player]);
+		SEND(WaitforResponse(player, packet));
 		record = false;
 		return_value = 1;
 		break;
@@ -1079,8 +1075,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			if(info.controler != player)
 				BufferIO::Write<uint32_t>(pbufw, 0);
 		}
-		WaitforResponse(player, packet);
-		SEND(cur_player[player]);
+		SEND(WaitforResponse(player, packet));
 		record = false;
 		return_value = 1;
 		break;
@@ -1430,7 +1425,11 @@ void GenericDuel::GetResponse(DuelPlayer* dp, void* pdata, uint32_t len) {
 	OCG_DuelSetResponse(pduel, pdata, len);
 	if(last_response < 2)
 		pending_response[last_response] = CoreUtils::Packet{};
-	GetAtPos(dp->type).player->state = 0xff;
+	if(response_player)
+		response_player->state = 0xff;
+	else
+		GetAtPos(dp->type).player->state = 0xff;
+	response_player = nullptr;
 	/*if(host_info.time_limit) {
 		int resp_type = dp->type < players.home_size ? 0 : 1;
 		if(time_limit[resp_type] >= grace_period)
@@ -1468,24 +1467,34 @@ void GenericDuel::EndDuel() {
 	OCG_DestroyDuel(pduel);
 	pduel = nullptr;
 }
-void GenericDuel::WaitforResponse(uint8_t playerid, const CoreUtils::Packet& packet) {
-	last_response = playerid;
-	pending_response[playerid] = packet;
+DuelPlayer* GenericDuel::WaitforResponse(uint8_t playerid, const CoreUtils::Packet& packet) {
+	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+	const bool logical_selector = (duel_flags & DUEL_3_V_1) && playerid >= 2 && playerid < 5;
+	const uint8_t response_side = logical_selector ? 0 : playerid;
+	DuelPlayer* responder = logical_selector ? GetAtPos(static_cast<uint8_t>(playerid - 2)).player
+		: (response_side < 2 ? cur_player[response_side] : nullptr);
+	if(!responder)
+		responder = cur_player[response_side];
+	last_response = response_side;
+	response_player = responder;
+	pending_response[response_side] = packet;
 	static constexpr uint8_t msg = MSG_WAITING;
 	NetServer::SendPacketToPlayer(nullptr, STOC_GAME_MSG, msg);
-	IteratePlayers([&player=cur_player[playerid]](DuelPlayer* dueler) {
-		if(dueler != player)
+	IteratePlayers([responder](DuelPlayer* dueler) {
+		if(dueler != responder)
 			NetServer::ReSendToPlayer(dueler);
 	});
 	if(host_info.time_limit) {
 		STOC_TimeLimit sctl;
-		sctl.player = playerid;
-		sctl.left_time = std::max<int32_t>(time_limit[playerid] - 5, 0);
+		sctl.player = response_side;
+		sctl.left_time = std::max<int32_t>(time_limit[response_side] - 5, 0);
 		NetServer::SendPacketToPlayer(nullptr, STOC_TIME_LIMIT, sctl);
 		IteratePlayers(NetServer::ReSendToPlayer);
 		grace_period = 0;
 	}
-	cur_player[playerid]->state = CTOS_RESPONSE;
+	responder->state = CTOS_RESPONSE;
+	return responder;
 }
 void GenericDuel::TimeConfirm([[maybe_unused]] DuelPlayer* dp) {
 	return;
@@ -1584,7 +1593,7 @@ void GenericDuel::PseudoRefreshDeck(uint8_t player, uint32_t flag) {
 }
 void GenericDuel::GenericTimer([[maybe_unused]] evutil_socket_t fd, [[maybe_unused]] short events, void* arg) {
 	GenericDuel* sd = static_cast<GenericDuel*>(arg);
-	if(sd->last_response < 2 && sd->cur_player[sd->last_response]->state == CTOS_RESPONSE) {
+	if(sd->last_response < 2 && sd->response_player && sd->response_player->state == CTOS_RESPONSE) {
 		if(sd->grace_period >= 0) {
 			sd->grace_period--;
 			return;

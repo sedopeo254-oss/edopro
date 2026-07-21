@@ -2069,7 +2069,14 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		uint64_t desc = CompatRead<uint32_t, uint64_t>(pbuf);
 		std::lock_guard<epro::mutex> lock(mainGame->gMutex);
 		mainGame->dField.highlighting_card = 0;
-		mainGame->stQMessage->setText(gDataManager->GetDesc(desc, mainGame->dInfo.compat_mode).data());
+		if(desc == MULTIPLAYER_TAKE_ATTACK_DESC) {
+			mainGame->stQMessage->setText(L"A teammate is being attacked or would take damage. Let me take it?");
+			mainGame->btnYes->setText(L"Let me take it");
+		} else {
+			mainGame->stQMessage->setText(gDataManager->GetDesc(desc, mainGame->dInfo.compat_mode).data());
+			mainGame->btnYes->setText(gDataManager->GetSysString(1213).data());
+		}
+		mainGame->btnNo->setText(gDataManager->GetSysString(1214).data());
 		mainGame->PopupElement(mainGame->wQuery);
 		return false;
 	}
@@ -2095,12 +2102,19 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		uint32_t code;
 		bool panelmode = false;
 		bool select_ready = mainGame->dField.select_min == 0;
+		int selection_focus = -1;
 		mainGame->dField.select_ready = select_ready;
 		ClientCard* pcard;
 		for(uint32_t i = 0; i < count; ++i) {
 			code = BufferIO::Read<uint32_t>(pbuf);
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
 			info.controler = mainGame->LocalPlayer(info.controler);
+			if(selection_focus < 0 && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					&& info.controler == mainGame->LocalPlayer(0)
+					&& (info.location == LOCATION_MZONE || info.location == LOCATION_SZONE)) {
+				const uint32_t stride = info.location == LOCATION_MZONE ? 7u : 8u;
+				selection_focus = static_cast<int>(info.sequence / stride);
+			}
 			if ((info.location & LOCATION_OVERLAY) > 0)
 				pcard = mainGame->dField.GetCard(info.controler, info.location & (~LOCATION_OVERLAY) & 0xff, info.sequence)->overlayed[info.position];
 			else if (info.location == 0) {
@@ -2118,6 +2132,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			pcard->is_selected = false;
 			if (info.location & 0xf1)
 				panelmode = true;
+		}
+		if(selection_focus >= 0 && selection_focus < mainGame->dInfo.team1) {
+			mainGame->dInfo.team_field_focus = static_cast<uint8_t>(selection_focus);
+			mainGame->dField.RefreshAllCards();
 		}
 		std::sort(mainGame->dField.selectable_cards.begin(), mainGame->dField.selectable_cards.end(), ClientCard::client_card_sort);
 		PerformQueuedPanelConfirmIfDifferent(mainGame->dField.selectable_cards);
