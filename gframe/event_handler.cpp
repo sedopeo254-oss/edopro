@@ -118,8 +118,9 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 			case BUTTON_REPLAY_SWAP: {
 				if(mainGame->dInfo.isReplay)
 					ReplayMode::SwapField();
-				else if(mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated
-						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+				else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+					mainGame->dField.CycleTeamField();
+				else if(mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated)
 					DuelClient::SwapField();
 				break;
 			}
@@ -1346,8 +1347,9 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 				if (!(hovered_location & LOCATION_ONFIELD))
 					break;
 				uint32_t response_sequence = hovered_sequence;
-				if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && hovered_controler == mainGame->LocalPlayer(0)) {
-					const uint32_t stride = hovered_location == LOCATION_MZONE ? 7 : 8;
+				if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						&& hovered_controler == mainGame->LocalPlayer(0)) {
+					const uint32_t stride = hovered_location == LOCATION_MZONE ? 7u : 8u;
 					const auto field_duelist = static_cast<uint8_t>(hovered_sequence / stride);
 					if(field_duelist != mainGame->dInfo.logical_active[0])
 						break;
@@ -2485,38 +2487,13 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 		const auto coords = MouseToField(mouse);
 		const auto& boardx = coords.X;
 		const auto& boardy = coords.Y;
+		auto DisplayMzone = [&](uint8_t controler, uint32_t sequence) -> ClientCard* {
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					&& controler == mainGame->LocalPlayer(0))
+				sequence += static_cast<uint32_t>(mainGame->dInfo.team_field_focus) * 7u;
+			return sequence < mzone[controler].size() ? mzone[controler][sequence] : nullptr;
+		};
 		hovered_location = 0;
-		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
-			float best_distance = 0.24f;
-			auto CheckZone = [&](uint8_t controler, uint8_t location, uint32_t sequence) {
-				ClientCard probe{};
-				probe.controler = controler;
-				probe.location = location;
-				probe.sequence = sequence;
-				probe.position = POS_FACEUP_ATTACK;
-				irr::core::vector3df position;
-				irr::core::vector3df rotation;
-				GetCardDrawCoordinates(&probe, &position, &rotation);
-				const float dx = boardx - position.X;
-				const float dy = boardy - position.Y;
-				const float distance = dx * dx + dy * dy;
-				if(distance >= best_distance)
-					return;
-				best_distance = distance;
-				hovered_controler = controler;
-				hovered_location = location;
-				hovered_sequence = sequence;
-			};
-			for(uint8_t controler = 0; controler < 2; ++controler) {
-				for(uint32_t sequence = 0; sequence < mzone[controler].size(); ++sequence)
-					CheckZone(controler, LOCATION_MZONE, sequence);
-				for(uint32_t sequence = 0; sequence < szone[controler].size(); ++sequence)
-					CheckZone(controler, LOCATION_SZONE, sequence);
-				for(const auto location : { LOCATION_DECK, LOCATION_EXTRA, LOCATION_GRAVE, LOCATION_REMOVED })
-					CheckZone(controler, static_cast<uint8_t>(location), 0);
-			}
-			return;
-		}
 		if(boardx >= matManager.getExtra()[0][0].Pos.X && boardx <= matManager.getExtra()[0][1].Pos.X) {
 			if(boardy >= matManager.getExtra()[0][0].Pos.Y && boardy <= matManager.getExtra()[0][2].Pos.Y) {
 				hovered_controler = 0;
@@ -2634,7 +2611,7 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 				hovered_sequence = sequence;
 			} else if(boardy >= matManager.vFieldMzone[0][5][0].Pos.Y && boardy <= matManager.vFieldMzone[0][5][2].Pos.Y) {
 				if(sequence == 1) {
-					if(!mzone[1][6]) {
+					if(!DisplayMzone(1, 6)) {
 						hovered_controler = 0;
 						hovered_location = LOCATION_MZONE;
 						hovered_sequence = 5;
@@ -2644,7 +2621,7 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 						hovered_sequence = 6;
 					}
 				} else if(sequence == 3) {
-					if(!mzone[1][5]) {
+					if(!DisplayMzone(1, 5)) {
 						hovered_controler = 0;
 						hovered_location = LOCATION_MZONE;
 						hovered_sequence = 6;
@@ -2663,6 +2640,12 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 				hovered_location = LOCATION_SZONE;
 				hovered_sequence = 4 - sequence;
 			}
+		}
+		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				&& hovered_controler == mainGame->LocalPlayer(0)
+				&& (hovered_location == LOCATION_MZONE || hovered_location == LOCATION_SZONE)) {
+			const uint32_t stride = hovered_location == LOCATION_MZONE ? 7u : 8u;
+			hovered_sequence += static_cast<uint32_t>(mainGame->dInfo.team_field_focus) * stride;
 		}
 	}
 }

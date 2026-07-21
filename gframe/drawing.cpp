@@ -61,14 +61,21 @@ void Game::DrawBackGround() {
 	};
 	const int three_columns = dInfo.HasFieldFlag(DUEL_3_COLUMNS_FIELD);
 	auto DrawFieldSpell = [&]() -> bool {
-		if(!gGameConfig->draw_field_spell || dInfo.HasFieldFlag(DUEL_3_V_1))
+		if(!gGameConfig->draw_field_spell)
 			return false;
+		auto FieldSequence = [&](uint8_t controler) -> size_t {
+			if(dInfo.HasFieldFlag(DUEL_3_V_1) && controler == LocalPlayer(0))
+				return static_cast<size_t>(dInfo.team_field_focus) * 8u + 5u;
+			return 5u;
+		};
 		uint32_t fieldcode1 = 0;
-		if(dField.szone[0][5] && dField.szone[0][5]->position & POS_FACEUP)
-			fieldcode1 = dField.szone[0][5]->code;
+		const auto field_sequence1 = FieldSequence(0);
+		if(dField.szone[0][field_sequence1] && dField.szone[0][field_sequence1]->position & POS_FACEUP)
+			fieldcode1 = dField.szone[0][field_sequence1]->code;
 		uint32_t fieldcode2 = 0;
-		if(dField.szone[1][5] && dField.szone[1][5]->position & POS_FACEUP)
-			fieldcode2 = dField.szone[1][5]->code;
+		const auto field_sequence2 = FieldSequence(1);
+		if(dField.szone[1][field_sequence2] && dField.szone[1][field_sequence2]->position & POS_FACEUP)
+			fieldcode2 = dField.szone[1][field_sequence2]->code;
 		auto both = fieldcode1 | fieldcode2;
 		if(both == 0)
 			return false;
@@ -87,25 +94,9 @@ void Game::DrawBackGround() {
 		return texture1 || texture2;
 	};
 
-	// Draw the dedicated four-seat board only for 3-vs-1. When Swap reverses
-	// the viewpoint, rotate the texture as well so the board artwork and the
-	// logical top/left/right/bottom seats always stay aligned.
-	if(dInfo.HasFieldFlag(DUEL_3_V_1)) {
-		Materials::QuadVertex custom_field{};
-		const bool team_top = LocalPlayer(0) == 1;
-		for(size_t i = 0; i < 4; ++i) {
-			custom_field[i] = matManager.vField[i];
-			if(!team_top) {
-				custom_field[i].TCoords.X = 1.0f - custom_field[i].TCoords.X;
-				custom_field[i].TCoords.Y = 1.0f - custom_field[i].TCoords.Y;
-			}
-		}
-		DrawTextureRect(custom_field, imageManager.tField3v1);
-	} else {
-		DrawTextureRect(matManager.vField, DrawFieldSpell()
-			? imageManager.tFieldTransparent[three_columns][tfield]
-			: imageManager.tField[three_columns][tfield]);
-	}
+	DrawTextureRect(matManager.vField, DrawFieldSpell()
+		? imageManager.tFieldTransparent[three_columns][tfield]
+		: imageManager.tField[three_columns][tfield]);
 
 	driver->setMaterial(matManager.mBackLine);
 	//select field
@@ -169,16 +160,19 @@ void Game::DrawBackGround() {
 		material.DiffuseColor = endalpha << 24;
 		material.AmbientColor = color;
 	};
-	// 3-vs-1 uses four transformed logical fields. The standard two-field
-	// hover/link geometry cannot index the expanded allied sequences.
-	if(dInfo.HasFieldFlag(DUEL_3_V_1))
-		return;
 	//current sel
 	if(dField.hovered_location == 0 || dField.hovered_location == LOCATION_HAND || dField.hovered_location == POSITION_HINT)
 		return;
-	if(!dInfo.HasFieldFlag(DUEL_EMZONE) && dField.hovered_location == LOCATION_MZONE && dField.hovered_sequence > 4)
+	uint32_t display_sequence = dField.hovered_sequence;
+	if(dInfo.HasFieldFlag(DUEL_3_V_1) && dField.hovered_controler == LocalPlayer(0)) {
+		if(dField.hovered_location == LOCATION_MZONE)
+			display_sequence %= 7u;
+		else if(dField.hovered_location == LOCATION_SZONE)
+			display_sequence %= 8u;
+	}
+	if(!dInfo.HasFieldFlag(DUEL_EMZONE) && dField.hovered_location == LOCATION_MZONE && display_sequence > 4)
 		return;
-	if((!dInfo.HasFieldFlag(DUEL_SEPARATE_PZONE) && dField.hovered_location == LOCATION_SZONE && dField.hovered_sequence > 5))
+	if((!dInfo.HasFieldFlag(DUEL_SEPARATE_PZONE) && dField.hovered_location == LOCATION_SZONE && display_sequence > 5))
 		return;
 	setAlpha(matManager.mLinkedField, skin::DUELFIELD_LINKED_VAL);
 	setAlpha(matManager.mMutualLinkedField, skin::DUELFIELD_MUTUAL_LINKED_VAL);
@@ -196,13 +190,13 @@ void Game::DrawBackGround() {
 	if(dField.hovered_location == LOCATION_DECK)
 		vertex = matManager.getDeck()[dField.hovered_controler];
 	else if(dField.hovered_location == LOCATION_MZONE) {
-		vertex = matManager.vFieldMzone[dField.hovered_controler][dField.hovered_sequence];
+		vertex = matManager.vFieldMzone[dField.hovered_controler][display_sequence];
 		ClientCard* pcard = dField.mzone[dField.hovered_controler][dField.hovered_sequence];
 		if(pcard && (pcard->type & TYPE_LINK) && (pcard->position & POS_FACEUP)) {
 			DrawLinkedZones(pcard);
 		}
 	} else if(dField.hovered_location == LOCATION_SZONE) {
-		vertex = matManager.getSzone()[dField.hovered_controler][dField.hovered_sequence];
+		vertex = matManager.getSzone()[dField.hovered_controler][display_sequence];
 		ClientCard* pcard = dField.szone[dField.hovered_controler][dField.hovered_sequence];
 		if(pcard && (pcard->type & TYPE_LINK) && (pcard->position & POS_FACEUP))
 			DrawLinkedZones(pcard);
@@ -218,6 +212,8 @@ void Game::DrawBackGround() {
 	driver->drawVertexPrimitiveList(vertex, 4, matManager.iRectangle, 2);
 }
 void Game::DrawLinkedZones(ClientCard* pcard) {
+	if(dInfo.HasFieldFlag(DUEL_3_V_1))
+		return;
 	auto CheckMutual = [&](ClientCard* pcard, int mark)->bool {
 		driver->setMaterial(matManager.mLinkedField);
 		if(pcard && pcard->type & TYPE_LINK && pcard->link_marker & mark) {
@@ -587,17 +583,20 @@ void Game::DrawMisc() {
 			const bool eliminated = (dInfo.eliminated_player_mask & (1u << logical))
 				|| !(dInfo.active_player_mask & (1u << logical));
 			const bool current = logical == dInfo.logical_turn_player;
+			const bool focused = logical < dInfo.team1 && logical == dInfo.team_field_focus;
 			driver->draw2DRectangle(eliminated ? irr::video::SColor{ 0xd0401010 }
 				: irr::video::SColor{ 0xc010151d }, panel);
 			driver->draw2DRectangle(player_colors[logical], Resize(left, 8, left + 4, 64));
-			driver->draw2DRectangleOutline(panel, current ? irr::video::SColor{ 0xffffd060 } : player_colors[logical]);
+			driver->draw2DRectangleOutline(panel, current ? irr::video::SColor{ 0xffffd060 }
+				: focused ? irr::video::SColor{ 0xff60e8ff } : player_colors[logical]);
 
 			const auto lp = std::max(0, dInfo.logical_lp[logical]);
 			const auto lp_text = dInfo.logical_strLP[logical].empty()
 				? epro::to_wstring(lp) : dInfo.logical_strLP[logical];
 			DrawShadowText(textFont, lp_text, Resize(left + 7, 10, left + 54, 28),
 				Resize(0, 1, 1, 0), 0xffffffff, 0xff000000, false, true);
-			const auto name = epro::format(L"{}P{} {}", current ? L"> " : L"", logical + 1, PlayerName(logical));
+			const auto name = epro::format(L"{}P{} {}", current ? L"> " : focused ? L"* " : L"",
+				logical + 1, PlayerName(logical));
 			const auto name_rect = Resize(left + 55, 10, left + 153, 28);
 			textFont->drawustring(name, name_rect, eliminated ? 0xffff7070 : current ? 0xffffd060 : 0xffffffff,
 				false, true, &name_rect);
@@ -792,19 +791,21 @@ void Game::DrawMisc() {
 	ClientCard* pcard;
 	const size_t pzones[]{ dInfo.GetPzoneIndex(0), dInfo.GetPzoneIndex(1) };
 	for (size_t p = 0; p < 2; ++p) {
-		for (size_t i = 0; i < dField.mzone[p].size(); ++i) {
-			pcard = dField.mzone[p][i];
+		const size_t monster_offset = dInfo.HasFieldFlag(DUEL_3_V_1) && p == LocalPlayer(0)
+			? static_cast<size_t>(dInfo.team_field_focus) * 7u : 0u;
+		const size_t spell_offset = dInfo.HasFieldFlag(DUEL_3_V_1) && p == LocalPlayer(0)
+			? static_cast<size_t>(dInfo.team_field_focus) * 8u : 0u;
+		for (size_t i = 0; i < 7; ++i) {
+			pcard = dField.mzone[p][monster_offset + i];
 			if (pcard && pcard->code != 0 && (p == 0 || (pcard->position & POS_FACEUP)))
 				DrawStatus(pcard);
 		}
 		// Draw pendulum scales
 		for (const auto pzone : pzones) {
-			pcard = dField.szone[p][pzone];
+			pcard = dField.szone[p][spell_offset + pzone];
 			if (pcard && (pcard->type & TYPE_PENDULUM) && !pcard->equipTarget)
 				DrawPendScale(pcard);
 		}
-		if(dInfo.HasFieldFlag(DUEL_3_V_1))
-			continue;
 		if (dField.extra[p].size()) {
 			const auto str = (dField.extra_p_count[p]) ? epro::format(L"{}({})", dField.extra[p].size(), dField.extra_p_count[p]) : epro::format(L"{}", dField.extra[p].size());
 			DrawStackIndicator(str, matManager.getExtra()[p], (p == 1));

@@ -1679,6 +1679,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			}
 		}
 		mainGame->dInfo.logical_turn_player = logical_player;
+		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && logical_player < mainGame->dInfo.team1)
+			mainGame->dInfo.team_field_focus = logical_player;
 		const auto field_side = static_cast<uint8_t>(logical_player < mainGame->dInfo.team1 ? 0 : 1);
 		if(logical_player < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
 			const auto outgoing = mainGame->dInfo.logical_active[field_side];
@@ -1700,11 +1702,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(opposing_index < mainGame->dInfo.team2)
 				mainGame->dInfo.current_player[mainGame->LocalPlayer(1)] = opposing_index;
 		}
-		// Private locations are stored in the engine's two physical field
-		// containers, but in 3-v-1 they are rendered at the active logical
-		// player's seat. Rebuild every transform as soon as that seat changes;
-		// otherwise hands keep the previous seat rotation until another card
-		// event happens, producing the diagonal fans seen on left/right turns.
+		// The allied on-field arrays contain three encoded fields. Rebuild the
+		// projection whenever the active duelist changes so the normal two-side
+		// board immediately shows that teammate's saved field.
 		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && active_seat_changed)
 			mainGame->dField.RefreshAllCards();
 		break;
@@ -1734,6 +1734,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.active_player_mask = (mainGame->dInfo.duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1)) ? 0x0f : 0x03;
 		mainGame->dInfo.eliminated_player_mask = 0;
 		mainGame->dInfo.logical_turn_player = 0;
+		mainGame->dInfo.team_field_focus = 0;
 		mainGame->dInfo.logical_active[0] = 0;
 		mainGame->dInfo.logical_active[1] = static_cast<uint8_t>(mainGame->dInfo.team1);
 		mainGame->dInfo.local_player_eliminated = false;
@@ -1745,6 +1746,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		if(mainGame->dInfo.player_type < 7) {
 			mainGame->btnLeaveGame->setText(gDataManager->GetSysString(1351).data());
 			mainGame->btnSpectatorSwap->setVisible(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+				mainGame->btnSpectatorSwap->setText(L"Swap the Team");
 		}
 		if(!mainGame->dInfo.isRelay) {
 			if(mainGame->dInfo.isFirst) {
@@ -1772,9 +1775,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dInfo.logical_strLP[logical] = epro::to_wstring(mainGame->dInfo.startlp);
 		}
 		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
-			const auto allied_side = mainGame->LocalPlayer(0);
-			mainGame->dField.mzone[allied_side].resize(21, nullptr);
-			mainGame->dField.szone[allied_side].resize(24, nullptr);
+			const auto team_side = mainGame->LocalPlayer(0);
+			mainGame->dField.mzone[team_side].resize(21, nullptr);
+			mainGame->dField.szone[team_side].resize(24, nullptr);
 		}
 		uint16_t deckc = BufferIO::Read<uint16_t>(pbuf);
 		uint16_t extrac = BufferIO::Read<uint16_t>(pbuf);
@@ -1788,8 +1791,6 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dInfo.logical_extra_count[mainGame->dInfo.team1] = extrac;
 		}
 		mainGame->dField.Initial(mainGame->LocalPlayer(1), deckc, extrac);
-		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && mainGame->LocalPlayer(0) == 0)
-			mainGame->dField.ReplaySwap();
 		mainGame->dInfo.turn = 0;
 		mainGame->dInfo.is_shuffling = false;
 		return true;
@@ -4379,8 +4380,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->SetPhaseButtons();
 		for(int i = 0; i < 2; ++i) {
 			int p = mainGame->LocalPlayer(i);
-			const int mzone_count = mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && i == 0 ? 21 : 7;
-			const int szone_count = mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && i == 0 ? 24 : 8;
+			const int mzone_count = mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				&& i == 0 ? 21 : 7;
+			const int szone_count = mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				&& i == 0 ? 24 : 8;
 			mainGame->dField.mzone[p].resize(mzone_count, nullptr);
 			mainGame->dField.szone[p].resize(szone_count, nullptr);
 			mainGame->dInfo.lp[p] = BufferIO::Read<uint32_t>(pbuf);

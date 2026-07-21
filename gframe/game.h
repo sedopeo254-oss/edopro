@@ -98,6 +98,7 @@ struct DuelInfo {
 	uint8_t eliminated_player_mask{ 0 };
 	uint8_t elimination_reason[4]{ 0, 0, 0, 0 };
 	uint8_t logical_turn_player{ 0 };
+	uint8_t team_field_focus{ 0 };
 	int team1;
 	int team2;
 	int best_of;

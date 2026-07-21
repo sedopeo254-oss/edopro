@@ -850,7 +850,7 @@ void Game::Initialize() {
 	ebChatInput = env->addEditBox(L"", Scale(3, 2, 710, 22), true, wChat, EDITBOX_CHAT);
 	ebChatInput->setAlignment(irr::gui::EGUIA_UPPERLEFT, irr::gui::EGUIA_LOWERRIGHT, irr::gui::EGUIA_UPPERLEFT, irr::gui::EGUIA_LOWERRIGHT);
 	//swap
-	btnSpectatorSwap = AlignElementWithParent(env->addButton(Scale(205, 100, 295, 135), 0, BUTTON_REPLAY_SWAP, gDataManager->GetSysString(1346).data()));
+	btnSpectatorSwap = AlignElementWithParent(env->addButton(Scale(205, 220, 295, 255), 0, BUTTON_REPLAY_SWAP, gDataManager->GetSysString(1346).data()));
 	defaultStrings.emplace_back(btnSpectatorSwap, 1346);
 	btnSpectatorSwap->setVisible(false);
 	//chain buttons
@@ -1972,9 +1972,8 @@ bool Game::MainLoop() {
 		const float ratio = ((float)window_size.Width / (float)window_size.Height);
 		camera->setProjectionMatrix(BuildProjectionMatrix(CAMERA_BOTTOM, CAMERA_TOP, ratio));
 	};
-	bool force_3v1_topdown = false;
-	auto UpdateCameraPosition = [this, &force_3v1_topdown] {
-		const bool topdown = gGameConfig->topdown_view || force_3v1_topdown;
+	auto UpdateCameraPosition = [this] {
+		const bool topdown = gGameConfig->topdown_view;
 		camera->setPosition(getPosition(topdown));
 		camera->setUpVector(getUpVector(topdown));
 		if(dInfo.isInDuel)
@@ -2120,7 +2119,7 @@ bool Game::MainLoop() {
 			else
 				gSoundManager->PlayBGM(SoundManager::BGM::DUEL, gGameConfig->loopMusic);
 			auto bg_texture = imageManager.tBackGround;
-			if((current_topdown || force_3v1_topdown) && imageManager.tBackGround_duel_topdown)
+			if(current_topdown && imageManager.tBackGround_duel_topdown)
 				bg_texture = imageManager.tBackGround_duel_topdown;
 			DrawBackImage(bg_texture, resized);
 			DrawBackGround();
@@ -2156,11 +2155,6 @@ bool Game::MainLoop() {
 		} else if(should_refresh_hands && dInfo.isInDuel) {
 			should_refresh_hands = false;
 			dField.RefreshHandHitboxes();
-		}
-		const bool should_force_3v1_topdown = dInfo.isInDuel && dInfo.HasFieldFlag(DUEL_3_V_1);
-		if(force_3v1_topdown != should_force_3v1_topdown) {
-			force_3v1_topdown = should_force_3v1_topdown;
-			UpdateCameraPosition();
 		}
 #if !EDOPRO_ANDROID
 		// text width is actual size, other pixels are relative to the assumed 1024x640

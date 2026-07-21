@@ -107,6 +107,7 @@ public:
 	void ReplaySwap();
 	void RefreshAllCards();
 	void RefreshHandHitboxes();
+	void CycleTeamField();
 
 	void GetChainDrawCoordinates(uint8_t controler, uint8_t location, uint32_t sequence, irr::core::vector3df* t);
 	void GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df* t, irr::core::vector3df* r, bool setTrans = false);
