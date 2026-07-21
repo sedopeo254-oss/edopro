@@ -4,6 +4,7 @@
 #include <vector>
 #include <set>
 #include <map>
+#include <string>
 #include <IEventReceiver.h>
 #include <vector3d.h>
 #include <vector2d.h>
@@ -104,6 +105,7 @@ public:
 	void ShowChainCard();
 	void ShowLocationCard();
 	void ShowSelectOption(uint64_t select_hint = 0, bool should_lock = true);
+	std::wstring GetOptionText(uint64_t option) const;
 	void ReplaySwap();
 	void RefreshAllCards();
 	void RefreshHandHitboxes();

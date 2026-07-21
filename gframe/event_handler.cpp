@@ -885,7 +885,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 			case SCROLL_OPTION_SELECT: {
 				int step = mainGame->scrOption->isVisible() ? mainGame->scrOption->getPos() : 0;
 				for(int i = 0; i < 5; i++) {
-					mainGame->btnOption[i]->setText(gDataManager->GetDesc(select_options[i + step], mainGame->dInfo.compat_mode).data());
+					mainGame->btnOption[i]->setText(GetOptionText(select_options[i + step]).data());
 				}
 
 				break;
@@ -2895,6 +2895,14 @@ void ClientField::SetResponseSelectedCards() const {
 }
 void ClientField::SetResponseSelectedOption() const {
 	if(mainGame->dInfo.curMsg == MSG_SELECT_OPTION) {
+		const auto option = select_options[selected_option];
+		if((option & MULTIPLAYER_OPTION_PLAYER_MASK) == MULTIPLAYER_OPTION_PLAYER_BASE) {
+			const auto logical = static_cast<uint8_t>(option & 0xffu);
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && logical < mainGame->dInfo.team1) {
+				mainGame->dInfo.team_field_focus = logical;
+				mainGame->dField.RefreshAllCards();
+			}
+		}
 		DuelClient::SetResponseI(static_cast<uint32_t>(selected_option));
 	} else {
 		int index = 0;

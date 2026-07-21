@@ -576,19 +576,36 @@ void ClientField::ShowLocationCard() {
 	mainGame->btnDisplayOK->setVisible(true);
 	mainGame->PopupElement(mainGame->wCardDisplay);
 }
+std::wstring ClientField::GetOptionText(uint64_t option) const {
+	if((option & MULTIPLAYER_OPTION_PLAYER_MASK) != MULTIPLAYER_OPTION_PLAYER_BASE)
+		return std::wstring(gDataManager->GetDesc(option, mainGame->dInfo.compat_mode));
+	const auto logical = static_cast<uint8_t>(option & 0xffu);
+	const auto& team1_names = mainGame->dInfo.isTeam1 ? mainGame->dInfo.selfnames : mainGame->dInfo.opponames;
+	const auto& team2_names = mainGame->dInfo.isTeam1 ? mainGame->dInfo.opponames : mainGame->dInfo.selfnames;
+	std::wstring name = L"Player";
+	if(logical < mainGame->dInfo.team1) {
+		if(logical < team1_names.size() && !team1_names[logical].empty())
+			name = team1_names[logical];
+	} else {
+		const auto index = static_cast<size_t>(logical - mainGame->dInfo.team1);
+		if(index < team2_names.size() && !team2_names[index].empty())
+			name = team2_names[index];
+	}
+	return epro::format(L"P{} {}", static_cast<unsigned>(logical) + 1u, name);
+}
 void ClientField::ShowSelectOption(uint64_t select_hint, bool should_lock) {
 	std::unique_lock<epro::mutex> lock = (should_lock ? std::unique_lock<epro::mutex>(mainGame->gMutex) : std::unique_lock<epro::mutex>());
 	selected_option = 0;
 	auto count = select_options.size();
 	bool quickmode = true;// (count <= 5);
 	for(auto option : select_options) {
-		if(mainGame->guiFont->getDimensionustring(gDataManager->GetDesc(option, mainGame->dInfo.compat_mode)).Width > 310) {
+		if(mainGame->guiFont->getDimensionustring(GetOptionText(option)).Width > 310) {
 			quickmode = false;
 			break;
 		}
 	}
 	for(size_t i = 0; (i < count) && (i < 5) && quickmode; i++)
-		mainGame->btnOption[i]->setText(gDataManager->GetDesc(select_options[i], mainGame->dInfo.compat_mode).data());
+		mainGame->btnOption[i]->setText(GetOptionText(select_options[i]).data());
 	irr::core::recti pos = mainGame->wOptions->getRelativePosition();
 	if(count > 5 && quickmode)
 		pos.LowerRightCorner.X = pos.UpperLeftCorner.X + mainGame->Scale(375);
@@ -611,7 +628,7 @@ void ClientField::ShowSelectOption(uint64_t select_hint, bool should_lock) {
 		pos.LowerRightCorner.Y = pos.UpperLeftCorner.Y + newheight;
 		mainGame->wOptions->setRelativePosition(pos);
 	} else {
-		mainGame->stOptions->setText(gDataManager->GetDesc(select_options[0], mainGame->dInfo.compat_mode).data());
+		mainGame->stOptions->setText(GetOptionText(select_options[0]).data());
 		mainGame->stOptions->setVisible(true);
 		mainGame->btnOptionp->setVisible(false);
 		mainGame->btnOptionn->setVisible(count > 1);
