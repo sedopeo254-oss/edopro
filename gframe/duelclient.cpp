@@ -2259,6 +2259,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		bool panelmode = false;
 		bool conti_exist = false;
 		bool select_trigger = (specount == 0x7f);
+		int chain_focus = -1;
 		mainGame->dField.activatable_cards.clear();
 		mainGame->dField.activatable_descs.clear();
 		mainGame->dField.conti_cards.clear();
@@ -2271,6 +2272,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			code = BufferIO::Read<uint32_t>(pbuf);
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
 			info.controler = mainGame->LocalPlayer(info.controler);
+			if(chain_focus < 0 && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					&& info.controler == mainGame->LocalPlayer(0)
+					&& (info.location == LOCATION_MZONE || info.location == LOCATION_SZONE)) {
+				const uint32_t stride = info.location == LOCATION_MZONE ? 7u : 8u;
+				chain_focus = static_cast<int>(info.sequence / stride);
+			}
 			desc = CompatRead<uint32_t, uint64_t>(pbuf);
 			if(!mainGame->dInfo.compat_mode)
 				flag = BufferIO::Read<uint8_t>(pbuf);
@@ -2308,6 +2315,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				else if(info.location == LOCATION_OVERLAY)
 					panelmode = true;
 			}
+		}
+		if(chain_focus >= 0 && chain_focus < mainGame->dInfo.team1) {
+			mainGame->dInfo.team_field_focus = static_cast<uint8_t>(chain_focus);
+			mainGame->dField.RefreshAllCards();
 		}
 		const auto ignore_chain = mainGame->btnChainIgnore->isPressed();
 		const auto always_chain = mainGame->btnChainAlways->isPressed();

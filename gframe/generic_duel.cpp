@@ -984,6 +984,8 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	case MSG_SELECT_BATTLECMD:
 	case MSG_SELECT_IDLECMD: {
 		player = BufferIO::Read<uint8_t>(pbuf);
+		if(player < 2)
+			response_override[player] = nullptr;
 		SEND(WaitforResponse(player, packet));
 		record = false;
 		return_value = 1;
@@ -1236,6 +1238,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_MULTIPLAYER_NEW_TURN: {
 		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
+		response_override[0] = response_override[1] = nullptr;
 		/*active_mask = */BufferIO::Read<uint8_t>(pbuf);
 		if(logical_player < players.home_size) {
 			players.home_iterator = players.home.begin() + logical_player;
@@ -1325,6 +1328,7 @@ void GenericDuel::AfterParsing(const CoreUtils::Packet& packet, [[maybe_unused]]
 	case MSG_CHAIN_SOLVED:
 	case MSG_CHAIN_END: {
 		if(message == MSG_CHAIN_END){
+			response_override[0] = response_override[1] = nullptr;
 			PseudoRefreshDeck(0);
 			PseudoRefreshDeck(1);
 		}
@@ -1425,6 +1429,15 @@ void GenericDuel::GetResponse(DuelPlayer* dp, void* pdata, uint32_t len) {
 	OCG_DuelSetResponse(pduel, pdata, len);
 	if(last_response < 2)
 		pending_response[last_response] = CoreUtils::Packet{};
+	if(response_logical_selector && response_player && len >= sizeof(int32_t)) {
+		int32_t response{};
+		memcpy(&response, pdata, sizeof(response));
+		if(response >= 0)
+			response_override[0] = response_player;
+		else
+			response_override[0] = nullptr;
+	}
+	response_logical_selector = false;
 	if(response_player)
 		response_player->state = 0xff;
 	else
@@ -1473,11 +1486,12 @@ DuelPlayer* GenericDuel::WaitforResponse(uint8_t playerid, const CoreUtils::Pack
 	const bool logical_selector = (duel_flags & DUEL_3_V_1) && playerid >= 2 && playerid < 5;
 	const uint8_t response_side = logical_selector ? 0 : playerid;
 	DuelPlayer* responder = logical_selector ? GetAtPos(static_cast<uint8_t>(playerid - 2)).player
-		: (response_side < 2 ? cur_player[response_side] : nullptr);
+		: (response_side < 2 ? (response_override[response_side] ? response_override[response_side] : cur_player[response_side]) : nullptr);
 	if(!responder)
 		responder = cur_player[response_side];
 	last_response = response_side;
 	response_player = responder;
+	response_logical_selector = logical_selector;
 	pending_response[response_side] = packet;
 	static constexpr uint8_t msg = MSG_WAITING;
 	NetServer::SendPacketToPlayer(nullptr, STOC_GAME_MSG, msg);

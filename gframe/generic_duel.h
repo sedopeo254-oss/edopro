@@ -139,6 +139,8 @@ protected:
 	} players;
 	DuelPlayer* cur_player[2];
 	DuelPlayer* response_player{ nullptr };
+	DuelPlayer* response_override[2]{ nullptr, nullptr };
+	bool response_logical_selector{ false };
 	std::set<DuelPlayer*> observers;
 	uint8_t hand_result[2];
 	uint8_t last_response;
