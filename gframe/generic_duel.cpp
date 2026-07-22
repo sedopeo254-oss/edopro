@@ -1373,16 +1373,22 @@ void GenericDuel::AfterParsing(const CoreUtils::Packet& packet, [[maybe_unused]]
 	}
 	case MSG_TAG_SWAP: {
 		player = BufferIO::Read<uint8_t>(pbuf);
-		if(player == 0) {
-			players.home_iterator++;
-			if(players.home_iterator == players.home.end())
-				players.home_iterator = players.home.begin();
-			cur_player[player] = players.home_iterator->player;
-		} else {
-			players.opposing_iterator++;
-			if(players.opposing_iterator == players.opposing.end())
-				players.opposing_iterator = players.opposing.begin();
-			cur_player[player] = players.opposing_iterator->player;
+		// Multiplayer publishes MSG_MULTIPLAYER_NEW_TURN immediately before the
+		// private-pile snapshot and selects the exact logical responder there.
+		// Advancing once more here routed P2's commands to P3 (and P3's to P1),
+		// leaving the client with the wrong private-zone owner and stale pointers.
+		if(!IsMultiplayerMode()) {
+			if(player == 0) {
+				players.home_iterator++;
+				if(players.home_iterator == players.home.end())
+					players.home_iterator = players.home.begin();
+				cur_player[player] = players.home_iterator->player;
+			} else {
+				players.opposing_iterator++;
+				if(players.opposing_iterator == players.opposing.end())
+					players.opposing_iterator = players.opposing.begin();
+				cur_player[player] = players.opposing_iterator->player;
+			}
 		}
 		PseudoRefreshDeck(player);
 		RefreshExtra(player);
