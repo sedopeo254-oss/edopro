@@ -847,7 +847,6 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 				if(setTrans) {
 					pcard->mTransform.setTranslation(*t);
 					pcard->mTransform.setRotationRadians(*r);
-					pcard->mTransform.setScale({ 0.0f, 0.0f, 0.0f });
 				}
 				return;
 			}
@@ -995,7 +994,6 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 	if(setTrans) {
 		pcard->mTransform.setTranslation(*t);
 		pcard->mTransform.setRotationRadians(*r);
-		pcard->mTransform.setScale({ pcard->draw_scale, pcard->draw_scale, pcard->draw_scale });
 		if(pcard->location == LOCATION_HAND && !pcard->is_hovered)
 			getCardScreenCoordinates(pcard);
 	}
