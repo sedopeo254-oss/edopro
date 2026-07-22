@@ -4283,26 +4283,101 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		const auto pcount = CompatRead<uint8_t, uint32_t>(pbuf);
 		const auto hcount = CompatRead<uint8_t, uint32_t>(pbuf);
 		const auto topcode = BufferIO::Read<uint32_t>(pbuf);
-		auto MatchPile = [player,&pcount](auto& pile, uint32_t count, uint8_t location) {
+		// A 3-vs-1 tag swap replaces the projected private zones with another
+		// teammate's Deck/Hand/Extra/GY/Banished snapshot.  Do not retain command
+		// or selection pointers to cards that may be deleted below.
+		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+			mainGame->dField.ClearSelect();
+			mainGame->dField.ClearChainSelect();
+			mainGame->dField.ClearCommandFlag();
+			mainGame->dField.selectable_cards.clear();
+			mainGame->dField.selected_cards.clear();
+			mainGame->dField.must_select_cards.clear();
+			mainGame->dField.selectsum_cards.clear();
+			mainGame->dField.selectsum_all.clear();
+			mainGame->dField.queued_panel_confirm_cards.clear();
+			mainGame->dField.display_cards.clear();
+			mainGame->dField.summonable_cards.clear();
+			mainGame->dField.spsummonable_cards.clear();
+			mainGame->dField.msetable_cards.clear();
+			mainGame->dField.ssetable_cards.clear();
+			mainGame->dField.reposable_cards.clear();
+			mainGame->dField.activatable_cards.clear();
+			mainGame->dField.attackable_cards.clear();
+			mainGame->dField.conti_cards.clear();
+			mainGame->dField.command_card = nullptr;
+			mainGame->dField.clicked_card = nullptr;
+			mainGame->dField.highlighting_card = nullptr;
+			mainGame->dField.attacker = nullptr;
+			mainGame->dField.attack_target = nullptr;
+		}
+		auto DetachCard = [](ClientCard* pcard) {
+			if(!pcard)
+				return;
+			pcard->ClearTarget();
+			if(pcard->equipTarget) {
+				pcard->equipTarget->equipped.erase(pcard);
+				pcard->equipTarget = nullptr;
+			}
+			for(auto* equipped : pcard->equipped)
+				equipped->equipTarget = nullptr;
+			pcard->equipped.clear();
+			if(mainGame->dField.hovered_card == pcard)
+				mainGame->dField.hovered_card = nullptr;
+			for(auto& chain : mainGame->dField.chains) {
+				chain.target.erase(pcard);
+				if(chain.chain_card == pcard)
+					chain.chain_card = nullptr;
+			}
+			mainGame->dField.current_chain.target.erase(pcard);
+			if(mainGame->dField.current_chain.chain_card == pcard)
+				mainGame->dField.current_chain.chain_card = nullptr;
+		};
+		auto ResetPileCard = [player](ClientCard* pcard, uint8_t location, uint32_t sequence) {
+			pcard->owner = player;
+			pcard->controler = player;
+			pcard->location = location;
+			pcard->sequence = sequence;
+			pcard->position = POS_FACEDOWN_DEFENSE;
+			pcard->code = 0;
+			pcard->cover = 0;
+			pcard->status = 0;
+			pcard->cmdFlag = 0;
+			pcard->chain_code = 0;
+			pcard->is_public = false;
+			pcard->is_reversed = false;
+			pcard->is_hovered = false;
+			pcard->is_selectable = false;
+			pcard->is_selected = false;
+			pcard->is_showequip = false;
+			pcard->is_showtarget = false;
+			pcard->is_showchaintarget = false;
+			pcard->is_highlighting = false;
+			pcard->is_moving = false;
+			pcard->is_fading = false;
+			pcard->refresh_on_stop = false;
+			pcard->aniFrame = 0;
+			pcard->curAlpha = 255;
+			pcard->draw_scale = 1.0f;
+			pcard->counters.clear();
+			pcard->desc_hints.clear();
+		};
+		auto MatchPile = [player,&DetachCard,&ResetPileCard](auto& pile, uint32_t count, uint8_t location) {
 			if(pile.size() > count) {
-				for(auto cit = pile.begin() + count; cit != pile.end(); cit++)
+				for(auto cit = pile.begin() + count; cit != pile.end(); cit++) {
+					DetachCard(*cit);
 					delete *cit;
+				}
 				pile.resize(count);
 			} else {
 				while(pile.size() < count) {
 					ClientCard* ccard = new ClientCard{};
-					ccard->controler = player;
-					ccard->location = location;
-					ccard->sequence = static_cast<uint32_t>(pile.size());
-					ccard->position = POS_FACEDOWN;
 					pile.push_back(ccard);
 				}
 			}
-			if(location == LOCATION_EXTRA && pcount) {
-				auto i = pcount;
-				for(auto it = pile.rbegin(); i > 0 && it != pile.rend(); it++, i--) {
-					(*it)->position = POS_FACEUP;
-				}
+			for(uint32_t sequence = 0; sequence < pile.size(); ++sequence) {
+				DetachCard(pile[sequence]);
+				ResetPileCard(pile[sequence], location, sequence);
 			}
 		};
 		auto lock = LockIf();
@@ -4325,21 +4400,22 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		MatchPile(mainGame->dField.extra[player], ecount, LOCATION_EXTRA);
 		mainGame->dField.extra_p_count[player] = pcount;
 		//
-		if(animate) {
-			for (const auto& pcard : mainGame->dField.deck[player]) {
+		for (const auto& pcard : mainGame->dField.deck[player]) {
+			if(animate) {
 				pcard->UpdateDrawCoordinates();
 				if(player == 0) pcard->curPos.Y += 2.0f;
 				else pcard->curPos.Y -= 3.0f;
 				mainGame->dField.MoveCard(pcard, 5);
-			}
-			if(mainGame->dField.deck[player].size())
-				mainGame->dField.deck[player].back()->code = topcode;
+			} else
+				pcard->UpdateDrawCoordinates(true);
 		}
+		if(mainGame->dField.deck[player].size())
+			mainGame->dField.deck[player].back()->code = topcode;
 		for(auto* list : { &mainGame->dField.hand[player] , &mainGame->dField.extra[player] }) {
 			for(const auto& pcard : *list) {
 				if(!mainGame->dInfo.compat_mode) {
 					pcard->code = BufferIO::Read<uint32_t>(pbuf);
-					pcard->position = BufferIO::Read<uint32_t>(pbuf);
+					pcard->position = static_cast<uint8_t>(BufferIO::Read<uint32_t>(pbuf) & 0xffu);
 				} else {
 					const auto flag = BufferIO::Read<uint32_t>(pbuf);
 					pcard->code = flag & 0x7fffffff;
@@ -4350,7 +4426,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					if(player == 0) pcard->curPos.Y += 2.0f;
 					else pcard->curPos.Y -= 3.0f;
 					mainGame->dField.MoveCard(pcard, 5);
-				}
+				} else
+					pcard->UpdateDrawCoordinates(true);
 			}
 		}
 		if(animate)
