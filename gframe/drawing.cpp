@@ -366,6 +366,11 @@ void Game::DrawCards() {
 	}
 }
 void Game::DrawCard(ClientCard* pcard) {
+	// Cards from the two non-focused allied fields stay in the client model so
+	// their complete state survives a team-field swap.  They are projected off
+	// screen by ClientField and must not be submitted to the renderer.
+	if(pcard->draw_scale <= 0.0f)
+		return;
 	if(pcard->aniFrame > 0) {
 		uint32_t movetime = std::min<uint32_t>(delta_time, pcard->aniFrame);
 		if(pcard->is_moving) {
@@ -373,7 +378,6 @@ void Game::DrawCard(ClientCard* pcard) {
 			pcard->curRot += (pcard->dRot * movetime);
 			pcard->mTransform.setTranslation(pcard->curPos);
 			pcard->mTransform.setRotationRadians(pcard->curRot);
-			pcard->mTransform.setScale(irr::core::vector3df{ pcard->draw_scale, pcard->draw_scale, pcard->draw_scale });
 		}
 		if(pcard->is_fading)
 			pcard->curAlpha += pcard->dAlpha * movetime;
