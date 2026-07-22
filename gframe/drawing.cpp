@@ -547,9 +547,9 @@ void Game::DrawMisc() {
 		driver->setTransform(irr::video::ETS_WORLD, it);
 		driver->drawVertexPrimitiveList(matManager.vChainNum, 4, matManager.iRectangle, 2);
 	}
-	// 3-vs-1 has four independent LP/resource panels. Reusing the normal
+	// 3-vs-1 has four independent LP panels. Reusing the normal
 	// two-team HUD stacked three names under one LP bar, which made inactive
-	// players look disabled and hid whose resources belonged to whom.
+	// players look disabled and hid whose LP belonged to whom.
 	if(dInfo.HasFieldFlag(DUEL_3_V_1)) {
 		const auto& team1_names = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
 		const auto& team2_names = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
@@ -564,33 +564,16 @@ void Game::DrawMisc() {
 			const auto index = static_cast<size_t>(logical - dInfo.team1);
 			return index < team2_names.size() ? team2_names[index] : unknown;
 		};
-		auto Counts = [&](uint8_t logical) {
-			std::array<uint32_t, 5> counts{
-				dInfo.logical_deck_count[logical], dInfo.logical_hand_count[logical],
-				dInfo.logical_extra_count[logical], dInfo.logical_grave_count[logical],
-				dInfo.logical_banish_count[logical]
-			};
-			const auto core_side = static_cast<uint8_t>(logical < dInfo.team1 ? 0 : 1);
-			if(dInfo.logical_active[core_side] == logical) {
-				const auto local_side = LocalPlayer(core_side);
-				counts = { static_cast<uint32_t>(dField.deck[local_side].size()),
-					static_cast<uint32_t>(dField.hand[local_side].size()),
-					static_cast<uint32_t>(dField.extra[local_side].size()),
-					static_cast<uint32_t>(dField.grave[local_side].size()),
-					static_cast<uint32_t>(dField.remove[local_side].size()) };
-			}
-			return counts;
-		};
 		for(uint8_t logical = 0; logical < 4; ++logical) {
 			const irr::s32 left = 330 + logical * 165;
-			const auto panel = Resize(left, 8, left + 157, 64);
+			const auto panel = Resize(left, 8, left + 157, 44);
 			const bool eliminated = (dInfo.eliminated_player_mask & (1u << logical))
 				|| !(dInfo.active_player_mask & (1u << logical));
 			const bool current = logical == dInfo.logical_turn_player;
 			const bool focused = logical < dInfo.team1 && logical == dInfo.team_field_focus;
 			driver->draw2DRectangle(eliminated ? irr::video::SColor{ 0xd0401010 }
 				: irr::video::SColor{ 0xc010151d }, panel);
-			driver->draw2DRectangle(player_colors[logical], Resize(left, 8, left + 4, 64));
+			driver->draw2DRectangle(player_colors[logical], Resize(left, 8, left + 4, 44));
 			driver->draw2DRectangleOutline(panel, current ? irr::video::SColor{ 0xffffd060 }
 				: focused ? irr::video::SColor{ 0xff60e8ff } : player_colors[logical]);
 
@@ -599,7 +582,8 @@ void Game::DrawMisc() {
 				? epro::to_wstring(lp) : dInfo.logical_strLP[logical];
 			DrawShadowText(textFont, lp_text, Resize(left + 7, 10, left + 54, 28),
 				Resize(0, 1, 1, 0), 0xffffffff, 0xff000000, false, true);
-			const auto name = epro::format(L"{}P{} {}", current ? L"> " : focused ? L"* " : L"",
+			const auto name = epro::format(L"{}{}P{} {}", eliminated ? L"OUT " : L"",
+				current ? L"> " : focused ? L"* " : L"",
 				logical + 1, PlayerName(logical));
 			const auto name_rect = Resize(left + 55, 10, left + 153, 28);
 			textFont->drawustring(name, name_rect, eliminated ? 0xffff7070 : current ? 0xffffd060 : 0xffffffff,
@@ -612,14 +596,6 @@ void Game::DrawMisc() {
 			if(lp > 0)
 				driver->draw2DRectangle(player_colors[logical], fill);
 			driver->draw2DRectangleOutline(bar, 0xff808080);
-
-			const auto counts = Counts(logical);
-			const auto resources = eliminated
-				? epro::format(L"OUT  D{} H{} X{} G{} B{}", counts[0], counts[1], counts[2], counts[3], counts[4])
-				: epro::format(L"D{} H{} X{} G{} B{}", counts[0], counts[1], counts[2], counts[3], counts[4]);
-			const auto resources_rect = Resize(left + 7, 39, left + 153, 60);
-			textFont->drawustring(resources, resources_rect, eliminated ? 0xffff7070 : 0xffe0e0e0,
-				false, true, &resources_rect);
 		}
 		if(lpframe > 0 && delta_frames) {
 			dInfo.lp[lpplayer] -= lpd * delta_frames;
@@ -714,25 +690,8 @@ void Game::DrawMisc() {
 			if(!multiplayer_mode)
 				return player;
 			std::wstring player_with_lp = player;
-			if(logical < 4) {
-				auto deck = dInfo.logical_deck_count[logical];
-				auto hand = dInfo.logical_hand_count[logical];
-				auto extra = dInfo.logical_extra_count[logical];
-				auto grave = dInfo.logical_grave_count[logical];
-				auto banish = dInfo.logical_banish_count[logical];
-				const auto core_side = static_cast<uint8_t>(logical < dInfo.team1 ? 0 : 1);
-				if(dInfo.logical_active[core_side] == logical) {
-					const auto local_side = LocalPlayer(core_side);
-					deck = static_cast<uint32_t>(dField.deck[local_side].size());
-					hand = static_cast<uint32_t>(dField.hand[local_side].size());
-					extra = static_cast<uint32_t>(dField.extra[local_side].size());
-					grave = static_cast<uint32_t>(dField.grave[local_side].size());
-					banish = static_cast<uint32_t>(dField.remove[local_side].size());
-				}
-				player_with_lp = dInfo.HasFieldFlag(DUEL_3_V_1)
-					? epro::format(L"{}  LP:{}  D{} H{} X{} G{} B{}", player, dInfo.logical_strLP[logical], deck, hand, extra, grave, banish)
-					: epro::format(L"{}  LP:{}", player, dInfo.logical_strLP[logical]);
-			}
+			if(logical < 4)
+				player_with_lp = epro::format(L"{}  LP:{}", player, dInfo.logical_strLP[logical]);
 			if((dInfo.eliminated_player_mask & (1u << logical))
 					|| !(dInfo.active_player_mask & (1u << logical))) {
 				const wchar_t* reason = L"OUT";
