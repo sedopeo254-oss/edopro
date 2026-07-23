@@ -108,6 +108,7 @@ jobs:
           ./travis/predeploy.sh
           mkdir -p deploy/textures
           cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
       - uses: actions/download-artifact@v4
         with:
           name: windbot-multiplayer-3v1
@@ -165,6 +166,7 @@ jobs:
           ./travis/predeploy.sh
           mkdir -p deploy/textures
           cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
       - uses: actions/download-artifact@v4
         with:
           name: windbot-multiplayer-3v1

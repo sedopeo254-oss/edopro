@@ -2072,6 +2072,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		if(desc == MULTIPLAYER_TAKE_ATTACK_DESC) {
 			mainGame->stQMessage->setText(L"A teammate is being attacked or would take damage. Let me take it?");
 			mainGame->btnYes->setText(L"Let me take it");
+		} else if(desc == MULTIPLAYER_EXPAND_EFFECT_DESC) {
+			mainGame->stQMessage->setText(L"Apply this effect to every eligible player?");
+			mainGame->btnYes->setText(gDataManager->GetSysString(1213).data());
 		} else {
 			mainGame->stQMessage->setText(gDataManager->GetDesc(desc, mainGame->dInfo.compat_mode).data());
 			mainGame->btnYes->setText(gDataManager->GetSysString(1213).data());
@@ -3749,6 +3752,18 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			}
 		}
 		event_string = epro::sprintf(gDataManager->GetSysString(1611 + player), count);
+		return true;
+	}
+	case MSG_MULTIPLAYER_DRAW: {
+		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
+		const auto count = BufferIO::Read<uint32_t>(pbuf);
+		if(logical_player < 4) {
+			auto& deck_count = mainGame->dInfo.logical_deck_count[logical_player];
+			deck_count = deck_count > count ? deck_count - count : 0;
+			mainGame->dInfo.logical_hand_count[logical_player] += count;
+		}
+		for(uint32_t i = 0; i < count; ++i)
+			Play(SoundManager::SFX::DRAW);
 		return true;
 	}
 	case MSG_DAMAGE: {
