@@ -19,3 +19,4 @@ Scope combinations:
 
 Outside 3v1, or when the player chooses **No**, keep the original card operation. This preserves normal EDOPro behavior exactly.
 
+The multiplayer build packages this directory so the examples can be copied into the matching card-script repository.
