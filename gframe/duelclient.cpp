@@ -961,6 +961,8 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 				mainGame->dInfo.logical_extra_count, mainGame->dInfo.logical_grave_count,
 				mainGame->dInfo.logical_banish_count })
 			std::fill_n(counts, 4, 0u);
+		std::fill_n(mainGame->dInfo.logical_deck_master_code, 4, 0u);
+		mainGame->dInfo.logical_deck_master_enabled = false;
 		mainGame->dInfo.turn = 0;
 		mainGame->dInfo.time_left[0] = 0;
 		mainGame->dInfo.time_left[1] = 0;
@@ -1709,6 +1711,18 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dField.RefreshAllCards();
 		break;
 	}
+	case MSG_MULTIPLAYER_DECK_MASTER: {
+		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
+		const auto visible = BufferIO::Read<uint8_t>(pbuf);
+		const auto code = BufferIO::Read<uint32_t>(pbuf);
+		if(logical_player < 4) {
+			mainGame->dInfo.logical_deck_master_enabled = true;
+			mainGame->dInfo.logical_deck_master_code[logical_player] = visible ? code : 0;
+			std::lock_guard<epro::mutex> lock(mainGame->gMutex);
+			mainGame->dField.RefreshAllCards();
+		}
+		break;
+	}
 	case MSG_WAITING: {
 		std::lock_guard<epro::mutex> lock(mainGame->gMutex);
 		mainGame->waitFrame = 0;
@@ -1735,6 +1749,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.eliminated_player_mask = 0;
 		mainGame->dInfo.logical_turn_player = 0;
 		mainGame->dInfo.team_field_focus = 0;
+		std::fill_n(mainGame->dInfo.logical_deck_master_code, 4, 0u);
+		mainGame->dInfo.logical_deck_master_enabled = false;
 		mainGame->dInfo.logical_active[0] = 0;
 		mainGame->dInfo.logical_active[1] = static_cast<uint8_t>(mainGame->dInfo.team1);
 		mainGame->dInfo.local_player_eliminated = false;

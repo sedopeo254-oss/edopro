@@ -1027,13 +1027,17 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_SELECT_CARD: {
 		player = BufferIO::Read<uint8_t>(pbuf);
+		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+		const bool logical_selector = (duel_flags & DUEL_3_V_1) && player >= 2 && player < 5;
+		const uint8_t visible_side = logical_selector ? 0 : player;
 		pbuf += 9;
 		count = BufferIO::Read<uint32_t>(pbuf);
 		for(uint32_t i = 0; i < count; ++i) {
 			pbufw = pbuf;
 			/*code = */BufferIO::Read<uint32_t>(pbuf);
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
-			if(info.controler != player)
+			if(info.controler != visible_side)
 				BufferIO::Write<uint32_t>(pbufw, 0);
 		}
 		SEND(WaitforResponse(player, packet));
@@ -1060,13 +1064,17 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_SELECT_UNSELECT_CARD: {
 		player = BufferIO::Read<uint8_t>(pbuf);
+		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+		const bool logical_selector = (duel_flags & DUEL_3_V_1) && player >= 2 && player < 5;
+		const uint8_t visible_side = logical_selector ? 0 : player;
 		pbuf += 10;
 		count = BufferIO::Read<uint32_t>(pbuf);
 		for(uint32_t i = 0; i < count; ++i) {
 			pbufw = pbuf;
 			/*code = */BufferIO::Read<uint32_t>(pbuf);
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
-			if(info.controler != player)
+			if(info.controler != visible_side)
 				BufferIO::Write<uint32_t>(pbufw, 0);
 		}
 		count = BufferIO::Read<uint32_t>(pbuf);
@@ -1074,7 +1082,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			pbufw = pbuf;
 			/*code = */BufferIO::Read<uint32_t>(pbuf);
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
-			if(info.controler != player)
+			if(info.controler != visible_side)
 				BufferIO::Write<uint32_t>(pbufw, 0);
 		}
 		SEND(WaitforResponse(player, packet));
@@ -1250,6 +1258,15 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 				cur_player[1] = players.opposing_iterator->player;
 			}
 		}
+		SEND(nullptr);
+		ResendToAll();
+		packets_cache.push_back(packet);
+		break;
+	}
+	case MSG_MULTIPLAYER_DECK_MASTER: {
+		/*logical_player = */BufferIO::Read<uint8_t>(pbuf);
+		/*visible = */BufferIO::Read<uint8_t>(pbuf);
+		/*code = */BufferIO::Read<uint32_t>(pbuf);
 		SEND(nullptr);
 		ResendToAll();
 		packets_cache.push_back(packet);

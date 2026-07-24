@@ -88,6 +88,8 @@ struct DuelInfo {
 	uint32_t logical_extra_count[4]{ 0, 0, 0, 0 };
 	uint32_t logical_grave_count[4]{ 0, 0, 0, 0 };
 	uint32_t logical_banish_count[4]{ 0, 0, 0, 0 };
+	uint32_t logical_deck_master_code[4]{ 0, 0, 0, 0 };
+	bool logical_deck_master_enabled{ false };
 	uint8_t logical_active[2]{ 0, 1 };
 	int startlp;
 	int duel_field;

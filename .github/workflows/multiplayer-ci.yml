@@ -109,6 +109,7 @@ jobs:
           mkdir -p deploy/textures
           cp textures/field-3v1.png deploy/textures/field-3v1.png
           cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
       - uses: actions/download-artifact@v4
         with:
           name: windbot-multiplayer-3v1
@@ -167,6 +168,7 @@ jobs:
           mkdir -p deploy/textures
           cp textures/field-3v1.png deploy/textures/field-3v1.png
           cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
       - uses: actions/download-artifact@v4
         with:
           name: windbot-multiplayer-3v1

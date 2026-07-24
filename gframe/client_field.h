@@ -108,6 +108,7 @@ public:
 	std::wstring GetOptionText(uint64_t option) const;
 	void ReplaySwap();
 	void RefreshAllCards();
+	void RefreshLogicalDeckMasters();
 	void RefreshHandHitboxes();
 	void CycleTeamField();
 

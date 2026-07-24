@@ -687,6 +687,7 @@ void ClientField::ReplaySwap() {
 	disabled_field = (disabled_field >> 16) | (disabled_field << 16);
 }
 void ClientField::RefreshAllCards() {
+	RefreshLogicalDeckMasters();
 	auto refresh = [](ClientCard* const& pcard) {
 		if(pcard) {
 			pcard->UpdateDrawCoordinates(true);
@@ -713,6 +714,36 @@ void ClientField::RefreshAllCards() {
 	for(auto& chit : chains)
 		chit.UpdateDrawCoordinates();
 	mainGame->should_refresh_hands = true;
+}
+void ClientField::RefreshLogicalDeckMasters() {
+	if(!mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| !mainGame->dInfo.logical_deck_master_enabled)
+		return;
+	for(uint8_t field_side = 0; field_side < 2; ++field_side) {
+		const auto logical_player = field_side == 0
+			? mainGame->dInfo.team_field_focus
+			: static_cast<uint8_t>(mainGame->dInfo.team1);
+		if(logical_player >= 4)
+			continue;
+		const auto local_side = mainGame->LocalPlayer(field_side);
+		const auto code = mainGame->dInfo.logical_deck_master_code[logical_player];
+		auto& pcard = skills[local_side];
+		if(!code) {
+			if(pcard == hovered_card)
+				hovered_card = nullptr;
+			delete pcard;
+			pcard = nullptr;
+			continue;
+		}
+		if(!pcard) {
+			pcard = new ClientCard{};
+			pcard->controler = local_side;
+			pcard->sequence = 0;
+			pcard->position = POS_FACEUP;
+			pcard->location = LOCATION_SKILL;
+		}
+		pcard->SetCode(code);
+	}
 }
 void ClientField::CycleTeamField() {
 	if(!mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) || mainGame->dInfo.team1 < 2)
