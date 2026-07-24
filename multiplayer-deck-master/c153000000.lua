@@ -124,10 +124,12 @@ if not DeckMaster then
 				local dmc=Duel.SelectCardsFromCodesPlayer(
 					p,1,1,false,false,table.unpack(DeckMasterTableSelect))
 				local dg=get_player_cards(p,LOCATION_ALL):Filter(Card.IsOriginalCode,nil,dmc)
-				if #dg>0 then
-					--The original rule removes one physical copy if present.
-					--Using the logical-player group prevents an ally's copy from
-					--being removed when all three allies share field side 0.
+				local remove_copy=#dg==3
+					or (#dg>0 and Duel.SelectYesNoPlayer(
+						p,aux.Stringid(FLAG_DECK_MASTER,3)))
+				if remove_copy then
+					--Using the logical-player group prevents another ally's copy
+					--from being removed when all three share field side 0.
 					Duel.SendtoDeck(dg:GetFirst(),nil,-2,REASON_RULE)
 				end
 				local t=Duel.CreateTokenPlayer(p,dmc)

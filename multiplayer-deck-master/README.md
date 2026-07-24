@@ -12,6 +12,7 @@ The multiplayer core adds these Lua helpers:
 - `Duel.GetActiveLogicalPlayerMask()`
 - `Duel.IsLogicalPlayerActive(logical_player)`
 - `Duel.SelectCardsFromCodesPlayer(logical_player, ...)`
+- `Duel.SelectYesNoPlayer(logical_player, description)`
 - `Duel.CreateTokenPlayer(logical_player, code)`
 - `Duel.SetDeckMasterPlayerState(logical_player, code, visible)`
 - `Duel.GetPlayerFieldGroup(logical_player, locations)`
