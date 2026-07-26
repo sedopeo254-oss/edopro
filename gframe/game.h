@@ -100,7 +100,10 @@ struct DuelInfo {
 	uint8_t eliminated_player_mask{ 0 };
 	uint8_t elimination_reason[4]{ 0, 0, 0, 0 };
 	uint8_t logical_turn_player{ 0 };
-	uint8_t team_field_focus{ 0 };
+	// Duelist index currently projected on each of the two physical field
+	// sides. Battle Royale owns two saved fields per side; 3-vs-1 owns three
+	// on side 0 and one on side 1.
+	uint8_t field_focus[2]{ 0, 0 };
 	int team1;
 	int team2;
 	int best_of;
@@ -120,6 +123,21 @@ struct DuelInfo {
 	}
 	uint8_t GetLogicalPlayer(uint8_t core_side) const {
 		return core_side < 2 && logical_active[core_side] < 4 ? logical_active[core_side] : 0xff;
+	}
+	uint8_t GetFocusedLogicalPlayer(uint8_t core_side) const {
+		if(core_side > 1)
+			return 0xff;
+		const auto logical = static_cast<uint8_t>((core_side ? team1 : 0) + field_focus[core_side]);
+		return logical < team1 + team2 ? logical : 0xff;
+	}
+	uint8_t GetPromptCoreSide(uint8_t selecting_player) const {
+		if((duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1))
+				&& selecting_player >= 2 && selecting_player < 6) {
+			const auto logical = static_cast<uint8_t>(selecting_player - 2);
+			if(logical < team1 + team2)
+				return logical < team1 ? 0 : 1;
+		}
+		return selecting_player;
 	}
 	uint8_t GetPzoneIndex(uint8_t seq) const {
 		if(seq > 1)

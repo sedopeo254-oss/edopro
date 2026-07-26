@@ -1029,8 +1029,12 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		player = BufferIO::Read<uint8_t>(pbuf);
 		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
 			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-		const bool logical_selector = (duel_flags & DUEL_3_V_1) && player >= 2 && player < 5;
-		const uint8_t visible_side = logical_selector ? 0 : player;
+		const uint8_t logical_player = player >= 2 ? static_cast<uint8_t>(player - 2) : 0xff;
+		const bool logical_selector = player >= 2 && logical_player < players.home_size + players.opposing_size
+			&& (((duel_flags & DUEL_3_V_1) && player < 5)
+				|| ((duel_flags & DUEL_BATTLE_ROYALE) && player < 6));
+		const uint8_t visible_side = logical_selector
+			? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : player;
 		pbuf += 9;
 		count = BufferIO::Read<uint32_t>(pbuf);
 		for(uint32_t i = 0; i < count; ++i) {
@@ -1047,6 +1051,14 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_SELECT_TRIBUTE: {
 		player = BufferIO::Read<uint8_t>(pbuf);
+		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+		const uint8_t logical_player = player >= 2 ? static_cast<uint8_t>(player - 2) : 0xff;
+		const bool logical_selector = player >= 2 && logical_player < players.home_size + players.opposing_size
+			&& (((duel_flags & DUEL_3_V_1) && player < 5)
+				|| ((duel_flags & DUEL_BATTLE_ROYALE) && player < 6));
+		const uint8_t visible_side = logical_selector
+			? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : player;
 		pbuf += 9;
 		count = BufferIO::Read<uint32_t>(pbuf);
 		for(uint32_t i = 0; i < count; ++i) {
@@ -1054,7 +1066,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			/*code = */BufferIO::Read<uint32_t>(pbuf);
 			int controler = BufferIO::Read<uint8_t>(pbuf);
 			pbuf += 6;
-			if(controler != player)
+			if(controler != visible_side)
 				BufferIO::Write<uint32_t>(pbufw, 0);
 		}
 		SEND(WaitforResponse(player, packet));
@@ -1066,8 +1078,12 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		player = BufferIO::Read<uint8_t>(pbuf);
 		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
 			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-		const bool logical_selector = (duel_flags & DUEL_3_V_1) && player >= 2 && player < 5;
-		const uint8_t visible_side = logical_selector ? 0 : player;
+		const uint8_t logical_player = player >= 2 ? static_cast<uint8_t>(player - 2) : 0xff;
+		const bool logical_selector = player >= 2 && logical_player < players.home_size + players.opposing_size
+			&& (((duel_flags & DUEL_3_V_1) && player < 5)
+				|| ((duel_flags & DUEL_BATTLE_ROYALE) && player < 6));
+		const uint8_t visible_side = logical_selector
+			? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : player;
 		pbuf += 10;
 		count = BufferIO::Read<uint32_t>(pbuf);
 		for(uint32_t i = 0; i < count; ++i) {
@@ -1452,13 +1468,13 @@ void GenericDuel::GetResponse(DuelPlayer* dp, void* pdata, uint32_t len) {
 	OCG_DuelSetResponse(pduel, pdata, len);
 	if(last_response < 2)
 		pending_response[last_response] = CoreUtils::Packet{};
-	if(response_logical_selector && response_player && len >= sizeof(int32_t)) {
+	if(response_logical_selector && response_player && last_response < 2 && len >= sizeof(int32_t)) {
 		int32_t response{};
 		memcpy(&response, pdata, sizeof(response));
 		if(response >= 0)
-			response_override[0] = response_player;
+			response_override[last_response] = response_player;
 		else
-			response_override[0] = nullptr;
+			response_override[last_response] = nullptr;
 	}
 	response_logical_selector = false;
 	if(response_player)
@@ -1506,11 +1522,15 @@ void GenericDuel::EndDuel() {
 DuelPlayer* GenericDuel::WaitforResponse(uint8_t playerid, const CoreUtils::Packet& packet) {
 	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
 		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-	const bool logical_selector = (duel_flags & DUEL_3_V_1) && playerid >= 2 && playerid < 5;
-	const uint8_t response_side = logical_selector ? 0 : playerid;
-	DuelPlayer* responder = logical_selector ? GetAtPos(static_cast<uint8_t>(playerid - 2)).player
+	const uint8_t logical_player = playerid >= 2 ? static_cast<uint8_t>(playerid - 2) : 0xff;
+	const bool logical_selector = playerid >= 2 && logical_player < players.home_size + players.opposing_size
+		&& (((duel_flags & DUEL_3_V_1) && playerid < 5)
+			|| ((duel_flags & DUEL_BATTLE_ROYALE) && playerid < 6));
+	const uint8_t response_side = logical_selector
+		? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : playerid;
+	DuelPlayer* responder = logical_selector ? GetAtPos(logical_player).player
 		: (response_side < 2 ? (response_override[response_side] ? response_override[response_side] : cur_player[response_side]) : nullptr);
-	if(!responder)
+	if(!responder && response_side < 2)
 		responder = cur_player[response_side];
 	last_response = response_side;
 	response_player = responder;

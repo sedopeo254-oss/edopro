@@ -720,9 +720,7 @@ void ClientField::RefreshLogicalDeckMasters() {
 			|| !mainGame->dInfo.logical_deck_master_enabled)
 		return;
 	for(uint8_t field_side = 0; field_side < 2; ++field_side) {
-		const auto logical_player = field_side == 0
-			? mainGame->dInfo.team_field_focus
-			: static_cast<uint8_t>(mainGame->dInfo.team1);
+		const auto logical_player = mainGame->dInfo.GetFocusedLogicalPlayer(field_side);
 		if(logical_player >= 4)
 			continue;
 		const auto local_side = mainGame->LocalPlayer(field_side);
@@ -748,8 +746,8 @@ void ClientField::RefreshLogicalDeckMasters() {
 void ClientField::CycleTeamField() {
 	if(!mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) || mainGame->dInfo.team1 < 2)
 		return;
-	mainGame->dInfo.team_field_focus = static_cast<uint8_t>(
-		(mainGame->dInfo.team_field_focus + 1) % mainGame->dInfo.team1);
+	mainGame->dInfo.field_focus[0] = static_cast<uint8_t>(
+		(mainGame->dInfo.field_focus[0] + 1) % mainGame->dInfo.team1);
 	hovered_card = nullptr;
 	hovered_location = 0;
 	hovered_sequence = 0;
@@ -761,6 +759,14 @@ void ClientField::GetChainDrawCoordinates(uint8_t controler, uint8_t location, u
 		t->Y = (controler == 0) ? 3.15f : (-3.15f);
 		t->Z = 0.03f;
 		return;
+	}
+	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+		const auto base_location = location & (~LOCATION_OVERLAY);
+		if(base_location == LOCATION_MZONE)
+			sequence %= 7u;
+		else if(base_location == LOCATION_SZONE)
+			sequence %= 8u;
 	}
 	auto PileZ = [&](auto& pile) {
 		auto multiplier = gGameConfig->topdown_view ? 1 : pile.size();
@@ -860,17 +866,20 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 	int sequence = pcard->sequence;
 	const int& location = pcard->location;
 	pcard->draw_scale = 1.0f;
-	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 		const auto base_location = location == LOCATION_OVERLAY && pcard->overlayTarget
 			? pcard->overlayTarget->location : location;
 		const auto base_sequence = location == LOCATION_OVERLAY && pcard->overlayTarget
 			? pcard->overlayTarget->sequence : pcard->sequence;
 		const uint32_t stride = base_location == LOCATION_MZONE ? 7u
 			: base_location == LOCATION_SZONE ? 8u : 0u;
-		const auto team_side = mainGame->LocalPlayer(0);
-		if(stride && controler == team_side) {
+		const auto core_side = mainGame->LocalPlayer(static_cast<uint8_t>(controler));
+		const auto field_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			? 2u : (core_side == 0 ? static_cast<uint32_t>(mainGame->dInfo.team1) : 1u);
+		if(stride && field_count > 1) {
 			const auto field_duelist = static_cast<uint8_t>(base_sequence / stride);
-			const auto focused_duelist = mainGame->dInfo.team_field_focus;
+			const auto focused_duelist = mainGame->dInfo.field_focus[core_side];
 			if(field_duelist != focused_duelist) {
 				pcard->draw_scale = 0.0f;
 				*t = { -100.0f, -100.0f, -10.0f };

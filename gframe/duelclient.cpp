@@ -1669,7 +1669,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		const uint8_t logical_player = BufferIO::Read<uint8_t>(pbuf);
 		bool active_seat_changed = false;
 		mainGame->dInfo.active_player_mask = BufferIO::Read<uint8_t>(pbuf) & 0x0f;
-		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && len >= 2 + 4 * 6 * sizeof(uint32_t)) {
+		if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+				&& len >= 2 + 4 * 6 * sizeof(uint32_t)) {
 			for(uint8_t logical = 0; logical < 4; ++logical) {
 				mainGame->dInfo.logical_lp[logical] = BufferIO::Read<uint32_t>(pbuf);
 				mainGame->dInfo.logical_strLP[logical] = epro::to_wstring(mainGame->dInfo.logical_lp[logical]);
@@ -1681,9 +1683,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			}
 		}
 		mainGame->dInfo.logical_turn_player = logical_player;
-		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && logical_player < mainGame->dInfo.team1)
-			mainGame->dInfo.team_field_focus = logical_player;
 		const auto field_side = static_cast<uint8_t>(logical_player < mainGame->dInfo.team1 ? 0 : 1);
+		const auto field_duelist = static_cast<uint8_t>(field_side == 0
+			? logical_player : logical_player - mainGame->dInfo.team1);
+		if(logical_player < mainGame->dInfo.team1 + mainGame->dInfo.team2)
+			mainGame->dInfo.field_focus[field_side] = field_duelist;
 		if(logical_player < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
 			const auto outgoing = mainGame->dInfo.logical_active[field_side];
 			active_seat_changed = outgoing != logical_player;
@@ -1704,10 +1708,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(opposing_index < mainGame->dInfo.team2)
 				mainGame->dInfo.current_player[mainGame->LocalPlayer(1)] = opposing_index;
 		}
-		// The allied on-field arrays contain three encoded fields. Rebuild the
-		// projection whenever the active duelist changes so the normal two-side
-		// board immediately shows that teammate's saved field.
-		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && active_seat_changed)
+		// Multiplayer on-field arrays contain encoded per-duelist fields.
+		// Rebuild the normal two-side projection when either side changes focus.
+		if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+				&& active_seat_changed)
 			mainGame->dField.RefreshAllCards();
 		break;
 	}
@@ -1748,7 +1753,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.active_player_mask = (mainGame->dInfo.duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1)) ? 0x0f : 0x03;
 		mainGame->dInfo.eliminated_player_mask = 0;
 		mainGame->dInfo.logical_turn_player = 0;
-		mainGame->dInfo.team_field_focus = 0;
+		mainGame->dInfo.field_focus[0] = 0;
+		mainGame->dInfo.field_focus[1] = 0;
 		std::fill_n(mainGame->dInfo.logical_deck_master_code, 4, 0u);
 		mainGame->dInfo.logical_deck_master_enabled = false;
 		mainGame->dInfo.logical_active[0] = 0;
@@ -1794,6 +1800,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			const auto team_side = mainGame->LocalPlayer(0);
 			mainGame->dField.mzone[team_side].resize(21, nullptr);
 			mainGame->dField.szone[team_side].resize(24, nullptr);
+		} else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			for(uint8_t core_side = 0; core_side < 2; ++core_side) {
+				const auto local_side = mainGame->LocalPlayer(core_side);
+				mainGame->dField.mzone[local_side].resize(14, nullptr);
+				mainGame->dField.szone[local_side].resize(16, nullptr);
+			}
 		}
 		uint16_t deckc = BufferIO::Read<uint16_t>(pbuf);
 		uint16_t extrac = BufferIO::Read<uint16_t>(pbuf);
@@ -2122,17 +2134,20 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		bool panelmode = false;
 		bool select_ready = mainGame->dField.select_min == 0;
 		int selection_focus = -1;
+		int selection_focus_side = -1;
 		mainGame->dField.select_ready = select_ready;
 		ClientCard* pcard;
 		for(uint32_t i = 0; i < count; ++i) {
 			code = BufferIO::Read<uint32_t>(pbuf);
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
+			const auto core_controler = info.controler;
 			info.controler = mainGame->LocalPlayer(info.controler);
-			if(selection_focus < 0 && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-					&& info.controler == mainGame->LocalPlayer(0)
+			if(selection_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 					&& (info.location == LOCATION_MZONE || info.location == LOCATION_SZONE)) {
 				const uint32_t stride = info.location == LOCATION_MZONE ? 7u : 8u;
 				selection_focus = static_cast<int>(info.sequence / stride);
+				selection_focus_side = core_controler;
 			}
 			if ((info.location & LOCATION_OVERLAY) > 0)
 				pcard = mainGame->dField.GetCard(info.controler, info.location & (~LOCATION_OVERLAY) & 0xff, info.sequence)->overlayed[info.position];
@@ -2152,8 +2167,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if (info.location & 0xf1)
 				panelmode = true;
 		}
-		if(selection_focus >= 0 && selection_focus < mainGame->dInfo.team1) {
-			mainGame->dInfo.team_field_focus = static_cast<uint8_t>(selection_focus);
+		if(selection_focus >= 0 && selection_focus_side >= 0 && selection_focus_side < 2) {
+			mainGame->dInfo.field_focus[selection_focus_side] = static_cast<uint8_t>(selection_focus);
 			mainGame->dField.RefreshAllCards();
 		}
 		std::sort(mainGame->dField.selectable_cards.begin(), mainGame->dField.selectable_cards.end(), ClientCard::client_card_sort);
@@ -2279,6 +2294,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		bool conti_exist = false;
 		bool select_trigger = (specount == 0x7f);
 		int chain_focus = -1;
+		int chain_focus_side = -1;
 		mainGame->dField.activatable_cards.clear();
 		mainGame->dField.activatable_descs.clear();
 		mainGame->dField.conti_cards.clear();
@@ -2290,12 +2306,14 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			}
 			code = BufferIO::Read<uint32_t>(pbuf);
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
+			const auto core_controler = info.controler;
 			info.controler = mainGame->LocalPlayer(info.controler);
-			if(chain_focus < 0 && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-					&& info.controler == mainGame->LocalPlayer(0)
+			if(chain_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 					&& (info.location == LOCATION_MZONE || info.location == LOCATION_SZONE)) {
 				const uint32_t stride = info.location == LOCATION_MZONE ? 7u : 8u;
 				chain_focus = static_cast<int>(info.sequence / stride);
+				chain_focus_side = core_controler;
 			}
 			desc = CompatRead<uint32_t, uint64_t>(pbuf);
 			if(!mainGame->dInfo.compat_mode)
@@ -2335,8 +2353,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					panelmode = true;
 			}
 		}
-		if(chain_focus >= 0 && chain_focus < mainGame->dInfo.team1) {
-			mainGame->dInfo.team_field_focus = static_cast<uint8_t>(chain_focus);
+		if(chain_focus >= 0 && chain_focus_side >= 0 && chain_focus_side < 2) {
+			mainGame->dInfo.field_focus[chain_focus_side] = static_cast<uint8_t>(chain_focus);
 			mainGame->dField.RefreshAllCards();
 		}
 		const auto ignore_chain = mainGame->btnChainIgnore->isPressed();
@@ -2386,7 +2404,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_SELECT_PLACE:
 	case MSG_SELECT_DISFIELD: {
-		uint8_t selecting_player = mainGame->LocalPlayer(BufferIO::Read<uint8_t>(pbuf));
+		const auto prompt_player = BufferIO::Read<uint8_t>(pbuf);
+		uint8_t selecting_player = mainGame->LocalPlayer(
+			mainGame->dInfo.GetPromptCoreSide(prompt_player));
 		//fluo passes this as 0 if the selection can be "canceled", ignore for now
 		mainGame->dField.select_min = std::max<uint8_t>(BufferIO::Read<uint8_t>(pbuf), 1);
 		uint32_t flag = BufferIO::Read<uint32_t>(pbuf);
@@ -4314,10 +4334,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		const auto pcount = CompatRead<uint8_t, uint32_t>(pbuf);
 		const auto hcount = CompatRead<uint8_t, uint32_t>(pbuf);
 		const auto topcode = BufferIO::Read<uint32_t>(pbuf);
-		// A 3-vs-1 tag swap replaces the projected private zones with another
-		// teammate's Deck/Hand/Extra/GY/Banished snapshot.  Do not retain command
-		// or selection pointers to cards that may be deleted below.
-		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+		// A multiplayer tag swap replaces the projected private zones with
+		// another logical player's Deck/Hand/Extra/GY/Banished snapshot. Do not
+		// retain command or selection pointers to cards deleted below.
+		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 			mainGame->dField.ClearSelect();
 			mainGame->dField.ClearChainSelect();
 			mainGame->dField.ClearCommandFlag();
@@ -4517,10 +4538,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->SetPhaseButtons();
 		for(int i = 0; i < 2; ++i) {
 			int p = mainGame->LocalPlayer(i);
-			const int mzone_count = mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-				&& i == 0 ? 21 : 7;
-			const int szone_count = mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-				&& i == 0 ? 24 : 8;
+			const int mzone_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+				? 14 : (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && i == 0 ? 21 : 7);
+			const int szone_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+				? 16 : (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && i == 0 ? 24 : 8);
 			mainGame->dField.mzone[p].resize(mzone_count, nullptr);
 			mainGame->dField.szone[p].resize(szone_count, nullptr);
 			mainGame->dInfo.lp[p] = BufferIO::Read<uint32_t>(pbuf);

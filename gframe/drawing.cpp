@@ -64,8 +64,13 @@ void Game::DrawBackGround() {
 		if(!gGameConfig->draw_field_spell)
 			return false;
 		auto FieldSequence = [&](uint8_t controler) -> size_t {
-			if(dInfo.HasFieldFlag(DUEL_3_V_1) && controler == LocalPlayer(0))
-				return static_cast<size_t>(dInfo.team_field_focus) * 8u + 5u;
+			if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				const auto core_side = LocalPlayer(controler);
+				const auto field_count = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+					? 2u : (core_side == 0 ? static_cast<uint32_t>(dInfo.team1) : 1u);
+				if(field_count > 1)
+					return static_cast<size_t>(dInfo.field_focus[core_side]) * 8u + 5u;
+			}
 			return 5u;
 		};
 		uint32_t fieldcode1 = 0;
@@ -164,7 +169,7 @@ void Game::DrawBackGround() {
 	if(dField.hovered_location == 0 || dField.hovered_location == LOCATION_HAND || dField.hovered_location == POSITION_HINT)
 		return;
 	uint32_t display_sequence = dField.hovered_sequence;
-	if(dInfo.HasFieldFlag(DUEL_3_V_1) && dField.hovered_controler == LocalPlayer(0)) {
+	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 		if(dField.hovered_location == LOCATION_MZONE)
 			display_sequence %= 7u;
 		else if(dField.hovered_location == LOCATION_SZONE)
@@ -212,7 +217,7 @@ void Game::DrawBackGround() {
 	driver->drawVertexPrimitiveList(vertex, 4, matManager.iRectangle, 2);
 }
 void Game::DrawLinkedZones(ClientCard* pcard) {
-	if(dInfo.HasFieldFlag(DUEL_3_V_1))
+	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 		return;
 	auto CheckMutual = [&](ClientCard* pcard, int mark)->bool {
 		driver->setMaterial(matManager.mLinkedField);
@@ -547,10 +552,10 @@ void Game::DrawMisc() {
 		driver->setTransform(irr::video::ETS_WORLD, it);
 		driver->drawVertexPrimitiveList(matManager.vChainNum, 4, matManager.iRectangle, 2);
 	}
-	// 3-vs-1 has four independent LP panels. Reusing the normal
+	// Multiplayer modes have four independent LP panels. Reusing the normal
 	// two-team HUD stacked three names under one LP bar, which made inactive
 	// players look disabled and hid whose LP belonged to whom.
-	if(dInfo.HasFieldFlag(DUEL_3_V_1)) {
+	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 		const auto& team1_names = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
 		const auto& team2_names = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
 		const std::array<irr::video::SColor, 4> player_colors{
@@ -570,7 +575,8 @@ void Game::DrawMisc() {
 			const bool eliminated = (dInfo.eliminated_player_mask & (1u << logical))
 				|| !(dInfo.active_player_mask & (1u << logical));
 			const bool current = logical == dInfo.logical_turn_player;
-			const bool focused = logical < dInfo.team1 && logical == dInfo.team_field_focus;
+			const auto core_side = static_cast<uint8_t>(logical < dInfo.team1 ? 0 : 1);
+			const bool focused = logical == dInfo.GetFocusedLogicalPlayer(core_side);
 			driver->draw2DRectangle(eliminated ? irr::video::SColor{ 0xd0401010 }
 				: irr::video::SColor{ 0xc010151d }, panel);
 			driver->draw2DRectangle(player_colors[logical], Resize(left, 8, left + 4, 44));
@@ -754,10 +760,14 @@ void Game::DrawMisc() {
 	ClientCard* pcard;
 	const size_t pzones[]{ dInfo.GetPzoneIndex(0), dInfo.GetPzoneIndex(1) };
 	for (size_t p = 0; p < 2; ++p) {
-		const size_t monster_offset = dInfo.HasFieldFlag(DUEL_3_V_1) && p == LocalPlayer(0)
-			? static_cast<size_t>(dInfo.team_field_focus) * 7u : 0u;
-		const size_t spell_offset = dInfo.HasFieldFlag(DUEL_3_V_1) && p == LocalPlayer(0)
-			? static_cast<size_t>(dInfo.team_field_focus) * 8u : 0u;
+		const auto core_side = LocalPlayer(static_cast<uint8_t>(p));
+		const auto field_count = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			? 2u : (dInfo.HasFieldFlag(DUEL_3_V_1) && core_side == 0
+				? static_cast<uint32_t>(dInfo.team1) : 1u);
+		const size_t monster_offset = field_count > 1
+			? static_cast<size_t>(dInfo.field_focus[core_side]) * 7u : 0u;
+		const size_t spell_offset = field_count > 1
+			? static_cast<size_t>(dInfo.field_focus[core_side]) * 8u : 0u;
 		for (size_t i = 0; i < 7; ++i) {
 			pcard = dField.mzone[p][monster_offset + i];
 			if (pcard && pcard->code != 0 && (p == 0 || (pcard->position & POS_FACEUP)))
