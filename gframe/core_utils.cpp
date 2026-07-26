@@ -363,6 +363,18 @@ void QueryStream::GeneratePublicBuffer(std::vector<uint8_t>& buffer) const {
 	memcpy(&buffer[prev_size], &written_size, sizeof(uint32_t));
 }
 
+void QueryStream::GenerateLogicalBuffer(std::vector<uint8_t>& buffer, uint8_t duelist, uint8_t stride) const {
+	auto prev_size = buffer.size();
+	buffer.reserve(prev_size + sizeof(uint32_t) + GetSize());
+	buffer.resize(prev_size + sizeof(uint32_t));
+	for(size_t index = 0; index < queries.size(); ++index) {
+		const bool owns_query = stride && index / stride == duelist;
+		queries[index].GenerateBuffer(buffer, !owns_query, true);
+	}
+	uint32_t written_size = static_cast<uint32_t>((buffer.size() - prev_size) - sizeof(uint32_t));
+	memcpy(&buffer[prev_size], &written_size, sizeof(uint32_t));
+}
+
 PacketStream::PacketStream(uint8_t* buff, uint32_t len) {
 	auto* current = buff;
 	while(static_cast<uint32_t>(current - buff) < len) {

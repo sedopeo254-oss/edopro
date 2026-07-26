@@ -715,6 +715,119 @@ void ClientField::RefreshAllCards() {
 		chit.UpdateDrawCoordinates();
 	mainGame->should_refresh_hands = true;
 }
+void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player, const MultiplayerPrivatePileSnapshot& snapshot) {
+	if(player > 1)
+		return;
+	ClearSelect();
+	ClearChainSelect();
+	ClearCommandFlag();
+	selectable_cards.clear();
+	selected_cards.clear();
+	must_select_cards.clear();
+	selectsum_cards.clear();
+	selectsum_all.clear();
+	queued_panel_confirm_cards.clear();
+	display_cards.clear();
+	summonable_cards.clear();
+	spsummonable_cards.clear();
+	msetable_cards.clear();
+	ssetable_cards.clear();
+	reposable_cards.clear();
+	activatable_cards.clear();
+	attackable_cards.clear();
+	conti_cards.clear();
+	command_card = nullptr;
+	clicked_card = nullptr;
+	highlighting_card = nullptr;
+	attacker = nullptr;
+	attack_target = nullptr;
+
+	auto detach_card = [this](ClientCard* pcard) {
+		if(!pcard)
+			return;
+		pcard->ClearTarget();
+		if(pcard->equipTarget) {
+			pcard->equipTarget->equipped.erase(pcard);
+			pcard->equipTarget = nullptr;
+		}
+		for(auto* equipped : pcard->equipped)
+			equipped->equipTarget = nullptr;
+		pcard->equipped.clear();
+		if(hovered_card == pcard)
+			hovered_card = nullptr;
+		for(auto& chain : chains) {
+			chain.target.erase(pcard);
+			if(chain.chain_card == pcard)
+				chain.chain_card = nullptr;
+		}
+		current_chain.target.erase(pcard);
+		if(current_chain.chain_card == pcard)
+			current_chain.chain_card = nullptr;
+	};
+	auto reset_card = [player](ClientCard* pcard, uint8_t location, uint32_t sequence) {
+		pcard->owner = player;
+		pcard->controler = player;
+		pcard->location = location;
+		pcard->sequence = sequence;
+		pcard->position = POS_FACEDOWN_DEFENSE;
+		pcard->code = 0;
+		pcard->cover = 0;
+		pcard->status = 0;
+		pcard->cmdFlag = 0;
+		pcard->chain_code = 0;
+		pcard->is_public = false;
+		pcard->is_reversed = false;
+		pcard->is_hovered = false;
+		pcard->is_selectable = false;
+		pcard->is_selected = false;
+		pcard->is_showequip = false;
+		pcard->is_showtarget = false;
+		pcard->is_showchaintarget = false;
+		pcard->is_highlighting = false;
+		pcard->is_moving = false;
+		pcard->is_fading = false;
+		pcard->refresh_on_stop = false;
+		pcard->aniFrame = 0;
+		pcard->curAlpha = 255;
+		pcard->draw_scale = 1.0f;
+		pcard->counters.clear();
+		pcard->desc_hints.clear();
+	};
+	auto match_pile = [&detach_card, &reset_card](auto& pile, size_t count, uint8_t location) {
+		while(pile.size() > count) {
+			auto* pcard = pile.back();
+			detach_card(pcard);
+			delete pcard;
+			pile.pop_back();
+		}
+		while(pile.size() < count)
+			pile.push_back(new ClientCard{});
+		for(size_t sequence = 0; sequence < pile.size(); ++sequence) {
+			detach_card(pile[sequence]);
+			reset_card(pile[sequence], location, static_cast<uint32_t>(sequence));
+		}
+	};
+	auto apply_visible_cards = [](auto& pile, const auto& cards) {
+		for(size_t i = 0; i < pile.size() && i < cards.size(); ++i) {
+			pile[i]->code = cards[i].code;
+			pile[i]->position = cards[i].position;
+		}
+	};
+
+	match_pile(deck[player], snapshot.deck_count, LOCATION_DECK);
+	match_pile(hand[player], snapshot.hand.size(), LOCATION_HAND);
+	match_pile(extra[player], snapshot.extra.size(), LOCATION_EXTRA);
+	match_pile(grave[player], snapshot.grave.size(), LOCATION_GRAVE);
+	match_pile(remove[player], snapshot.removed.size(), LOCATION_REMOVED);
+	extra_p_count[player] = snapshot.extra_p_count;
+	if(!deck[player].empty())
+		deck[player].back()->code = snapshot.top_code;
+	apply_visible_cards(hand[player], snapshot.hand);
+	apply_visible_cards(extra[player], snapshot.extra);
+	apply_visible_cards(grave[player], snapshot.grave);
+	apply_visible_cards(remove[player], snapshot.removed);
+	RefreshAllCards();
+}
 void ClientField::RefreshLogicalDeckMasters() {
 	if(!mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 			|| !mainGame->dInfo.logical_deck_master_enabled)
@@ -763,6 +876,18 @@ void ClientField::GetChainDrawCoordinates(uint8_t controler, uint8_t location, u
 	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 			|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 		const auto base_location = location & (~LOCATION_OVERLAY);
+		const uint32_t stride = base_location == LOCATION_MZONE ? 7u
+			: base_location == LOCATION_SZONE ? 8u : 0u;
+		if(stride) {
+			const auto core_side = mainGame->LocalPlayer(controler);
+			const auto field_duelist = static_cast<uint8_t>(sequence / stride);
+			if(field_duelist != mainGame->dInfo.field_focus[core_side]) {
+				t->X = 3.95f;
+				t->Y = controler == 0 ? -2.5f : 2.5f;
+				t->Z = 0.03f;
+				return;
+			}
+		}
 		if(base_location == LOCATION_MZONE)
 			sequence %= 7u;
 		else if(base_location == LOCATION_SZONE)

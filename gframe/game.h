@@ -130,6 +130,50 @@ struct DuelInfo {
 		const auto logical = static_cast<uint8_t>((core_side ? team1 : 0) + field_focus[core_side]);
 		return logical < team1 + team2 ? logical : 0xff;
 	}
+	uint8_t GetLogicalPlayer(uint8_t core_side, uint8_t duelist) const {
+		if(core_side > 1)
+			return 0xff;
+		const auto logical = static_cast<uint8_t>((core_side ? team1 : 0) + duelist);
+		return logical < team1 + team2 ? logical : 0xff;
+	}
+	uint8_t GetLocalLogicalPlayer() const {
+		return player_type < team1 + team2 ? player_type : 0xff;
+	}
+	uint8_t GetLogicalCoreSide(uint8_t logical) const {
+		return logical < team1 ? 0 : logical < team1 + team2 ? 1 : 0xff;
+	}
+	uint8_t GetLogicalDuelist(uint8_t logical) const {
+		const auto core_side = GetLogicalCoreSide(logical);
+		return core_side == 0 ? logical : core_side == 1
+			? static_cast<uint8_t>(logical - team1) : 0xff;
+	}
+	uint8_t GetLocalCoreSide() const {
+		return GetLogicalCoreSide(GetLocalLogicalPlayer());
+	}
+	uint8_t GetLocalDuelist() const {
+		return GetLogicalDuelist(GetLocalLogicalPlayer());
+	}
+	bool IsPinnedLocalField(uint8_t core_side) const {
+		return HasFieldFlag(DUEL_BATTLE_ROYALE)
+			&& GetLocalLogicalPlayer() < 4
+			&& core_side == GetLocalCoreSide();
+	}
+	bool SetFieldFocus(uint8_t core_side, uint8_t duelist) {
+		if(core_side > 1)
+			return false;
+		if(IsPinnedLocalField(core_side) && duelist != GetLocalDuelist())
+			return false;
+		field_focus[core_side] = duelist;
+		return true;
+	}
+	uint8_t GetDisplayedPrivateDuelist(uint8_t core_side) const {
+		if(core_side > 1)
+			return 0xff;
+		if(IsPinnedLocalField(core_side))
+			return GetLocalDuelist();
+		const auto logical = GetLogicalPlayer(core_side);
+		return GetLogicalDuelist(logical);
+	}
 	uint8_t GetPromptCoreSide(uint8_t selecting_player) const {
 		if((duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1))
 				&& selecting_player >= 2 && selecting_player < 6) {

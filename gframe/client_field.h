@@ -26,6 +26,21 @@ struct ChainInfo {
 	void UpdateDrawCoordinates();
 };
 
+struct MultiplayerPrivatePileCard {
+	uint32_t code{};
+	uint8_t position{};
+};
+
+struct MultiplayerPrivatePileSnapshot {
+	uint32_t deck_count{};
+	uint32_t extra_p_count{};
+	uint32_t top_code{};
+	std::vector<MultiplayerPrivatePileCard> hand;
+	std::vector<MultiplayerPrivatePileCard> extra;
+	std::vector<MultiplayerPrivatePileCard> grave;
+	std::vector<MultiplayerPrivatePileCard> removed;
+};
+
 class ClientField final : public irr::IEventReceiver {
 public:
 	std::vector<ClientCard*> deck[2];
@@ -111,6 +126,7 @@ public:
 	void RefreshLogicalDeckMasters();
 	void RefreshHandHitboxes();
 	void CycleTeamField();
+	void ReplaceMultiplayerPrivatePiles(uint8_t player, const MultiplayerPrivatePileSnapshot& snapshot);
 
 	void GetChainDrawCoordinates(uint8_t controler, uint8_t location, uint32_t sequence, irr::core::vector3df* t);
 	void GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df* t, irr::core::vector3df* r, bool setTrans = false);

@@ -2908,14 +2908,15 @@ void ClientField::SetResponseSelectedOption() const {
 		const auto option = select_options[selected_option];
 		if((option & MULTIPLAYER_OPTION_PLAYER_MASK) == MULTIPLAYER_OPTION_PLAYER_BASE) {
 			const auto logical = static_cast<uint8_t>(option & 0xffu);
-			if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
-					&& logical < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
-				const auto core_side = static_cast<uint8_t>(logical < mainGame->dInfo.team1 ? 0 : 1);
-				mainGame->dInfo.field_focus[core_side] = static_cast<uint8_t>(
-					core_side == 0 ? logical : logical - mainGame->dInfo.team1);
-				mainGame->dField.RefreshAllCards();
-			}
+				if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+							|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+						&& logical < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
+					const auto core_side = static_cast<uint8_t>(logical < mainGame->dInfo.team1 ? 0 : 1);
+					const auto duelist = static_cast<uint8_t>(
+						core_side == 0 ? logical : logical - mainGame->dInfo.team1);
+					if(mainGame->dInfo.SetFieldFocus(core_side, duelist))
+						mainGame->dField.RefreshAllCards();
+				}
 		}
 		DuelClient::SetResponseI(static_cast<uint32_t>(selected_option));
 	} else {

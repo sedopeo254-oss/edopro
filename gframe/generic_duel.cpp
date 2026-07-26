@@ -1027,12 +1027,10 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_SELECT_CARD: {
 		player = BufferIO::Read<uint8_t>(pbuf);
-		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
-			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-		const uint8_t logical_player = player >= 2 ? static_cast<uint8_t>(player - 2) : 0xff;
-		const bool logical_selector = player >= 2 && logical_player < players.home_size + players.opposing_size
-			&& (((duel_flags & DUEL_3_V_1) && player < 5)
-				|| ((duel_flags & DUEL_BATTLE_ROYALE) && player < 6));
+		const uint8_t logical_player = player >= 2 ? static_cast<uint8_t>(player - 2)
+			: IsMultiplayerMode() && player < 2 ? GetPos(cur_player[player]) : 0xff;
+		const bool logical_selector = IsMultiplayerMode()
+			&& logical_player < players.home_size + players.opposing_size;
 		const uint8_t visible_side = logical_selector
 			? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : player;
 		pbuf += 9;
@@ -1041,7 +1039,10 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			pbufw = pbuf;
 			/*code = */BufferIO::Read<uint32_t>(pbuf);
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
-			if(info.controler != visible_side)
+			const auto info_logical = static_cast<uint8_t>(
+				info.controler == 0 ? info.duelist : players.home_size + info.duelist);
+			if(info.controler != visible_side
+					|| (logical_selector && info_logical != logical_player))
 				BufferIO::Write<uint32_t>(pbufw, 0);
 		}
 		SEND(WaitforResponse(player, packet));
@@ -1051,12 +1052,10 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_SELECT_TRIBUTE: {
 		player = BufferIO::Read<uint8_t>(pbuf);
-		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
-			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-		const uint8_t logical_player = player >= 2 ? static_cast<uint8_t>(player - 2) : 0xff;
-		const bool logical_selector = player >= 2 && logical_player < players.home_size + players.opposing_size
-			&& (((duel_flags & DUEL_3_V_1) && player < 5)
-				|| ((duel_flags & DUEL_BATTLE_ROYALE) && player < 6));
+		const uint8_t logical_player = player >= 2 ? static_cast<uint8_t>(player - 2)
+			: IsMultiplayerMode() && player < 2 ? GetPos(cur_player[player]) : 0xff;
+		const bool logical_selector = IsMultiplayerMode()
+			&& logical_player < players.home_size + players.opposing_size;
 		const uint8_t visible_side = logical_selector
 			? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : player;
 		pbuf += 9;
@@ -1076,31 +1075,35 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_SELECT_UNSELECT_CARD: {
 		player = BufferIO::Read<uint8_t>(pbuf);
-		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
-			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-		const uint8_t logical_player = player >= 2 ? static_cast<uint8_t>(player - 2) : 0xff;
-		const bool logical_selector = player >= 2 && logical_player < players.home_size + players.opposing_size
-			&& (((duel_flags & DUEL_3_V_1) && player < 5)
-				|| ((duel_flags & DUEL_BATTLE_ROYALE) && player < 6));
+		const uint8_t logical_player = player >= 2 ? static_cast<uint8_t>(player - 2)
+			: IsMultiplayerMode() && player < 2 ? GetPos(cur_player[player]) : 0xff;
+		const bool logical_selector = IsMultiplayerMode()
+			&& logical_player < players.home_size + players.opposing_size;
 		const uint8_t visible_side = logical_selector
 			? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : player;
 		pbuf += 10;
 		count = BufferIO::Read<uint32_t>(pbuf);
-		for(uint32_t i = 0; i < count; ++i) {
-			pbufw = pbuf;
-			/*code = */BufferIO::Read<uint32_t>(pbuf);
-			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
-			if(info.controler != visible_side)
-				BufferIO::Write<uint32_t>(pbufw, 0);
-		}
+			for(uint32_t i = 0; i < count; ++i) {
+				pbufw = pbuf;
+				/*code = */BufferIO::Read<uint32_t>(pbuf);
+				CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
+				const auto info_logical = static_cast<uint8_t>(
+					info.controler == 0 ? info.duelist : players.home_size + info.duelist);
+				if(info.controler != visible_side
+						|| (logical_selector && info_logical != logical_player))
+					BufferIO::Write<uint32_t>(pbufw, 0);
+			}
 		count = BufferIO::Read<uint32_t>(pbuf);
-		for(uint32_t i = 0; i < count; ++i) {
-			pbufw = pbuf;
-			/*code = */BufferIO::Read<uint32_t>(pbuf);
-			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
-			if(info.controler != visible_side)
-				BufferIO::Write<uint32_t>(pbufw, 0);
-		}
+			for(uint32_t i = 0; i < count; ++i) {
+				pbufw = pbuf;
+				/*code = */BufferIO::Read<uint32_t>(pbuf);
+				CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
+				const auto info_logical = static_cast<uint8_t>(
+					info.controler == 0 ? info.duelist : players.home_size + info.duelist);
+				if(info.controler != visible_side
+						|| (logical_selector && info_logical != logical_player))
+					BufferIO::Write<uint32_t>(pbufw, 0);
+			}
 		SEND(WaitforResponse(player, packet));
 		record = false;
 		return_value = 1;
@@ -1132,34 +1135,59 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		player = BufferIO::Read<uint8_t>(pbuf);
 		count = BufferIO::Read<uint32_t>(pbuf);
 		SEND(nullptr);
-		for(auto& dueler : (player == 0) ? players.home : players.opposing)
-			NetServer::ReSendToPlayer(dueler);
+		if(IsMultiplayerMode()) {
+			NetServer::ReSendToPlayer(cur_player[player]);
+		} else {
+			for(auto& dueler : (player == 0) ? players.home : players.opposing)
+				NetServer::ReSendToPlayer(dueler);
+		}
 		for(uint32_t i = 0; i < count; ++i)
 			BufferIO::Write<uint32_t>(pbuf, 0);
 		SEND(nullptr);
-		for(auto& dueler : (player == 1) ? players.home : players.opposing)
-			NetServer::ReSendToPlayer(dueler);
-		for(auto& obs : observers)
-			NetServer::ReSendToPlayer(obs);
+		if(IsMultiplayerMode()) {
+			ResendToAll(cur_player[player]);
+		} else {
+			for(auto& dueler : (player == 1) ? players.home : players.opposing)
+				NetServer::ReSendToPlayer(dueler);
+			for(auto& obs : observers)
+				NetServer::ReSendToPlayer(obs);
+		}
 		packets_cache.push_back(packet);
 		break;
 	}
 	case MSG_MOVE: {
 		pbufw = pbuf;
 		pbuf += 4;
-		/*CoreUtils::loc_info previous = */CoreUtils::ReadLocInfo(pbuf, false);
+		CoreUtils::loc_info previous = CoreUtils::ReadLocInfo(pbuf, false);
 		CoreUtils::loc_info current = CoreUtils::ReadLocInfo(pbuf, false);
 		player = current.controler;
+		const auto& visible = current.location ? current : previous;
+		DuelPlayer* owner = nullptr;
+		if(IsMultiplayerMode()) {
+			const auto logical = static_cast<uint8_t>(visible.controler == 0
+				? visible.duelist : players.home_size + visible.duelist);
+			if(logical < players.home_size + players.opposing_size)
+				owner = GetAtPos(logical).player;
+		}
 		SEND(nullptr);
-		for(auto& dueler : (player == 0) ? players.home : players.opposing)
-			NetServer::ReSendToPlayer(dueler);
+		if(IsMultiplayerMode()) {
+			if(owner)
+				NetServer::ReSendToPlayer(owner);
+		} else {
+			for(auto& dueler : (player == 0) ? players.home : players.opposing)
+				NetServer::ReSendToPlayer(dueler);
+		}
 		if (!(current.location & (LOCATION_GRAVE + LOCATION_OVERLAY)) && ((current.location & (LOCATION_DECK + LOCATION_HAND)) || (current.position & POS_FACEDOWN)))
 			BufferIO::Write<uint32_t>(pbufw, 0);
 		SEND(nullptr);
-		for(auto& dueler : (player == 1) ? players.home : players.opposing)
-			NetServer::ReSendToPlayer(dueler);
-		for(auto& obs : observers)
-			NetServer::ReSendToPlayer(obs);
+		if(IsMultiplayerMode()) {
+			ResendToAll(owner);
+		} else {
+			for(auto& dueler : (player == 1) ? players.home : players.opposing)
+				NetServer::ReSendToPlayer(dueler);
+			for(auto& obs : observers)
+				NetServer::ReSendToPlayer(obs);
+		}
 		packets_cache.push_back(packet);
 		break;
 	}
@@ -1179,14 +1207,28 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			ResendToAll();
 		} else {
 			auto player = current.controler;
-			for(auto& dueler : (player == 0) ? players.home : players.opposing)
-				NetServer::ReSendToPlayer(dueler);
+			DuelPlayer* owner = nullptr;
+			if(IsMultiplayerMode()) {
+				const auto logical = static_cast<uint8_t>(player == 0
+					? current.duelist : players.home_size + current.duelist);
+				if(logical < players.home_size + players.opposing_size)
+					owner = GetAtPos(logical).player;
+				if(owner)
+					NetServer::ReSendToPlayer(owner);
+			} else {
+				for(auto& dueler : (player == 0) ? players.home : players.opposing)
+					NetServer::ReSendToPlayer(dueler);
+			}
 			BufferIO::Write<uint32_t>(pbufw, 0);
 			SEND(nullptr);
-			for(auto& dueler : (player == 1) ? players.home : players.opposing)
-				NetServer::ReSendToPlayer(dueler);
-			for(auto& obs : observers)
-				NetServer::ReSendToPlayer(obs);
+			if(IsMultiplayerMode()) {
+				ResendToAll(owner);
+			} else {
+				for(auto& dueler : (player == 1) ? players.home : players.opposing)
+					NetServer::ReSendToPlayer(dueler);
+				for(auto& obs : observers)
+					NetServer::ReSendToPlayer(obs);
+			}
 		}
 		packets_cache.push_back(packet);
 		break;
@@ -1196,8 +1238,12 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		count = BufferIO::Read<uint32_t>(pbuf);
 		pbufw = pbuf;
 		SEND(nullptr);
-		for(auto& dueler : (player == 0) ? players.home : players.opposing)
-			NetServer::ReSendToPlayer(dueler);
+		if(IsMultiplayerMode()) {
+			NetServer::ReSendToPlayer(cur_player[player]);
+		} else {
+			for(auto& dueler : (player == 0) ? players.home : players.opposing)
+				NetServer::ReSendToPlayer(dueler);
+		}
 		for(uint32_t i = 0; i < count; ++i) {
 			/*uint32_t code = */BufferIO::Read<uint32_t>(pbufw);
 			uint32_t pos = BufferIO::Read<uint32_t>(pbufw);
@@ -1208,10 +1254,30 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			}
 		}
 		SEND(nullptr);
-		for(auto& dueler : (player == 1) ? players.home : players.opposing)
-			NetServer::ReSendToPlayer(dueler);
-		for(auto& obs : observers)
-			NetServer::ReSendToPlayer(obs);
+		if(IsMultiplayerMode()) {
+			ResendToAll(cur_player[player]);
+		} else {
+			for(auto& dueler : (player == 1) ? players.home : players.opposing)
+				NetServer::ReSendToPlayer(dueler);
+			for(auto& obs : observers)
+				NetServer::ReSendToPlayer(obs);
+		}
+		packets_cache.push_back(packet);
+		break;
+	}
+	case MSG_MULTIPLAYER_DRAW: {
+		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
+		count = BufferIO::Read<uint32_t>(pbuf);
+		auto* owner = logical_player < players.home_size + players.opposing_size
+			? GetAtPos(logical_player).player : nullptr;
+		if(owner)
+			SEND(owner);
+		for(uint32_t i = 0; i < count; ++i) {
+			BufferIO::Write<uint32_t>(pbuf, 0);
+			pbuf += sizeof(uint32_t);
+		}
+		SEND(nullptr);
+		ResendToAll(owner);
 		packets_cache.push_back(packet);
 		break;
 	}
@@ -1228,8 +1294,12 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		uint32_t hcount = BufferIO::Read<uint32_t>(pbuf);
 		pbufw = pbuf + 4;
 		SEND(nullptr);
-		for(auto& dueler : (player == 0) ? players.home : players.opposing)
-			NetServer::ReSendToPlayer(dueler);
+		if(IsMultiplayerMode()) {
+			NetServer::ReSendToPlayer(cur_player[player]);
+		} else {
+			for(auto& dueler : (player == 0) ? players.home : players.opposing)
+				NetServer::ReSendToPlayer(dueler);
+		}
 		for (uint32_t i = 0; i < (hcount + ecount); ++i) {
 			/*int code = */BufferIO::Read<uint32_t>(pbufw);
 			int pos = BufferIO::Read<uint32_t>(pbufw);
@@ -1253,10 +1323,14 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			}
 		}
 		SEND(nullptr);
-		for(auto& dueler : (player == 1) ? players.home : players.opposing)
-			NetServer::ReSendToPlayer(dueler);
-		for(auto& obs : observers)
-			NetServer::ReSendToPlayer(obs);
+		if(IsMultiplayerMode()) {
+			ResendToAll(cur_player[player]);
+		} else {
+			for(auto& dueler : (player == 1) ? players.home : players.opposing)
+				NetServer::ReSendToPlayer(dueler);
+			for(auto& obs : observers)
+				NetServer::ReSendToPlayer(obs);
+		}
 		packets_cache.push_back(packet);
 		break;
 	}
@@ -1286,6 +1360,13 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		SEND(nullptr);
 		ResendToAll();
 		packets_cache.push_back(packet);
+		break;
+	}
+	case MSG_MULTIPLAYER_PRIVATE_PILES: {
+		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
+		if(logical_player < players.home_size + players.opposing_size)
+			SEND(GetAtPos(logical_player).player);
+		record = false;
 		break;
 	}
 	case MSG_PLAYER_ELIMINATED: {
@@ -1592,6 +1673,38 @@ void GenericDuel::RefreshLocation(uint8_t player, uint32_t flag, uint8_t locatio
 	CoreUtils::QueryStream query(buff);
 	query.GenerateBuffer(buffer, false);
 	replay_stream.emplace_back(buffer.data(), buffer.size() - 1);
+	if(IsMultiplayerMode() && (location == LOCATION_MZONE || location == LOCATION_SZONE)) {
+		const auto stride = static_cast<uint8_t>(location == LOCATION_MZONE ? 7 : 8);
+		const auto field_count = static_cast<uint8_t>(
+			player == 0 ? players.home_size : players.opposing_size);
+		const auto logical_base = static_cast<uint8_t>(player == 0 ? 0 : players.home_size);
+		for(uint8_t duelist = 0; duelist < field_count; ++duelist) {
+			buffer.resize(3);
+			query.GenerateLogicalBuffer(buffer, duelist, stride);
+			NetServer::SendBufferToPlayer(GetAtPos(logical_base + duelist).player,
+				STOC_GAME_MSG, buffer);
+		}
+		buffer.resize(3);
+		query.GeneratePublicBuffer(buffer);
+		NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, buffer);
+		for(auto& dueler : (player == 1) ? players.home : players.opposing)
+			NetServer::ReSendToPlayer(dueler);
+		for(auto& obs : observers)
+			NetServer::ReSendToPlayer(obs);
+		packets_cache.emplace_back(buffer.data(), buffer.size());
+		return;
+	}
+	if(IsMultiplayerMode()) {
+		buffer.resize(3);
+		query.GenerateBuffer(buffer, true);
+		NetServer::SendBufferToPlayer(cur_player[player], STOC_GAME_MSG, buffer);
+		buffer.resize(3);
+		query.GeneratePublicBuffer(buffer);
+		NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, buffer);
+		ResendToAll(cur_player[player]);
+		packets_cache.emplace_back(buffer.data(), buffer.size());
+		return;
+	}
 	buffer.resize(3);
 	query.GenerateBuffer(buffer, true);
 	NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, buffer);
@@ -1620,6 +1733,26 @@ void GenericDuel::RefreshSingle(uint8_t player, uint8_t location, uint8_t sequen
 	CoreUtils::Query query(buff);
 	query.GenerateBuffer(buffer, false, false);
 	replay_stream.emplace_back(buffer.data(), buffer.size() - 1);
+	if(IsMultiplayerMode()) {
+		DuelPlayer* owner = cur_player[player];
+		if(location == LOCATION_MZONE || location == LOCATION_SZONE) {
+			const auto stride = static_cast<uint8_t>(location == LOCATION_MZONE ? 7 : 8);
+			const auto duelist = static_cast<uint8_t>(sequence / stride);
+			const auto logical = static_cast<uint8_t>(
+				player == 0 ? duelist : players.home_size + duelist);
+			if(logical < players.home_size + players.opposing_size)
+				owner = GetAtPos(logical).player;
+		}
+		buffer.resize(4);
+		query.GenerateBuffer(buffer, false, true);
+		NetServer::SendBufferToPlayer(owner, STOC_GAME_MSG, buffer);
+		buffer.resize(4);
+		query.GenerateBuffer(buffer, true, true);
+		NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, buffer);
+		ResendToAll(owner);
+		packets_cache.emplace_back(buffer.data(), buffer.size());
+		return;
+	}
 	buffer.resize(4);
 	query.GenerateBuffer(buffer, false, true);
 	NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, buffer);

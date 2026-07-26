@@ -100,6 +100,7 @@ public:
 	QueryStream(const uint8_t* buff, bool compat = false, uint32_t len = 0, bool legacy_race_size = false) { if(compat) ParseCompat(buff, len); else Parse(buff, legacy_race_size); };
 	void GenerateBuffer(std::vector<uint8_t>& buffer, bool check_hidden) const;
 	void GeneratePublicBuffer(std::vector<uint8_t>& buffer) const;
+	void GenerateLogicalBuffer(std::vector<uint8_t>& buffer, uint8_t duelist, uint8_t stride) const;
 	const std::vector<Query>& GetQueries() const { return queries; }
 private:
 	std::vector<Query> queries;
