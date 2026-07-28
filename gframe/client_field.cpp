@@ -108,6 +108,10 @@ void ClientField::Clear() {
 	conti_act = false;
 	conti_selecting = false;
 	deck_reversed = false;
+	for(size_t logical = 0; logical < multiplayer_private_piles.size(); ++logical) {
+		multiplayer_private_piles[logical] = {};
+		multiplayer_private_piles_valid[logical] = false;
+	}
 }
 void ClientField::Initial(uint8_t player, uint32_t deckc, uint32_t extrac) {
 	ClientCard* pcard;
@@ -840,7 +844,8 @@ void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player, const Multiplay
 	match_pile(extra[player], snapshot.extra.size(), LOCATION_EXTRA);
 	match_pile(grave[player], snapshot.grave.size(), LOCATION_GRAVE);
 	match_pile(remove[player], snapshot.removed.size(), LOCATION_REMOVED);
-	extra_p_count[player] = snapshot.extra_p_count;
+	extra_p_count[player] = static_cast<int>(std::min<size_t>(
+		snapshot.extra_p_count, extra[player].size()));
 	if(!deck[player].empty())
 		deck[player].back()->code = snapshot.top_code;
 	apply_visible_cards(hand[player], snapshot.hand);
@@ -848,6 +853,143 @@ void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player, const Multiplay
 	apply_visible_cards(grave[player], snapshot.grave);
 	apply_visible_cards(remove[player], snapshot.removed);
 	RefreshAllCards();
+}
+void ClientField::CacheMultiplayerPrivatePiles(uint8_t logical_player,
+		const MultiplayerPrivatePileSnapshot& snapshot) {
+	if(logical_player >= multiplayer_private_piles.size())
+		return;
+	multiplayer_private_piles[logical_player] = snapshot;
+	multiplayer_private_piles_valid[logical_player] = true;
+}
+void ClientField::CaptureBattleRoyaleReplayPrivatePiles() {
+	if(!mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			|| mainGame->dInfo.replay_battle_royale_perspective
+				>= mainGame->dInfo.team1 + mainGame->dInfo.team2)
+		return;
+	auto capture_cards = [](const auto& source, auto& destination) {
+		destination.clear();
+		destination.reserve(source.size());
+		for(const auto* pcard : source) {
+			if(pcard)
+				destination.push_back({
+					pcard->code, static_cast<uint8_t>(pcard->position)
+				});
+		}
+	};
+	for(uint8_t display_side = 0; display_side < 2; ++display_side) {
+		const auto logical =
+			mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side);
+		if(logical >= multiplayer_private_piles.size())
+			continue;
+		MultiplayerPrivatePileSnapshot snapshot;
+		snapshot.deck_count = static_cast<uint32_t>(deck[display_side].size());
+		snapshot.extra_p_count = extra_p_count[display_side] > 0
+			? static_cast<uint32_t>(std::min<size_t>(
+				extra_p_count[display_side], extra[display_side].size()))
+			: 0;
+		snapshot.top_code = deck[display_side].empty()
+			? 0 : deck[display_side].back()->code;
+		capture_cards(hand[display_side], snapshot.hand);
+		capture_cards(extra[display_side], snapshot.extra);
+		capture_cards(grave[display_side], snapshot.grave);
+		capture_cards(remove[display_side], snapshot.removed);
+		CacheMultiplayerPrivatePiles(logical, snapshot);
+	}
+}
+void ClientField::ApplyBattleRoyaleReplayPrivatePiles() {
+	if(!mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+		return;
+	for(uint8_t display_side = 0; display_side < 2; ++display_side) {
+		const auto logical =
+			mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side);
+		if(logical >= multiplayer_private_piles.size()
+				|| !multiplayer_private_piles_valid[logical])
+			continue;
+		ReplaceMultiplayerPrivatePiles(
+			display_side, multiplayer_private_piles[logical]);
+	}
+}
+void ClientField::UpdateMultiplayerPrivateDraw(uint8_t logical_player,
+		const std::vector<MultiplayerPrivatePileCard>& drawn_cards) {
+	if(logical_player >= multiplayer_private_piles.size()
+			|| !multiplayer_private_piles_valid[logical_player])
+		return;
+	auto& snapshot = multiplayer_private_piles[logical_player];
+	const auto count = static_cast<uint32_t>(drawn_cards.size());
+	snapshot.deck_count =
+		snapshot.deck_count > count ? snapshot.deck_count - count : 0;
+	snapshot.top_code = 0;
+	snapshot.hand.insert(snapshot.hand.end(),
+		drawn_cards.begin(), drawn_cards.end());
+}
+void ClientField::UpdateMultiplayerPrivateMove(uint8_t previous_logical,
+		uint8_t previous_location, uint32_t previous_sequence,
+		uint8_t current_logical, uint8_t current_location,
+		uint32_t current_sequence, uint32_t code, uint8_t position) {
+	if(!mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+		return;
+	auto get_cards = [](MultiplayerPrivatePileSnapshot& snapshot,
+			uint8_t location) -> std::vector<MultiplayerPrivatePileCard>* {
+		switch(location) {
+		case LOCATION_HAND: return &snapshot.hand;
+		case LOCATION_EXTRA: return &snapshot.extra;
+		case LOCATION_GRAVE: return &snapshot.grave;
+		case LOCATION_REMOVED: return &snapshot.removed;
+		default: return nullptr;
+		}
+	};
+	const bool same_pile = previous_logical == current_logical
+		&& previous_location == current_location
+		&& previous_logical < multiplayer_private_piles.size()
+		&& multiplayer_private_piles_valid[previous_logical];
+	MultiplayerPrivatePileCard moved{ code, position };
+	if(same_pile) {
+		auto& snapshot = multiplayer_private_piles[previous_logical];
+		if(auto* cards = get_cards(snapshot, previous_location)) {
+			if(previous_sequence < cards->size()) {
+				moved = (*cards)[previous_sequence];
+				cards->erase(cards->begin() + previous_sequence);
+			}
+			const auto destination =
+				std::min<size_t>(current_sequence, cards->size());
+			cards->insert(cards->begin() + destination, moved);
+		} else if(previous_location == LOCATION_DECK
+				&& current_sequence + 1 >= snapshot.deck_count)
+			snapshot.top_code = code;
+		return;
+	}
+	if(previous_logical < multiplayer_private_piles.size()
+			&& multiplayer_private_piles_valid[previous_logical]) {
+		auto& snapshot = multiplayer_private_piles[previous_logical];
+		if(previous_location == LOCATION_DECK) {
+			if(snapshot.deck_count)
+				--snapshot.deck_count;
+			snapshot.top_code = 0;
+		} else if(auto* cards = get_cards(snapshot, previous_location)) {
+			if(previous_sequence < cards->size()) {
+				moved = (*cards)[previous_sequence];
+				cards->erase(cards->begin() + previous_sequence);
+			}
+		}
+	}
+	if(current_logical < multiplayer_private_piles.size()
+			&& multiplayer_private_piles_valid[current_logical]) {
+		auto& snapshot = multiplayer_private_piles[current_logical];
+		moved.code = code ? code : moved.code;
+		moved.position = position;
+		if(current_location == LOCATION_DECK) {
+			++snapshot.deck_count;
+			if(current_sequence + 1 >= snapshot.deck_count)
+				snapshot.top_code = moved.code;
+		} else if(auto* cards = get_cards(snapshot, current_location)) {
+			const auto destination =
+				std::min<size_t>(current_sequence, cards->size());
+			cards->insert(cards->begin() + destination, moved);
+		}
+	}
 }
 void ClientField::RefreshLogicalDeckMasters() {
 	if(!mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
@@ -989,7 +1131,15 @@ static void getCardScreenCoordinates(ClientCard* pcard) {
 			dim.Height - irr::core::round32(dim.Height * (transformedPos[1] * zDiv)));
 	};
 
-	const auto& frontmat = (pcard->code && (!mainGame->dInfo.isReplay || !gGameConfig->hideHandsInReplays || pcard->is_public || pcard->is_hovered)) ? matManager.vCardFront : matManager.vCardBack;
+	const bool reveal_battle_royale_replay_hand =
+		mainGame->dInfo.isReplay
+		&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE);
+	const auto& frontmat = (pcard->code
+		&& (!mainGame->dInfo.isReplay
+			|| reveal_battle_royale_replay_hand
+			|| !gGameConfig->hideHandsInReplays
+			|| pcard->is_public || pcard->is_hovered))
+		? matManager.vCardFront : matManager.vCardBack;
 	const auto upperleft = transform(frontmat[0].Pos);
 	const auto lowerright = transform(frontmat[3].Pos);
 	auto& collision = pcard->hand_collision;
@@ -1131,7 +1281,11 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 		}
 	} else {
 		auto ShouldCardShow = [pcard] {
-			return pcard->code && (!mainGame->dInfo.isReplay || !gGameConfig->hideHandsInReplays || pcard->is_public || pcard->is_hovered);
+			return pcard->code
+				&& (!mainGame->dInfo.isReplay
+					|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+					|| !gGameConfig->hideHandsInReplays
+					|| pcard->is_public || pcard->is_hovered);
 		};
 		auto SetHoverState = [&] {
 			if(!pcard->is_hovered)

@@ -2,6 +2,7 @@
 #define CLIENT_FIELD_H
 
 #include <vector>
+#include <array>
 #include <set>
 #include <map>
 #include <string>
@@ -65,6 +66,8 @@ public:
 	std::vector<uint64_t> select_options;
 	std::vector<ChainInfo> chains;
 	int extra_p_count[2];
+	std::array<MultiplayerPrivatePileSnapshot, 4> multiplayer_private_piles;
+	std::array<bool, 4> multiplayer_private_piles_valid{};
 
 	size_t selected_option;
 	ClientCard* attacker;
@@ -127,6 +130,15 @@ public:
 	void RefreshHandHitboxes();
 	void CycleTeamField();
 	void ReplaceMultiplayerPrivatePiles(uint8_t player, const MultiplayerPrivatePileSnapshot& snapshot);
+	void CacheMultiplayerPrivatePiles(uint8_t logical_player, const MultiplayerPrivatePileSnapshot& snapshot);
+	void CaptureBattleRoyaleReplayPrivatePiles();
+	void ApplyBattleRoyaleReplayPrivatePiles();
+	void UpdateMultiplayerPrivateDraw(uint8_t logical_player,
+		const std::vector<MultiplayerPrivatePileCard>& drawn_cards);
+	void UpdateMultiplayerPrivateMove(uint8_t previous_logical,
+		uint8_t previous_location, uint32_t previous_sequence,
+		uint8_t current_logical, uint8_t current_location,
+		uint32_t current_sequence, uint32_t code, uint8_t position);
 
 	void GetChainDrawCoordinates(uint8_t controler, uint8_t location, uint32_t sequence, irr::core::vector3df* t);
 	void GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df* t, irr::core::vector3df* r, bool setTrans = false);

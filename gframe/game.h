@@ -100,6 +100,9 @@ struct DuelInfo {
 	uint8_t eliminated_player_mask{ 0 };
 	uint8_t elimination_reason[4]{ 0, 0, 0, 0 };
 	uint8_t logical_turn_player{ 0 };
+	// Replays have no fixed local duelist. In Battle Royale the turn owner is
+	// projected as the lower player and the relevant opponent as the upper one.
+	uint8_t replay_battle_royale_perspective{ 0xff };
 	// Duelist index currently projected on each of the two physical field
 	// sides. Battle Royale owns two saved fields per side; 3-vs-1 owns three
 	// on side 0 and one on side 1.
@@ -141,6 +144,9 @@ struct DuelInfo {
 		return logical < team1 + team2 ? logical : 0xff;
 	}
 	uint8_t GetLocalLogicalPlayer() const {
+		if(isReplay && HasFieldFlag(DUEL_BATTLE_ROYALE)
+				&& replay_battle_royale_perspective < team1 + team2)
+			return replay_battle_royale_perspective;
 		return player_type < team1 + team2 ? player_type : 0xff;
 	}
 	uint8_t GetLogicalCoreSide(uint8_t logical) const {
@@ -194,6 +200,27 @@ struct DuelInfo {
 		if(core_side < 2 && duelist < 2)
 			field_focus[core_side] = duelist;
 		return true;
+	}
+	bool SetBattleRoyaleReplayPerspective(uint8_t logical) {
+		if(!isReplay || !HasFieldFlag(DUEL_BATTLE_ROYALE)
+				|| logical >= team1 + team2
+				|| !(active_player_mask & (1u << logical)))
+			return false;
+		const bool changed = replay_battle_royale_perspective != logical;
+		replay_battle_royale_perspective = logical;
+		return changed;
+	}
+	uint8_t GetBattleRoyalePrivateDisplaySide(uint8_t core_side, uint8_t duelist) const {
+		if(!HasFieldFlag(DUEL_BATTLE_ROYALE))
+			return 0xff;
+		return GetBattleRoyaleDisplaySide(GetLogicalPlayer(core_side, duelist));
+	}
+	uint8_t GetBattleRoyaleActivePrivateDisplaySide(uint8_t core_side) const {
+		if(core_side > 1)
+			return 0xff;
+		const auto logical = GetLogicalPlayer(core_side);
+		return logical < team1 + team2
+			? GetBattleRoyaleDisplaySide(logical) : 0xff;
 	}
 	bool IsPinnedLocalField(uint8_t core_side) const {
 		return HasFieldFlag(DUEL_BATTLE_ROYALE)

@@ -81,6 +81,7 @@ int ReplayMode::ReplayThread() {
 	mainGame->dInfo.isFirst = true;
 	mainGame->dInfo.isTeam1 = true;
 	mainGame->dInfo.player_type = 0;
+	mainGame->dInfo.replay_battle_royale_perspective = 0xff;
 	mainGame->dInfo.battle_royale_opponent_logical = 0xff;
 	mainGame->dInfo.isRelay = !!(cur_replay.params.duel_flags & DUEL_RELAY);
 	mainGame->dInfo.isSingleMode = !!(replay_header.base.flag & REPLAY_SINGLE_MODE);
@@ -187,6 +188,8 @@ void ReplayMode::Restart(bool refresh) {
 	mainGame->dInfo.isInDuel = false;
 	mainGame->dInfo.isStarted = false;
 	mainGame->dInfo.turn = 0;
+	mainGame->dInfo.replay_battle_royale_perspective = 0xff;
+	mainGame->dInfo.battle_royale_opponent_logical = 0xff;
 	mainGame->dField.Clear();
 	mainGame->dInfo.current_player[0] = 0;
 	mainGame->dInfo.current_player[1] = 0;
