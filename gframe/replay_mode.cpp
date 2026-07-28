@@ -80,6 +80,8 @@ int ReplayMode::ReplayThread() {
 	const auto& replay_header = cur_replay.pheader;
 	mainGame->dInfo.isFirst = true;
 	mainGame->dInfo.isTeam1 = true;
+	mainGame->dInfo.player_type = 0;
+	mainGame->dInfo.battle_royale_opponent_logical = 0xff;
 	mainGame->dInfo.isRelay = !!(cur_replay.params.duel_flags & DUEL_RELAY);
 	mainGame->dInfo.isSingleMode = !!(replay_header.base.flag & REPLAY_SINGLE_MODE);
 	mainGame->dInfo.isHandTest = !!(replay_header.base.flag & REPLAY_HAND_TEST);
@@ -275,6 +277,8 @@ bool ReplayMode::ReplayAnalyze(const CoreUtils::Packet& p) {
 		case MSG_TAG_SWAP:
 		case MSG_MULTIPLAYER_NEW_TURN:
 		case MSG_MULTIPLAYER_DECK_MASTER:
+		case MSG_MULTIPLAYER_DRAW:
+		case MSG_MULTIPLAYER_PRIVATE_PILES:
 		case MSG_RELOAD_FIELD: {
 			pauseable = false;
 			break;

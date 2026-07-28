@@ -178,6 +178,8 @@ ClientCard* ClientField::GetCard(uint8_t controler, uint8_t location, size_t seq
 	}
 }
 void ClientField::AddCard(ClientCard* pcard, uint8_t controler, uint8_t location, uint32_t sequence) {
+	if(!pcard || controler > 1)
+		return;
 	pcard->controler = controler;
 	pcard->location = location;
 	pcard->sequence = sequence;
@@ -207,10 +209,14 @@ void ClientField::AddCard(ClientCard* pcard, uint8_t controler, uint8_t location
 		break;
 	}
 	case LOCATION_MZONE: {
+		if(sequence >= mzone[controler].size())
+			mzone[controler].resize(sequence + 1, nullptr);
 		mzone[controler][sequence] = pcard;
 		break;
 	}
 	case LOCATION_SZONE: {
+		if(sequence >= szone[controler].size())
+			szone[controler].resize(sequence + 1, nullptr);
 		szone[controler][sequence] = pcard;
 		break;
 	}
@@ -247,6 +253,11 @@ void ClientField::AddCard(ClientCard* pcard, uint8_t controler, uint8_t location
 	}
 }
 ClientCard* ClientField::RemoveCard(uint8_t controler, uint8_t location, uint32_t sequence) {
+	if(controler > 1)
+		return nullptr;
+	const auto* source = GetList(location, controler);
+	if(!source || sequence >= source->size())
+		return nullptr;
 	auto RemoveFromPile = [&](auto& pile) {
 		float z_decrease = gGameConfig->topdown_view ? 0.0f : 0.01f;
 		auto pcard = pile[controler][sequence];
@@ -292,11 +303,13 @@ ClientCard* ClientField::RemoveCard(uint8_t controler, uint8_t location, uint32_
 	}
 	case LOCATION_EXTRA: {
 		pcard = RemoveFromPile(extra);
-		if (pcard->position & POS_FACEUP)
+		if (pcard && pcard->position & POS_FACEUP)
 			extra_p_count[controler]--;
 		break;
 	}
 	}
+	if(!pcard)
+		return nullptr;
 	pcard->location = 0;
 	return pcard;
 }
@@ -315,13 +328,19 @@ void ClientField::UpdateFieldCard(uint8_t controler, uint8_t location, const uin
 	CoreUtils::QueryStream stream{ data, mainGame->dInfo.compat_mode, len, mainGame->dInfo.legacy_race_size };
 	auto cit = lst->begin();
 	for(const auto& query : stream.GetQueries()) {
+		if(cit == lst->end())
+			break;
 		auto pcard = *cit++;
 		if(pcard)
 			pcard->UpdateInfo(query);
 	}
 }
 void ClientField::ClearCommandFlag() {
-	auto ClearFlag = [](const std::vector<ClientCard*>& map) { for(auto& pcard : map) pcard->cmdFlag = 0; };
+	auto ClearFlag = [](const std::vector<ClientCard*>& map) {
+		for(auto& pcard : map)
+			if(pcard)
+				pcard->cmdFlag = 0;
+	};
 	ClearFlag(activatable_cards);
 	ClearFlag(summonable_cards);
 	ClearFlag(spsummonable_cards);
@@ -642,6 +661,8 @@ void ClientField::ShowSelectOption(uint64_t select_hint, bool should_lock) {
 	mainGame->PopupElement(mainGame->wOptions);
 }
 void ClientField::ReplaySwap() {
+	if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+		return;
 	auto reset = [](ClientCard* const& pcard)->void {
 		if(pcard) {
 			pcard->controler = 1 - pcard->controler;
@@ -881,7 +902,17 @@ void ClientField::GetChainDrawCoordinates(uint8_t controler, uint8_t location, u
 		if(stride) {
 			const auto core_side = mainGame->LocalPlayer(controler);
 			const auto field_duelist = static_cast<uint8_t>(sequence / stride);
-			if(field_duelist != mainGame->dInfo.field_focus[core_side]) {
+			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				const auto logical = mainGame->dInfo.GetLogicalPlayer(core_side, field_duelist);
+				const auto display_side = mainGame->dInfo.GetBattleRoyaleDisplaySide(logical);
+				if(display_side > 1) {
+					t->X = 3.95f;
+					t->Y = -2.5f;
+					t->Z = 0.03f;
+					return;
+				}
+				controler = display_side;
+			} else if(field_duelist != mainGame->dInfo.field_focus[core_side]) {
 				t->X = 3.95f;
 				t->Y = controler == 0 ? -2.5f : 2.5f;
 				t->Z = 0.03f;
@@ -988,6 +1019,7 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 	};
 	if(!pcard->location) return;
 	const int& controler = pcard->overlayTarget ? pcard->overlayTarget->controler : pcard->controler;
+	int draw_controler = controler;
 	int sequence = pcard->sequence;
 	const int& location = pcard->location;
 	pcard->draw_scale = 1.0f;
@@ -1000,12 +1032,11 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 		const uint32_t stride = base_location == LOCATION_MZONE ? 7u
 			: base_location == LOCATION_SZONE ? 8u : 0u;
 		const auto core_side = mainGame->LocalPlayer(static_cast<uint8_t>(controler));
-		const auto field_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
-			? 2u : (core_side == 0 ? static_cast<uint32_t>(mainGame->dInfo.team1) : 1u);
-		if(stride && field_count > 1) {
+		if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) && stride) {
 			const auto field_duelist = static_cast<uint8_t>(base_sequence / stride);
-			const auto focused_duelist = mainGame->dInfo.field_focus[core_side];
-			if(field_duelist != focused_duelist) {
+			const auto logical = mainGame->dInfo.GetLogicalPlayer(core_side, field_duelist);
+			const auto display_side = mainGame->dInfo.GetBattleRoyaleDisplaySide(logical);
+			if(display_side > 1) {
 				pcard->draw_scale = 0.0f;
 				*t = { -100.0f, -100.0f, -10.0f };
 				*r = { 0.0f, 0.0f, 0.0f };
@@ -1015,25 +1046,44 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 				}
 				return;
 			}
+			draw_controler = display_side;
 			sequence = static_cast<int>(base_sequence % stride);
+		} else {
+			const auto field_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+				? 2u : (core_side == 0 ? static_cast<uint32_t>(mainGame->dInfo.team1) : 1u);
+			if(stride && field_count > 1) {
+				const auto field_duelist = static_cast<uint8_t>(base_sequence / stride);
+				const auto focused_duelist = mainGame->dInfo.field_focus[core_side];
+				if(field_duelist != focused_duelist) {
+					pcard->draw_scale = 0.0f;
+					*t = { -100.0f, -100.0f, -10.0f };
+					*r = { 0.0f, 0.0f, 0.0f };
+					if(setTrans) {
+						pcard->mTransform.setTranslation(*t);
+						pcard->mTransform.setRotationRadians(*r);
+					}
+					return;
+				}
+				sequence = static_cast<int>(base_sequence % stride);
+			}
 		}
 	}
 	auto GetPos = [&]()->const irr::video::S3DVertex* {
 		switch(location) {
-		case LOCATION_DECK:		return matManager.getDeck()[controler];
-		case LOCATION_MZONE:	return matManager.vFieldMzone[controler][sequence];
-		case LOCATION_SZONE:	return matManager.getSzone()[controler][sequence];
-		case LOCATION_GRAVE:	return matManager.getGrave()[controler];
-		case LOCATION_REMOVED:	return matManager.getRemove()[controler];
-		case LOCATION_EXTRA:	return matManager.getExtra()[controler];
-		case LOCATION_SKILL:	return matManager.getSkill()[controler];
+		case LOCATION_DECK:		return matManager.getDeck()[draw_controler];
+		case LOCATION_MZONE:	return matManager.vFieldMzone[draw_controler][sequence];
+		case LOCATION_SZONE:	return matManager.getSzone()[draw_controler][sequence];
+		case LOCATION_GRAVE:	return matManager.getGrave()[draw_controler];
+		case LOCATION_REMOVED:	return matManager.getRemove()[draw_controler];
+		case LOCATION_EXTRA:	return matManager.getExtra()[draw_controler];
+		case LOCATION_SKILL:	return matManager.getSkill()[draw_controler];
 		case LOCATION_OVERLAY:
-			if(!pcard->overlayTarget || controler > 1)
+			if(!pcard->overlayTarget || draw_controler > 1)
 				return nullptr;
 			if(pcard->overlayTarget->location == LOCATION_MZONE)
-				return matManager.vFieldMzone[controler][sequence];
+				return matManager.vFieldMzone[draw_controler][sequence];
 			if(pcard->overlayTarget->location == LOCATION_SZONE)
-				return matManager.getSzone()[controler][sequence];
+				return matManager.getSzone()[draw_controler][sequence];
 			[[fallthrough]];
 		default: return nullptr;
 		}
@@ -1047,14 +1097,14 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 		t->Y = GetMiddleY(pos);
 		t->Z = 0.01f;
 		if(location == LOCATION_MZONE) {
-			if(controler == 0)
+			if(draw_controler == 0)
 				*r = (pcard->position & POS_DEFENSE) ? selfDEF : selfATK;
 			else
 				*r = (pcard->position & POS_DEFENSE) ? oppoDEF : oppoATK;
 		} else if (location == LOCATION_OVERLAY)
-			*r = (pcard->overlayTarget->controler == 0) ? selfATK : oppoATK;
+			*r = (draw_controler == 0) ? selfATK : oppoATK;
 		else
-			*r = (controler == 0) ? selfATK : oppoATK;
+			*r = (draw_controler == 0) ? selfATK : oppoATK;
 		if(((location & (LOCATION_GRAVE | LOCATION_OVERLAY)) == 0) && ((location == LOCATION_DECK && deck_reversed == pcard->is_reversed) ||
 			(location != LOCATION_DECK && pcard->position & POS_FACEDOWN))) {
 			*r += facedown;
@@ -1072,7 +1122,7 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 				break;
 			}
 			case LOCATION_OVERLAY: {
-				if(controler == 0)
+				if(draw_controler == 0)
 					*t = { t->X - 0.12f + 0.06f * pcard->sequence, t->Y + 0.06f, 0.005f + pcard->sequence * 0.0001f };
 				else
 					*t = { t->X + 0.12f - 0.06f * pcard->sequence, t->Y - 0.06f, 0.005f + pcard->sequence * 0.0001f };

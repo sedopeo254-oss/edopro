@@ -1352,7 +1352,11 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					const uint32_t stride = hovered_location == LOCATION_MZONE ? 7u : 8u;
 					const auto field_duelist = static_cast<uint8_t>(hovered_sequence / stride);
 					const auto core_side = mainGame->LocalPlayer(hovered_controler);
-					if(field_duelist != mainGame->dInfo.field_focus[core_side])
+					if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+						const auto logical = mainGame->dInfo.GetLogicalPlayer(core_side, field_duelist);
+						if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical) > 1)
+							break;
+					} else if(field_duelist != mainGame->dInfo.field_focus[core_side])
 						break;
 					response_sequence %= stride;
 				}
@@ -2488,12 +2492,36 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 		const auto coords = MouseToField(mouse);
 		const auto& boardx = coords.X;
 		const auto& boardy = coords.Y;
+		auto MapBattleRoyaleField = [&](uint8_t display_side, uint8_t location,
+				uint32_t local_sequence, uint8_t& storage_controler,
+				uint32_t& storage_sequence) -> bool {
+			if(!mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+				return false;
+			const auto logical = mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side);
+			const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical);
+			const auto duelist = mainGame->dInfo.GetLogicalDuelist(logical);
+			const uint32_t stride = location == LOCATION_MZONE ? 7u
+				: location == LOCATION_SZONE ? 8u : 0u;
+			if(core_side > 1 || duelist > 1 || !stride)
+				return false;
+			storage_controler = mainGame->LocalPlayer(core_side);
+			storage_sequence = local_sequence + static_cast<uint32_t>(duelist) * stride;
+			return true;
+		};
 		auto DisplayMzone = [&](uint8_t controler, uint32_t sequence) -> ClientCard* {
-			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-					|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				uint8_t storage_controler = controler;
+				uint32_t storage_sequence = sequence;
+				if(!MapBattleRoyaleField(controler, LOCATION_MZONE, sequence,
+						storage_controler, storage_sequence))
+					return nullptr;
+				return storage_sequence < mzone[storage_controler].size()
+					? mzone[storage_controler][storage_sequence] : nullptr;
+			}
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
 				const auto core_side = mainGame->LocalPlayer(controler);
-				const auto field_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
-					? 2u : (core_side == 0 ? static_cast<uint32_t>(mainGame->dInfo.team1) : 1u);
+				const auto field_count = core_side == 0
+					? static_cast<uint32_t>(mainGame->dInfo.team1) : 1u;
 				if(field_count > 1)
 					sequence += static_cast<uint32_t>(mainGame->dInfo.field_focus[core_side]) * 7u;
 			}
@@ -2647,13 +2675,23 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 				hovered_sequence = 4 - sequence;
 			}
 		}
-		if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-					|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+		if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+				&& (hovered_location == LOCATION_MZONE || hovered_location == LOCATION_SZONE)) {
+			uint8_t storage_controler = hovered_controler;
+			uint32_t storage_sequence = hovered_sequence;
+			if(MapBattleRoyaleField(hovered_controler, hovered_location,
+					hovered_sequence, storage_controler, storage_sequence)) {
+				hovered_controler = storage_controler;
+				hovered_sequence = storage_sequence;
+			} else {
+				hovered_location = 0;
+			}
+		} else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				&& (hovered_location == LOCATION_MZONE || hovered_location == LOCATION_SZONE)) {
 			const uint32_t stride = hovered_location == LOCATION_MZONE ? 7u : 8u;
 			const auto core_side = mainGame->LocalPlayer(hovered_controler);
-			const auto field_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
-				? 2u : (core_side == 0 ? static_cast<uint32_t>(mainGame->dInfo.team1) : 1u);
+			const auto field_count = core_side == 0
+				? static_cast<uint32_t>(mainGame->dInfo.team1) : 1u;
 			if(field_count > 1)
 				hovered_sequence += static_cast<uint32_t>(mainGame->dInfo.field_focus[core_side]) * stride;
 		}
@@ -2908,15 +2946,20 @@ void ClientField::SetResponseSelectedOption() const {
 		const auto option = select_options[selected_option];
 		if((option & MULTIPLAYER_OPTION_PLAYER_MASK) == MULTIPLAYER_OPTION_PLAYER_BASE) {
 			const auto logical = static_cast<uint8_t>(option & 0xffu);
-				if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-							|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
-						&& logical < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
+			if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+					&& logical < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
+				if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+					if(mainGame->dInfo.SetBattleRoyaleOpponent(logical))
+						mainGame->dField.RefreshAllCards();
+				} else {
 					const auto core_side = static_cast<uint8_t>(logical < mainGame->dInfo.team1 ? 0 : 1);
 					const auto duelist = static_cast<uint8_t>(
 						core_side == 0 ? logical : logical - mainGame->dInfo.team1);
 					if(mainGame->dInfo.SetFieldFocus(core_side, duelist))
 						mainGame->dField.RefreshAllCards();
 				}
+			}
 		}
 		DuelClient::SetResponseI(static_cast<uint32_t>(selected_option));
 	} else {

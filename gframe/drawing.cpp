@@ -64,10 +64,15 @@ void Game::DrawBackGround() {
 		if(!gGameConfig->draw_field_spell)
 			return false;
 		auto FieldSequence = [&](uint8_t controler) -> size_t {
-			if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			if(dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				const auto logical = dInfo.GetBattleRoyaleDisplayLogical(controler);
+				const auto duelist = dInfo.GetLogicalDuelist(logical);
+				if(duelist < 2)
+					return static_cast<size_t>(duelist) * 8u + 5u;
+			} else if(dInfo.HasFieldFlag(DUEL_3_V_1)) {
 				const auto core_side = LocalPlayer(controler);
-				const auto field_count = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
-					? 2u : (core_side == 0 ? static_cast<uint32_t>(dInfo.team1) : 1u);
+				const auto field_count = core_side == 0
+					? static_cast<uint32_t>(dInfo.team1) : 1u;
 				if(field_count > 1)
 					return static_cast<size_t>(dInfo.field_focus[core_side]) * 8u + 5u;
 			}
@@ -75,12 +80,20 @@ void Game::DrawBackGround() {
 		};
 		uint32_t fieldcode1 = 0;
 		const auto field_sequence1 = FieldSequence(0);
-		if(dField.szone[0][field_sequence1] && dField.szone[0][field_sequence1]->position & POS_FACEUP)
-			fieldcode1 = dField.szone[0][field_sequence1]->code;
+		const auto field_storage1 = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			? LocalPlayer(dInfo.GetLogicalCoreSide(dInfo.GetBattleRoyaleDisplayLogical(0))) : 0;
+		if(field_storage1 < 2 && field_sequence1 < dField.szone[field_storage1].size()
+				&& dField.szone[field_storage1][field_sequence1]
+				&& dField.szone[field_storage1][field_sequence1]->position & POS_FACEUP)
+			fieldcode1 = dField.szone[field_storage1][field_sequence1]->code;
 		uint32_t fieldcode2 = 0;
 		const auto field_sequence2 = FieldSequence(1);
-		if(dField.szone[1][field_sequence2] && dField.szone[1][field_sequence2]->position & POS_FACEUP)
-			fieldcode2 = dField.szone[1][field_sequence2]->code;
+		const auto field_storage2 = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			? LocalPlayer(dInfo.GetLogicalCoreSide(dInfo.GetBattleRoyaleDisplayLogical(1))) : 1;
+		if(field_storage2 < 2 && field_sequence2 < dField.szone[field_storage2].size()
+				&& dField.szone[field_storage2][field_sequence2]
+				&& dField.szone[field_storage2][field_sequence2]->position & POS_FACEUP)
+			fieldcode2 = dField.szone[field_storage2][field_sequence2]->code;
 		auto both = fieldcode1 | fieldcode2;
 		if(both == 0)
 			return false;
@@ -760,22 +773,32 @@ void Game::DrawMisc() {
 	ClientCard* pcard;
 	const size_t pzones[]{ dInfo.GetPzoneIndex(0), dInfo.GetPzoneIndex(1) };
 	for (size_t p = 0; p < 2; ++p) {
-		const auto core_side = LocalPlayer(static_cast<uint8_t>(p));
-		const auto field_count = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
-			? 2u : (dInfo.HasFieldFlag(DUEL_3_V_1) && core_side == 0
-				? static_cast<uint32_t>(dInfo.team1) : 1u);
+		const auto displayed_logical = dInfo.GetBattleRoyaleDisplayLogical(static_cast<uint8_t>(p));
+		const auto core_side = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			? dInfo.GetLogicalCoreSide(displayed_logical)
+			: LocalPlayer(static_cast<uint8_t>(p));
+		const auto storage_side = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			? LocalPlayer(core_side) : static_cast<uint8_t>(p);
+		const auto field_count = dInfo.HasFieldFlag(DUEL_3_V_1) && core_side == 0
+			? static_cast<uint32_t>(dInfo.team1) : 1u;
 		const size_t monster_offset = field_count > 1
-			? static_cast<size_t>(dInfo.field_focus[core_side]) * 7u : 0u;
+			? static_cast<size_t>(dInfo.field_focus[core_side]) * 7u
+			: dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+				? static_cast<size_t>(dInfo.GetLogicalDuelist(displayed_logical)) * 7u : 0u;
 		const size_t spell_offset = field_count > 1
-			? static_cast<size_t>(dInfo.field_focus[core_side]) * 8u : 0u;
+			? static_cast<size_t>(dInfo.field_focus[core_side]) * 8u
+			: dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+				? static_cast<size_t>(dInfo.GetLogicalDuelist(displayed_logical)) * 8u : 0u;
 		for (size_t i = 0; i < 7; ++i) {
-			pcard = dField.mzone[p][monster_offset + i];
+			pcard = storage_side < 2 && monster_offset + i < dField.mzone[storage_side].size()
+				? dField.mzone[storage_side][monster_offset + i] : nullptr;
 			if (pcard && pcard->code != 0 && (p == 0 || (pcard->position & POS_FACEUP)))
 				DrawStatus(pcard);
 		}
 		// Draw pendulum scales
 		for (const auto pzone : pzones) {
-			pcard = dField.szone[p][spell_offset + pzone];
+			pcard = storage_side < 2 && spell_offset + pzone < dField.szone[storage_side].size()
+				? dField.szone[storage_side][spell_offset + pzone] : nullptr;
 			if (pcard && (pcard->type & TYPE_PENDULUM) && !pcard->equipTarget)
 				DrawPendScale(pcard);
 		}

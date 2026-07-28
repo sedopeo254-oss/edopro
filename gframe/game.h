@@ -104,6 +104,10 @@ struct DuelInfo {
 	// sides. Battle Royale owns two saved fields per side; 3-vs-1 owns three
 	// on side 0 and one on side 1.
 	uint8_t field_focus[2]{ 0, 0 };
+	// Battle Royale is rendered as a stable two-seat view: the local logical
+	// player is always the lower field and this player is always the upper
+	// field. This is deliberately independent from the two core field sides.
+	uint8_t battle_royale_opponent_logical{ 0xff };
 	int team1;
 	int team2;
 	int best_of;
@@ -152,6 +156,44 @@ struct DuelInfo {
 	}
 	uint8_t GetLocalDuelist() const {
 		return GetLogicalDuelist(GetLocalLogicalPlayer());
+	}
+	uint8_t GetBattleRoyaleDisplayLogical(uint8_t display_side) const {
+		if(!HasFieldFlag(DUEL_BATTLE_ROYALE) || display_side > 1)
+			return 0xff;
+		if(display_side == 0)
+			return GetLocalLogicalPlayer();
+		if(battle_royale_opponent_logical < team1 + team2
+				&& battle_royale_opponent_logical != GetLocalLogicalPlayer()
+				&& (active_player_mask & (1u << battle_royale_opponent_logical)))
+			return battle_royale_opponent_logical;
+		for(uint8_t logical = 0; logical < team1 + team2; ++logical) {
+			if(logical != GetLocalLogicalPlayer()
+					&& (active_player_mask & (1u << logical)))
+				return logical;
+		}
+		return 0xff;
+	}
+	uint8_t GetBattleRoyaleDisplaySide(uint8_t logical) const {
+		if(!HasFieldFlag(DUEL_BATTLE_ROYALE))
+			return 0xff;
+		if(logical == GetBattleRoyaleDisplayLogical(0))
+			return 0;
+		if(logical == GetBattleRoyaleDisplayLogical(1))
+			return 1;
+		return 0xff;
+	}
+	bool SetBattleRoyaleOpponent(uint8_t logical) {
+		if(!HasFieldFlag(DUEL_BATTLE_ROYALE)
+				|| logical >= team1 + team2
+				|| logical == GetLocalLogicalPlayer()
+				|| !(active_player_mask & (1u << logical)))
+			return false;
+		battle_royale_opponent_logical = logical;
+		const auto core_side = GetLogicalCoreSide(logical);
+		const auto duelist = GetLogicalDuelist(logical);
+		if(core_side < 2 && duelist < 2)
+			field_focus[core_side] = duelist;
+		return true;
 	}
 	bool IsPinnedLocalField(uint8_t core_side) const {
 		return HasFieldFlag(DUEL_BATTLE_ROYALE)

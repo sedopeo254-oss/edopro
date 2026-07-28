@@ -773,6 +773,8 @@ void GenericDuel::Process() {
 		DuelEndProc();
 }
 void GenericDuel::DuelEndProc() {
+	if(!pduel)
+		return;
 	EndDuel();
 	packets_cache.clear();
 	int winc[3] = { 0, 0, 0 };
@@ -1366,7 +1368,6 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
 		if(logical_player < players.home_size + players.opposing_size)
 			SEND(GetAtPos(logical_player).player);
-		record = false;
 		break;
 	}
 	case MSG_PLAYER_ELIMINATED: {
