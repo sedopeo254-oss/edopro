@@ -1823,6 +1823,14 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dField.RefreshAllCards();
 		break;
 	}
+	case MSG_MULTIPLAYER_REPLAY_VIEW: {
+		const auto perspective = BufferIO::Read<uint8_t>(pbuf);
+		const auto opponent = BufferIO::Read<uint8_t>(pbuf);
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+			SetBattleRoyaleReplayView(perspective, opponent);
+		break;
+	}
 	case MSG_MULTIPLAYER_DECK_MASTER: {
 		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
 		const auto visible = BufferIO::Read<uint8_t>(pbuf);
@@ -3325,12 +3333,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				mainGame->WaitFrameSignal(3, lock);
 			}
 		}
-		const auto visible_count = std::min(
-			mainGame->dField.extra[player].size(), shuffled_codes.size());
-		for(size_t i = 0; i < visible_count; ++i) {
-			const auto& pcard = mainGame->dField.extra[player][i];
-			if(!(pcard->position & POS_FACEUP))
-				pcard->SetCode(shuffled_codes[i]);
+		size_t code_index = 0;
+		for(const auto& pcard : mainGame->dField.extra[player]) {
+			if(!(pcard->position & POS_FACEUP)
+					&& code_index < shuffled_codes.size())
+				pcard->SetCode(shuffled_codes[code_index++]);
 		}
 		return true;
 	}

@@ -129,7 +129,8 @@ public:
 	void RefreshLogicalDeckMasters();
 	void RefreshHandHitboxes();
 	void CycleTeamField();
-	void ReplaceMultiplayerPrivatePiles(uint8_t player, const MultiplayerPrivatePileSnapshot& snapshot);
+	void ReplaceMultiplayerPrivatePiles(uint8_t player,
+		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient = true);
 	void CacheMultiplayerPrivatePiles(uint8_t logical_player, const MultiplayerPrivatePileSnapshot& snapshot);
 	void CaptureBattleRoyaleReplayPrivatePiles();
 	void ApplyBattleRoyaleReplayPrivatePiles();

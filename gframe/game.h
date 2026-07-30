@@ -144,9 +144,20 @@ struct DuelInfo {
 		return logical < team1 + team2 ? logical : 0xff;
 	}
 	uint8_t GetLocalLogicalPlayer() const {
-		if(isReplay && HasFieldFlag(DUEL_BATTLE_ROYALE)
-				&& replay_battle_royale_perspective < team1 + team2)
-			return replay_battle_royale_perspective;
+		if(isReplay && HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			if(replay_battle_royale_perspective < team1 + team2
+					&& (active_player_mask
+						& (1u << replay_battle_royale_perspective)))
+				return replay_battle_royale_perspective;
+			if(logical_turn_player < team1 + team2
+					&& (active_player_mask & (1u << logical_turn_player)))
+				return logical_turn_player;
+			for(uint8_t logical = 0; logical < team1 + team2; ++logical) {
+				if(active_player_mask & (1u << logical))
+					return logical;
+			}
+			return 0xff;
+		}
 		return player_type < team1 + team2 ? player_type : 0xff;
 	}
 	uint8_t GetLogicalCoreSide(uint8_t logical) const {

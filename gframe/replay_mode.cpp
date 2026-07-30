@@ -282,6 +282,7 @@ bool ReplayMode::ReplayAnalyze(const CoreUtils::Packet& p) {
 		case MSG_MULTIPLAYER_DECK_MASTER:
 		case MSG_MULTIPLAYER_DRAW:
 		case MSG_MULTIPLAYER_PRIVATE_PILES:
+		case MSG_MULTIPLAYER_REPLAY_VIEW:
 		case MSG_RELOAD_FIELD: {
 			pauseable = false;
 			break;

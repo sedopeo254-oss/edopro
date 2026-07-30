@@ -740,32 +740,35 @@ void ClientField::RefreshAllCards() {
 		chit.UpdateDrawCoordinates();
 	mainGame->should_refresh_hands = true;
 }
-void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player, const MultiplayerPrivatePileSnapshot& snapshot) {
+void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
+		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient) {
 	if(player > 1)
 		return;
-	ClearSelect();
-	ClearChainSelect();
-	ClearCommandFlag();
-	selectable_cards.clear();
-	selected_cards.clear();
-	must_select_cards.clear();
-	selectsum_cards.clear();
-	selectsum_all.clear();
-	queued_panel_confirm_cards.clear();
-	display_cards.clear();
-	summonable_cards.clear();
-	spsummonable_cards.clear();
-	msetable_cards.clear();
-	ssetable_cards.clear();
-	reposable_cards.clear();
-	activatable_cards.clear();
-	attackable_cards.clear();
-	conti_cards.clear();
-	command_card = nullptr;
-	clicked_card = nullptr;
-	highlighting_card = nullptr;
-	attacker = nullptr;
-	attack_target = nullptr;
+	if(clear_transient) {
+		ClearSelect();
+		ClearChainSelect();
+		ClearCommandFlag();
+		selectable_cards.clear();
+		selected_cards.clear();
+		must_select_cards.clear();
+		selectsum_cards.clear();
+		selectsum_all.clear();
+		queued_panel_confirm_cards.clear();
+		display_cards.clear();
+		summonable_cards.clear();
+		spsummonable_cards.clear();
+		msetable_cards.clear();
+		ssetable_cards.clear();
+		reposable_cards.clear();
+		activatable_cards.clear();
+		attackable_cards.clear();
+		conti_cards.clear();
+		command_card = nullptr;
+		clicked_card = nullptr;
+		highlighting_card = nullptr;
+		attacker = nullptr;
+		attack_target = nullptr;
+	}
 
 	auto detach_card = [this](ClientCard* pcard) {
 		if(!pcard)
@@ -901,14 +904,19 @@ void ClientField::ApplyBattleRoyaleReplayPrivatePiles() {
 	if(!mainGame->dInfo.isReplay
 			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 		return;
+	bool clear_transient = true;
 	for(uint8_t display_side = 0; display_side < 2; ++display_side) {
 		const auto logical =
 			mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side);
-		if(logical >= multiplayer_private_piles.size()
-				|| !multiplayer_private_piles_valid[logical])
-			continue;
-		ReplaceMultiplayerPrivatePiles(
-			display_side, multiplayer_private_piles[logical]);
+		if(logical < multiplayer_private_piles.size()
+				&& multiplayer_private_piles_valid[logical]) {
+			ReplaceMultiplayerPrivatePiles(display_side,
+				multiplayer_private_piles[logical], clear_transient);
+		} else {
+			ReplaceMultiplayerPrivatePiles(display_side,
+				MultiplayerPrivatePileSnapshot{}, clear_transient);
+		}
+		clear_transient = false;
 	}
 }
 void ClientField::UpdateMultiplayerPrivateDraw(uint8_t logical_player,
