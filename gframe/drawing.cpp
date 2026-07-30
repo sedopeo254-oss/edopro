@@ -793,14 +793,14 @@ void Game::DrawMisc() {
 			pcard = storage_side < 2 && monster_offset + i < dField.mzone[storage_side].size()
 				? dField.mzone[storage_side][monster_offset + i] : nullptr;
 			if (pcard && pcard->code != 0 && (p == 0 || (pcard->position & POS_FACEUP)))
-				DrawStatus(pcard);
+				DrawStatus(pcard, static_cast<uint8_t>(p));
 		}
 		// Draw pendulum scales
 		for (const auto pzone : pzones) {
 			pcard = storage_side < 2 && spell_offset + pzone < dField.szone[storage_side].size()
 				? dField.szone[storage_side][spell_offset + pzone] : nullptr;
 			if (pcard && (pcard->type & TYPE_PENDULUM) && !pcard->equipTarget)
-				DrawPendScale(pcard);
+				DrawPendScale(pcard, static_cast<uint8_t>(p));
 		}
 		if (dField.extra[p].size()) {
 			const auto str = (dField.extra_p_count[p]) ? epro::format(L"{}({})", dField.extra[p].size(), dField.extra_p_count[p]) : epro::format(L"{}", dField.extra[p].size());
@@ -817,12 +817,12 @@ void Game::DrawMisc() {
 /*
 Draws the stats of a card based on its relative position
 */
-void Game::DrawStatus(ClientCard* pcard) {
+void Game::DrawStatus(ClientCard* pcard, uint8_t display_side) {
 	auto getcoords = [collisionmanager=device->getSceneManager()->getSceneCollisionManager()](const irr::core::vector3df& pos3d) {
 		return collisionmanager->getScreenCoordinatesFrom3DPosition(pos3d);
 	};
 	int x1, y1, x2, y2;
-	if (pcard->controler == 0) {
+	if (display_side == 0) {
 		auto coords = getcoords({ pcard->curPos.X, (0.39f + pcard->curPos.Y), pcard->curPos.Z });
 		x1 = coords.X;
 		y1 = coords.Y;
@@ -896,9 +896,9 @@ void Game::DrawStatus(ClientCard* pcard) {
 /*
 Draws the pendulum scale value of a card in the pendulum zone based on its relative position
 */
-void Game::DrawPendScale(ClientCard* pcard) {
+void Game::DrawPendScale(ClientCard* pcard, uint8_t display_side) {
 	int swap = (pcard->sequence > 1 && pcard->sequence != 6) ? 1 : 0;
-	float x0, y0, reverse = (pcard->controler == 0) ? 1.0f : -1.0f;
+	float x0, y0, reverse = (display_side == 0) ? 1.0f : -1.0f;
 	std::wstring scale;
 	if (swap) {
 		x0 = pcard->curPos.X - 0.35f * reverse;
@@ -907,7 +907,7 @@ void Game::DrawPendScale(ClientCard* pcard) {
 		x0 = pcard->curPos.X + 0.35f * reverse;
 		scale = pcard->lscstring;
 	}
-	if (pcard->controler == 0) {
+	if (display_side == 0) {
 		swap = 1 - swap;
 		y0 = pcard->curPos.Y - 0.56f;
 	} else

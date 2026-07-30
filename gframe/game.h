@@ -691,8 +691,8 @@ public:
 	void DrawCards();
 	void DrawCard(ClientCard* pcard);
 	void DrawMisc();
-	void DrawStatus(ClientCard* pcard);
-	void DrawPendScale(ClientCard* pcard);
+	void DrawStatus(ClientCard* pcard, uint8_t display_side);
+	void DrawPendScale(ClientCard* pcard, uint8_t display_side);
 	void DrawStackIndicator(epro::wstringview text, const Materials::QuadVertex v, bool opponent);
 	void DrawGUI();
 	void DrawSpec();
