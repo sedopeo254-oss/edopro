@@ -21,4 +21,6 @@ The same names work with the other supported extensions, for example `synchro.mp
 
 ## Windows and Linux runtime
 
-Animation decoding uses FFmpeg. Put `ffmpeg` and `ffplay` next to the game executable, or install them so they are available in `PATH`. `ffmpeg` provides the embedded video; `ffplay` provides the video's audio. If `ffplay` is unavailable, the animation still plays without its own audio.
+Animation decoding uses FFmpeg. The packaged Windows build includes `ffmpeg.exe` and `ffplay.exe` next to the game executable. On Linux, install `ffmpeg` and `ffplay` so they are available in `PATH`, or place compatible binaries next to the game executable.
+
+`ffmpeg` provides the embedded video; `ffplay` provides the video's audio. If `ffplay` is unavailable, the animation still plays without its own audio.
