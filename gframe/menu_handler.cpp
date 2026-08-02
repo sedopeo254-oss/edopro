@@ -214,6 +214,8 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 			case BUTTON_CREATE_HOST: {
 				if (wcslen(mainGame->ebNickName->getText())) {
 					mainGame->isHostingOnline = false;
+					// Passwords are per room. Empty intentionally creates an open room.
+					mainGame->ebServerPass->setText(L"");
 					mainGame->btnHostConfirm->setEnabled(true);
 					mainGame->btnHostCancel->setEnabled(true);
 					mainGame->HideElement(mainGame->wLanWindow);
@@ -227,6 +229,8 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 			}
 			case BUTTON_CREATE_HOST2: {
 				mainGame->isHostingOnline = true;
+				// Passwords are per room. Empty intentionally creates an open room.
+				mainGame->ebServerPass->setText(L"");
 				mainGame->btnHostConfirm->setEnabled(true);
 				mainGame->btnHostCancel->setEnabled(true);
 				mainGame->HideElement(mainGame->wRoomListPlaceholder);

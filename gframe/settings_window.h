@@ -23,6 +23,7 @@ struct SettingsPane {
 	irr::gui::IGUICheckBox* chkIgnoreOpponents;
 	irr::gui::IGUICheckBox* chkIgnoreSpectators;
 	irr::gui::IGUICheckBox* chkQuickAnimation;
+	irr::gui::IGUICheckBox* chkSummonAnimations;
 	irr::gui::IGUICheckBox* chkTopdown;
 	irr::gui::IGUICheckBox* chkKeepFieldRatio;
 	irr::gui::IGUICheckBox* chkAlternativePhaseLayout;
@@ -76,6 +77,7 @@ struct SettingsWindow {
 	irr::gui::IGUICheckBox* chkIgnoreOpponents;
 	irr::gui::IGUICheckBox* chkIgnoreSpectators;
 	irr::gui::IGUICheckBox* chkQuickAnimation;
+	irr::gui::IGUICheckBox* chkSummonAnimations;
 	irr::gui::IGUICheckBox* chkTopdown;
 	irr::gui::IGUICheckBox* chkKeepFieldRatio;
 	irr::gui::IGUICheckBox* chkKeepCardRatio;

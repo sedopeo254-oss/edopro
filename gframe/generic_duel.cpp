@@ -161,15 +161,24 @@ void GenericDuel::Catchup(DuelPlayer* dp) {
 	observers.insert(dp);
 }
 void GenericDuel::JoinGame(DuelPlayer* dp, CTOS_JoinGame* pkt, bool is_creator) {
-	static constexpr ClientVersion serverversion{ EXPAND_VERSION(CLIENT_VERSION) };
 	if(!is_creator) {
 		if(dp->game && dp->type != 0xff) {
 			JoinError scem{ JoinError::JERR_UNABLE };
 			NetServer::SendPacketToPlayer(dp, STOC_ERROR_MSG, scem);
 			return;
 		}
-		if(pkt->version2 != serverversion) {
-			VersionError scem{ serverversion };
+		// The room host is authoritative for rules, scripts and core execution.
+		// Client/core patch versions may differ as long as the wire protocol is
+		// compatible.
+		if(pkt->version != PRO_VERSION) {
+			STOC_ErrorMsg scem{ ERROR_TYPE::VERERROR, PRO_VERSION };
+			NetServer::SendPacketToPlayer(dp, STOC_ERROR_MSG, scem);
+			return;
+		}
+		dp->capabilities = pkt->capabilities;
+		if(IsMultiplayerMode()
+				&& !(dp->capabilities & NETWORK_CAP_MULTIPLAYER_V1)) {
+			JoinError scem{ JoinError::JERR_UNABLE };
 			NetServer::SendPacketToPlayer(dp, STOC_ERROR_MSG, scem);
 			return;
 		}
@@ -1233,6 +1242,17 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			}
 		}
 		packets_cache.push_back(packet);
+		break;
+	}
+	case MSG_SUMMON_ANIMATION: {
+		// Cosmetic packet: only send it to clients that negotiated support.
+		// It is recorded for new-format replays but intentionally not cached,
+		// because a spectator catching up must not replay old animations.
+		SEND(nullptr);
+		IteratePlayersAndObs([](DuelPlayer* dueler) {
+			if(dueler->capabilities & NETWORK_CAP_SUMMON_ANIMATIONS)
+				NetServer::ReSendToPlayer(dueler);
+		});
 		break;
 	}
 	case MSG_DRAW: {

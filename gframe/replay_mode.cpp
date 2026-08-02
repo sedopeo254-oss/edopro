@@ -264,6 +264,7 @@ bool ReplayMode::ReplayAnalyze(const CoreUtils::Packet& p) {
 		case MSG_FIELD_DISABLED:
 		case MSG_SUMMONING:
 		case MSG_SPSUMMONING:
+		case MSG_SUMMON_ANIMATION:
 		case MSG_FLIPSUMMONING:
 		case MSG_CHAIN_SOLVING:
 		case MSG_CHAIN_SOLVED:

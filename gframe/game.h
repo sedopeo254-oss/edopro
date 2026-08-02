@@ -20,6 +20,7 @@
 #include "discord_wrapper.h"
 #include "windbot_panel.h"
 #include "ocgapi_types.h"
+#include "summon_animation_player.h"
 
 struct unzip_payload;
 class CGUISkinSystem;
@@ -728,6 +729,8 @@ public:
 	void AddDebugMsg(epro::stringview msg);
 	void ClearTextures();
 	void CloseDuelWindow();
+	void PlaySummonAnimation(uint32_t summon_type);
+	void StopSummonAnimation();
 	void PopupMessage(epro::wstringview text, epro::wstringview caption = L"");
 	void PopupSaveWindow(epro::wstringview caption, epro::wstringview text, epro::wstringview hint);
 
@@ -867,6 +870,7 @@ public:
 	MenuHandler menuHandler;
 	std::shared_ptr<irr::IrrlichtDevice> device;
 	irr::video::IVideoDriver* driver;
+	std::unique_ptr<SummonAnimationPlayer> summonAnimationPlayer;
 	irr::scene::ISceneManager* smgr;
 	irr::scene::ICameraSceneNode* camera;
 	irr::io::IFileSystem* filesystem;

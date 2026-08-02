@@ -297,6 +297,7 @@ void ServerLobby::JoinServer(bool host) {
 			return;
 		if(room->locked) {
 			if(!mainGame->wRoomPassword->isVisible()) {
+				mainGame->ebRPName->setText(L"");
 				mainGame->wRoomPassword->setVisible(true);
 				return;
 			}
