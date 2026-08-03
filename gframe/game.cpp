@@ -9,7 +9,6 @@
 #include "game.h"
 #include "server_lobby.h"
 #include "sound_manager.h"
-#include "summon_animation_player.h"
 #include "image_manager.h"
 #include "data_manager.h"
 #include "deck_manager.h"
@@ -83,7 +82,6 @@ static inline epro::path_string NoSkinLabel() {
 }
 
 Game::~Game() {
-	summonAnimationPlayer.reset();
 	if(guiFont)
 		guiFont->drop();
 	if(textFont)
@@ -145,7 +143,6 @@ void Game::Initialize() {
 	linePatternGL = 0x0f0f;
 	menuHandler.prev_sel = -1;
 	driver = device->getVideoDriver();
-	summonAnimationPlayer = std::make_unique<SummonAnimationPlayer>(driver);
 	imageManager.SetDevice(device.get());
 	imageManager.Initial();
 	RefreshAiDecks();
@@ -295,7 +292,6 @@ void Game::Initialize() {
 	defaultStrings.emplace_back(tmpptr, 1222);
 	ebJoinPass = env->addEditBox(gGameConfig->roompass.data(), Scale(110, 385, 420, 410), true, wLanWindow);
 	ebJoinPass->setTextAlignment(irr::gui::EGUIA_CENTER, irr::gui::EGUIA_CENTER);
-	ebJoinPass->setPasswordBox(true);
 	btnJoinHost = env->addButton(Scale(460, 355, 570, 380), wLanWindow, BUTTON_JOIN_HOST, gDataManager->GetSysString(1223).data());
 	defaultStrings.emplace_back(btnJoinHost, 1223);
 	btnJoinCancel = env->addButton(Scale(460, 385, 570, 410), wLanWindow, BUTTON_JOIN_CANCEL, gDataManager->GetSysString(1212).data());
@@ -1034,7 +1030,6 @@ void Game::Initialize() {
 	defaultStrings.emplace_back(tmpptr, 2038);
 	ebRPName = env->addEditBox(L"", Scale(20, 50, 290, 70), true, wRoomPassword, -1);
 	ebRPName->setTextAlignment(irr::gui::EGUIA_CENTER, irr::gui::EGUIA_CENTER);
-	ebRPName->setPasswordBox(true);
 	btnRPYes = env->addButton(Scale(70, 80, 140, 105), wRoomPassword, BUTTON_ROOMPASSWORD_OK, gDataManager->GetSysString(1211).data());
 	defaultStrings.emplace_back(btnRPYes, 1211);
 	btnRPNo = env->addButton(Scale(170, 80, 240, 105), wRoomPassword, BUTTON_ROOMPASSWORD_CANCEL, gDataManager->GetSysString(1212).data());
@@ -1248,7 +1243,6 @@ void Game::PopulateGameHostWindows() {
 		defaultStrings.emplace_back(env->addStaticText(gDataManager->GetSysString(1235).data(), Scale(10, 370, 220, 390), false, false, tDuelSettings), 1235);
 		ebServerPass = env->addEditBox(L"", Scale(110, 365, 250, 390), true, tDuelSettings);
 		ebServerPass->setTextAlignment(irr::gui::EGUIA_CENTER, irr::gui::EGUIA_CENTER);
-		ebServerPass->setPasswordBox(true);
 		btnHostConfirm = env->addButton(Scale(260, 365, 370, 390), tDuelSettings, BUTTON_HOST_CONFIRM, gDataManager->GetSysString(1211).data());
 		defaultStrings.emplace_back(btnHostConfirm, 1211);
 		btnHostCancel = env->addButton(Scale(260, 395, 370, 420), tDuelSettings, BUTTON_HOST_CANCEL, gDataManager->GetSysString(1212).data());
@@ -1538,8 +1532,6 @@ void Game::PopulateTabSettingsWindow() {
 		tabSettings.chkQuickAnimation = env->addCheckBox(gGameConfig->quick_animation, GetNextRect(), tabPanel, CHECKBOX_QUICK_ANIMATION, gDataManager->GetSysString(1299).data());
 		menuHandler.MakeElementSynchronized(tabSettings.chkQuickAnimation);
 		defaultStrings.emplace_back(tabSettings.chkQuickAnimation, 1299);
-		tabSettings.chkSummonAnimations = env->addCheckBox(gGameConfig->summon_animations, GetNextRect(), tabPanel, CHECKBOX_SUMMON_ANIMATIONS, L"Enable summon animations");
-		menuHandler.MakeElementSynchronized(tabSettings.chkSummonAnimations);
 		tabSettings.chkTopdown = env->addCheckBox(gGameConfig->topdown_view, GetNextRect(), tabPanel, CHECKBOX_TOPDOWN, gDataManager->GetSysString(2093).data());
 		menuHandler.MakeElementSynchronized(tabSettings.chkTopdown);
 		defaultStrings.emplace_back(tabSettings.chkTopdown, 2093);
@@ -1725,8 +1717,6 @@ void Game::PopulateSettingsWindow() {
 		gSettings.chkQuickAnimation = env->addCheckBox(gGameConfig->quick_animation, GetNextRect(), sPanel, CHECKBOX_QUICK_ANIMATION, gDataManager->GetSysString(1299).data());
 		menuHandler.MakeElementSynchronized(gSettings.chkQuickAnimation);
 		defaultStrings.emplace_back(gSettings.chkQuickAnimation, 1299);
-		gSettings.chkSummonAnimations = env->addCheckBox(gGameConfig->summon_animations, GetNextRect(), sPanel, CHECKBOX_SUMMON_ANIMATIONS, L"Enable summon animations");
-		menuHandler.MakeElementSynchronized(gSettings.chkSummonAnimations);
 
 		gSettings.chkTopdown = env->addCheckBox(gGameConfig->topdown_view, GetNextRect(), sPanel, CHECKBOX_TOPDOWN, gDataManager->GetSysString(2093).data());
 		menuHandler.MakeElementSynchronized(gSettings.chkTopdown);
@@ -2061,8 +2051,6 @@ bool Game::MainLoop() {
 		delta_time = now - prev_time;
 		prev_time = now;
 		cur_time += delta_time;
-		if(summonAnimationPlayer)
-			summonAnimationPlayer->Tick(gGameConfig->summon_animations);
 		gJWrapper->ProcessEvents();
 		bool resized = false;
 		auto size = driver->getScreenSize();
@@ -2185,8 +2173,6 @@ bool Game::MainLoop() {
 		wBtnSettings->setVisible(!(is_building || is_siding || dInfo.isInDuel || open_file));
 		DrawGUI();
 		DrawSpec();
-		if(summonAnimationPlayer)
-			summonAnimationPlayer->Draw(window_size.Width, window_size.Height);
 		if(cardimagetextureloading) {
 			ShowCardInfo(showingcard);
 		}
@@ -3046,7 +3032,6 @@ void Game::ClearTextures() {
 	imageManager.ClearTexture();
 }
 void Game::CloseDuelWindow() {
-	StopSummonAnimation();
 	for(auto wit = fadingList.begin(); wit != fadingList.end(); ++wit) {
 		if(wit->isFadein)
 			wit->autoFadeoutFrame = 1;
@@ -3101,16 +3086,6 @@ void Game::CloseDuelWindow() {
 	showingcard = 0;
 	closeDuelWindow = false;
 	closeDoneSignal.Set();
-}
-
-void Game::PlaySummonAnimation(uint32_t summon_type) {
-	if(gGameConfig->summon_animations && summonAnimationPlayer)
-		summonAnimationPlayer->Play(summon_type);
-}
-
-void Game::StopSummonAnimation() {
-	if(summonAnimationPlayer)
-		summonAnimationPlayer->Stop();
 }
 void Game::PopupMessage(epro::wstringview text, epro::wstringview caption) {
 	std::lock_guard<epro::mutex> lock(popupCheck);

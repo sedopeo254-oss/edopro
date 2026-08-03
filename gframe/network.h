@@ -12,14 +12,6 @@
 
 namespace ygo {
 
-// Network features are negotiated independently from the client/core build
-// number. This lets compatible EDOPro updates join the same room while still
-// preventing a client from receiving packets it cannot understand.
-constexpr uint32_t NETWORK_CAP_MULTIPLAYER_V1 = 1u << 0;
-constexpr uint32_t NETWORK_CAP_SUMMON_ANIMATIONS = 1u << 1;
-constexpr uint32_t NETWORK_CAPABILITIES_CURRENT =
-	NETWORK_CAP_MULTIPLAYER_V1 | NETWORK_CAP_SUMMON_ANIMATIONS;
-
 struct ClientVersion {
 	struct {
 		uint8_t major;
@@ -92,7 +84,6 @@ struct CTOS_CreateGame {
 	uint16_t name[20];
 	uint16_t pass[20];
 	char notes[200];
-	uint32_t capabilities;
 };
 
 struct CTOS_JoinGame {
@@ -100,7 +91,6 @@ struct CTOS_JoinGame {
 	uint32_t gameid;
 	uint16_t pass[20];
 	ClientVersion version2;
-	uint32_t capabilities;
 };
 struct CTOS_Kick {
 	uint8_t pos;
@@ -224,13 +214,11 @@ struct DuelPlayer {
 	uint8_t type;
 	uint8_t state;
 	bufferevent* bev;
-	uint32_t capabilities;
 	DuelPlayer() {
 		game = 0;
 		type = 0;
 		state = 0;
 		bev = 0;
-		capabilities = 0;
 	}
 };
 

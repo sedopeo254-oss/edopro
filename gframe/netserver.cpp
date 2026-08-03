@@ -1,6 +1,5 @@
 #include "epro_thread.h"
 #include "config.h"
-#include <cstddef>
 #if EDOPRO_POSIX
 #include <arpa/inet.h>
 #endif
@@ -354,24 +353,16 @@ void NetServer::HandleCTOSPacket(DuelPlayer* dp, uint8_t* data, uint32_t len) {
 		if(dp->game || duel_mode)
 			return;
 		auto pkt = BufferIO::getStruct<CTOS_CreateGame>(pdata, len - 1);
-		if(pkt.info.handshake != SERVER_HANDSHAKE) {
+		if((pkt.info.handshake != SERVER_HANDSHAKE || pkt.info.version != serverversion)) {
 			VersionError vererr{ serverversion };
 			NetServer::SendPacketToPlayer(dp, STOC_ERROR_MSG, vererr);
 			return;
 		}
-		// Publish the authoritative server/core version to every room client.
-		// The room creator's patch version is not required to be identical.
-		pkt.info.version = serverversion;
 		const uint64_t duel_flags = static_cast<uint64_t>(pkt.info.duel_flag_low)
 			| (static_cast<uint64_t>(pkt.info.duel_flag_high) << 32);
 		const auto multiplayer_flags = duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
 		if(multiplayer_flags == (DUEL_BATTLE_ROYALE | DUEL_3_V_1))
 			return;
-		if(multiplayer_flags && !(pkt.capabilities & NETWORK_CAP_MULTIPLAYER_V1)) {
-			JoinError error{ JoinError::JERR_UNABLE };
-			NetServer::SendPacketToPlayer(dp, STOC_ERROR_MSG, error);
-			return;
-		}
 		if(multiplayer_flags == DUEL_BATTLE_ROYALE) {
 			pkt.info.team1 = 2;
 			pkt.info.team2 = 2;
@@ -399,15 +390,12 @@ void NetServer::HandleCTOSPacket(DuelPlayer* dp, uint8_t* data, uint32_t len) {
 		duel_mode->host_info = pkt.info;
 		BufferIO::DecodeUTF16(pkt.name, duel_mode->name, 20);
 		BufferIO::DecodeUTF16(pkt.pass, duel_mode->pass, 20);
-		dp->capabilities = pkt.capabilities;
 		duel_mode->JoinGame(dp, 0, true);
 		StartBroadcast();
 		break;
 	}
 	case CTOS_JOIN_GAME: {
-		// capabilities was appended to CTOS_JoinGame. Accept the legacy packet
-		// size so BufferIO can zero-fill the optional field.
-		if(!duel_mode || ((len - 1) < offsetof(CTOS_JoinGame, capabilities)))
+		if(!duel_mode || ((len - 1) < sizeof(CTOS_JoinGame)))
 			break;
 		auto pkt = BufferIO::getStruct<CTOS_JoinGame>(pdata, len - 1);
 		duel_mode->JoinGame(dp, &pkt, false);

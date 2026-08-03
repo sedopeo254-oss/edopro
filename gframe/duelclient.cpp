@@ -220,8 +220,7 @@ void DuelClient::ClientEvent([[maybe_unused]] bufferevent *bev, short events, vo
 		if(create_game) {
 #define TOI(what, from, def) try { what = std::stoi(from);  }\
 catch(...) { what = def; }
-			CTOS_CreateGame cscg{};
-			cscg.capabilities = NETWORK_CAPABILITIES_CURRENT;
+			CTOS_CreateGame cscg;
 			mainGame->dInfo.secret.game_id = 0;
 			BufferIO::EncodeUTF16(mainGame->ebServerName->getText(), cscg.name, 20);
 			BufferIO::EncodeUTF16(mainGame->ebServerPass->getText(), cscg.pass, 20);
@@ -277,8 +276,7 @@ catch(...) { what = def; }
 			}
 			SendPacketToServer(CTOS_CREATE_GAME, cscg);
 		} else {
-			CTOS_JoinGame csjg{};
-			csjg.capabilities = NETWORK_CAPABILITIES_CURRENT;
+			CTOS_JoinGame csjg;
 			if (temp_ver)
 				csjg.version = temp_ver;
 			else {
@@ -3985,13 +3983,6 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_SUMMONED: {
 		event_string = gDataManager->GetSysString(1604).data();
-		return true;
-	}
-	case MSG_SUMMON_ANIMATION: {
-		/*code = */BufferIO::Read<uint32_t>(pbuf);
-		const auto summon_type = BufferIO::Read<uint32_t>(pbuf);
-		if(!mainGame->dInfo.isCatchingUp)
-			mainGame->PlaySummonAnimation(summon_type);
 		return true;
 	}
 	case MSG_SPSUMMONING: {

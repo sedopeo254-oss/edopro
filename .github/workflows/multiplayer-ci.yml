@@ -108,7 +108,6 @@ jobs:
           ./travis/predeploy.sh
           mkdir -p deploy/textures
           cp textures/field-3v1.png deploy/textures/field-3v1.png
-          cp -r Animations deploy/
           cp -r multiplayer-effect-examples deploy/
           cp -r multiplayer-deck-master deploy/
       - uses: actions/download-artifact@v4
@@ -168,19 +167,8 @@ jobs:
           ./travis/predeploy.sh
           mkdir -p deploy/textures
           cp textures/field-3v1.png deploy/textures/field-3v1.png
-          cp -r Animations deploy/
           cp -r multiplayer-effect-examples deploy/
           cp -r multiplayer-deck-master deploy/
-          curl -fL --retry 3 \
-            https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip \
-            -o ffmpeg-essentials.zip
-          echo "db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec  ffmpeg-essentials.zip" | sha256sum -c -
-          unzip -q ffmpeg-essentials.zip -d ffmpeg-essentials
-          cp ffmpeg-essentials/*/bin/ffmpeg.exe deploy/
-          cp ffmpeg-essentials/*/bin/ffplay.exe deploy/
-          mkdir -p deploy/ffmpeg-license
-          cp ffmpeg-essentials/*/LICENSE deploy/ffmpeg-license/
-          cp ffmpeg-essentials/*/README.txt deploy/ffmpeg-license/
       - uses: actions/download-artifact@v4
         with:
           name: windbot-multiplayer-3v1
