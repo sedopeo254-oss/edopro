@@ -1,5 +1,7 @@
 name: Multiplayer CI
 
+# Stable multiplayer build: summon-video integration is intentionally disabled.
+
 on:
   push:
     branches:
