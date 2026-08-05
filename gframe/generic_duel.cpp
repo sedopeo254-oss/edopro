@@ -132,7 +132,7 @@ bool GenericDuel::AreLogicalTeammates(uint8_t first, uint8_t second) const {
 void GenericDuel::AbortMultiplayerDuel(uint8_t reason) {
 	if(!pduel)
 		return;
-	const uint8_t result[] = { MSG_WIN, PLAYER_NONE, reason };
+	uint8_t result[] = { MSG_WIN, PLAYER_NONE, reason };
 	NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, result, sizeof(result));
 	ResendToAll();
 	replay_stream.emplace_back(result, sizeof(result) - 1);
