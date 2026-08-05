@@ -65,11 +65,13 @@ index f6bed49..875fe51 100644
 +
 diff --git a/Game/AI/Decks/KingOfAnimeExecutor.cs b/Game/AI/Decks/KingOfAnimeExecutor.cs
 new file mode 100644
-index 0000000..491964d
+index 0000000..afa36b3
 --- /dev/null
 +++ b/Game/AI/Decks/KingOfAnimeExecutor.cs
-@@ -0,0 +1,97 @@
-+﻿using System.Collections.Generic;
+@@ -0,0 +1,160 @@
++﻿using System;
++using System.Collections.Generic;
++using System.Linq;
 +using YGOSharp.OCGWrapper.Enums;
 +using WindBot;
 +using WindBot.Game;
@@ -115,6 +117,7 @@ index 0000000..491964d
 +            AddExecutor(ExecutorType.Activate, _CardId.SolemnWarning, DefaultSolemnWarning);
 +            AddExecutor(ExecutorType.Activate, _CardId.SolemnStrike, DefaultSolemnStrike);
 +            AddExecutor(ExecutorType.Activate, _CardId.TorrentialTribute, DefaultTorrentialTribute);
++            AddExecutor(ExecutorType.Activate, _CardId.HeavyStorm, DefaultHeavyStorm);
 +            AddExecutor(ExecutorType.Activate, _CardId.HarpiesFeatherDuster, DefaultHarpiesFeatherDusterFirst);
 +            AddExecutor(ExecutorType.Activate, _CardId.DarkHole, DefaultDarkHole);
 +            AddExecutor(ExecutorType.Activate, _CardId.Raigeki, DefaultRaigeki);
@@ -159,6 +162,66 @@ index 0000000..491964d
 +            return !ForbiddenOnePieces.Contains(Card.Id) && Card.Level <= 4;
 +        }
 +
++        public override bool OnSelectHand()
++        {
++            // The generic strategy develops its board first; dedicated profiles can override this.
++            return true;
++        }
++
++        public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
++        {
++            IList<ClientCard> inherited = base.OnSelectCard(cards, min, max, hint, cancelable);
++            if (inherited != null)
++                return inherited;
++            if (cards == null || cards.Count == 0 || min != 1 || max != 1)
++                return null;
++
++            if (hint == HintMsg.Destroy || hint == HintMsg.Remove || hint == HintMsg.ReturnToHand
++                || hint == HintMsg.Control || hint == HintMsg.AttackTarget || hint == HintMsg.Target
++                || hint == HintMsg.Disable || hint == HintMsg.Negate)
++            {
++                ClientCard threat = cards
++                    .Where(card => card != null && card.Controller == 1)
++                    .OrderByDescending(GetThreatValue)
++                    .FirstOrDefault();
++                if (threat != null)
++                    return new List<ClientCard> { threat };
++            }
++
++            if (hint == HintMsg.Release || hint == HintMsg.Discard || hint == HintMsg.Tribute)
++            {
++                ClientCard expendable = cards
++                    .Where(card => card != null && card.Controller == 0 && !ForbiddenOnePieces.Contains(card.Id))
++                    .OrderBy(GetThreatValue)
++                    .FirstOrDefault();
++                if (expendable != null)
++                    return new List<ClientCard> { expendable };
++            }
++
++            if (hint == HintMsg.SpSummon || hint == HintMsg.ToField)
++            {
++                ClientCard strongest = cards
++                    .Where(card => card != null)
++                    .OrderByDescending(GetThreatValue)
++                    .FirstOrDefault();
++                if (strongest != null)
++                    return new List<ClientCard> { strongest };
++            }
++            return null;
++        }
++
++        private static int GetThreatValue(ClientCard card)
++        {
++            if (card == null)
++                return Int32.MinValue;
++            int power = Math.Max(card.Attack, card.GetDefensePower());
++            if (card.IsFaceup())
++                power += 250;
++            if (card.IsExtraCard())
++                power += 500;
++            return power;
++        }
++
 +        public override int OnSelectOption(IList<long> options)
 +        {
 +            // Stable decisions make replays reproducible and avoid Lucky's random choices.
@@ -167,12 +230,25 @@ index 0000000..491964d
 +    }
 +}
 diff --git a/Game/DecksManager.cs b/Game/DecksManager.cs
-index b79750e..a1edb14 100644
+index b79750e..5659f2d 100644
 --- a/Game/DecksManager.cs
 +++ b/Game/DecksManager.cs
 @@ -3,0 +4 @@ using System.IO;
 +using System.Linq;
-@@ -111,0 +113,53 @@ namespace WindBot.Game
+@@ -27,0 +29,9 @@ namespace WindBot.Game
++        private static readonly object _kingProfileLock = new object();
++        private static Dictionary<string, HashSet<int>> _kingProfiles;
++        private static Dictionary<int, int> _kingCardFrequency;
++        private static readonly HashSet<string> _kingExcludedProfiles = new HashSet<string>(StringComparer.Ordinal)
++        {
++            "KingOfAnime",
++            "Lucky",
++            "Test"
++        };
+@@ -32,0 +43,2 @@ namespace WindBot.Game
++            _kingProfiles = null;
++            _kingCardFrequency = null;
+@@ -111,0 +124,145 @@ namespace WindBot.Game
 +
 +        public static Executor InstantiateKingOfAnime(GameAI ai, Duel duel, Deck deck)
 +        {
@@ -191,10 +267,15 @@ index b79750e..a1edb14 100644
 +            if (deck == null)
 +                return null;
 +            HashSet<int> cards = new HashSet<int>(deck.Cards.Concat(deck.ExtraCards));
++            string closestProfile = FindClosestKingProfile(cards);
++            if (closestProfile != null)
++                return closestProfile;
 +            if (cards.Contains(55410871))
 +                return "BlueEyesMaxDragon";
 +            if (HasAny(cards, 89631139, 38517737, 59822133))
 +                return "Blue-Eyes";
++            if (HasAny(cards, 37818794, 6172122))
++                return "Dragun";
 +            if (HasAny(cards, 46986414, 47222536, 48680970))
 +                return "DarkMagician";
 +            if (HasAny(cards, 70095154, 74157028, 1546123))
@@ -219,7 +300,94 @@ index b79750e..a1edb14 100644
 +                return "Gravekeeper";
 +            if (HasAny(cards, 65247798, 92246806, 28630501))
 +                return "Yosenju";
++            if (HasAny(cards, 19510093, 90361010, 33918636))
++                return "SuperheavySamurai";
++            if (HasAny(cards, 73580471, 12213463, 26118970, 33698022))
++                return "Level VIII";
++            if (HasAny(cards, 28649820, 95561146, 85888377, 97800311))
++                return "Apophis";
++            if (HasAny(cards, 31786629, 15291624, 41685633))
++                return "ThunderDragon";
++            if (HasAny(cards, 30012506, 77411244, 3405259, 1561110))
++                return "ABC";
++            if (HasAny(cards, 9126351, 12538374, 63948258, 84451804))
++                return "Frog";
 +            return null;
++        }
++
++        private static string FindClosestKingProfile(HashSet<int> cards)
++        {
++            if (cards == null || cards.Count == 0)
++                return null;
++            EnsureKingProfileCache();
++            if (_kingProfiles == null || _kingProfiles.Count == 0)
++                return null;
++
++            int frequencyLimit = Math.Max(3, _kingProfiles.Count / 8);
++            string bestProfile = null;
++            int bestOverlap = 0;
++            double bestCoverage = 0;
++            foreach (KeyValuePair<string, HashSet<int>> entry in _kingProfiles.OrderBy(item => item.Key, StringComparer.Ordinal))
++            {
++                List<int> fingerprint = entry.Value
++                    .Where(id => _kingCardFrequency[id] <= frequencyLimit)
++                    .ToList();
++                if (fingerprint.Count == 0)
++                    continue;
++                int overlap = fingerprint.Count(cards.Contains);
++                double coverage = (double)overlap / fingerprint.Count;
++                if (overlap < 4 || (overlap < 6 && coverage < 0.18))
++                    continue;
++                if (overlap > bestOverlap || overlap == bestOverlap && coverage > bestCoverage)
++                {
++                    bestProfile = entry.Key;
++                    bestOverlap = overlap;
++                    bestCoverage = coverage;
++                }
++            }
++            if (bestProfile != null)
++            {
++                Logger.WriteLine("King of Anime matched " + bestProfile + " with " + bestOverlap
++                    + " archetype cards (" + Math.Round(bestCoverage * 100) + "% profile coverage).");
++            }
++            return bestProfile;
++        }
++
++        private static void EnsureKingProfileCache()
++        {
++            if (_kingProfiles != null)
++                return;
++            lock (_kingProfileLock)
++            {
++                if (_kingProfiles != null)
++                    return;
++                Dictionary<string, HashSet<int>> profiles = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
++                Dictionary<int, int> frequencies = new Dictionary<int, int>();
++                foreach (string profileName in _decks.Keys.OrderBy(name => name, StringComparer.Ordinal))
++                {
++                    if (_kingExcludedProfiles.Contains(profileName))
++                        continue;
++                    DeckInstance profileInfo = _decks[profileName];
++                    string deckPath = Path.GetFullPath(Path.Combine(Program.AssetPath, "Decks", profileInfo.Deck + ".ydk"));
++                    if (!File.Exists(deckPath))
++                        continue;
++                    Deck profileDeck = Deck.Load(deckPath);
++                    if (profileDeck == null)
++                        continue;
++                    HashSet<int> profileCards = new HashSet<int>(profileDeck.Cards.Concat(profileDeck.ExtraCards));
++                    if (profileCards.Count < 5)
++                        continue;
++                    profiles[profileName] = profileCards;
++                    foreach (int cardId in profileCards)
++                    {
++                        int count;
++                        frequencies.TryGetValue(cardId, out count);
++                        frequencies[cardId] = count + 1;
++                    }
++                }
++                _kingCardFrequency = frequencies;
++                _kingProfiles = profiles;
++            }
 +        }
 +
 +        private static bool HasAny(HashSet<int> cards, params int[] signatures)

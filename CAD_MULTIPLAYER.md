@@ -36,12 +36,19 @@ seats together.
 ## King of Anime AI
 
 Select **King of Anime** in the AI engine list, then choose an anime deck (or
-any custom `.ydk` deck). The engine detects signature cards and delegates to a
-dedicated strategy for Blue-Eyes, Dark Magician, Cyber Dragon, Yubel, Sacred
-Beasts, Utopia/ZW, Blackwing, Cyberse, Salamangreat, Trickstar, Altergeist,
-Gravekeeper, and Yosenju. Other decks use a deterministic general strategy
-with safer targeting, material selection, staple interaction, summoning, and
-position choices than the random Lucky engine.
+any custom `.ydk` deck). The engine first compares the selected list with every
+specialized WindBot strategy while ignoring commonly shared staple cards. This
+lets edited and anime-accurate variants inherit the closest complete combo,
+targeting, material, and battle logic instead of requiring an exact deck copy.
+
+Direct anime profile detection covers Blue-Eyes, Dark Magician, Cyber Dragon,
+Yubel, Sacred Beasts, Utopia/ZW, Blackwing, Cyberse, Salamangreat, Trickstar,
+Altergeist, Gravekeeper, Yosenju, Superheavy Samurai, Rose Dragon/Synchro,
+Apophis, Thunder Dragon, ABC, Dragun/Red-Eyes Fusion, and Frog. Decks close to
+any other bundled strategy are matched automatically. Only decks without a
+safe match use the deterministic general strategy, which prioritizes threats,
+preserves Exodia pieces, spends weaker cards for costs, and uses staple
+interaction more carefully than the random Lucky engine.
 
 The bundled WindBot also understands the extended 26-seat CaD lobby protocol
 and allocates independent field zones for every logical duelist. This is what
