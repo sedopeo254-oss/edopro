@@ -20,6 +20,7 @@
 #include "discord_wrapper.h"
 #include "windbot_panel.h"
 #include "ocgapi_types.h"
+#include "multiplayer_ui.h"
 
 struct unzip_payload;
 class CGUISkinSystem;
@@ -215,11 +216,10 @@ struct DuelInfo {
 				}
 			}
 		}
-		for(uint8_t logical = 0; logical < team1 + team2; ++logical) {
-			if(logical != GetLocalLogicalPlayer()
-					&& (active_player_mask & (1u << logical)))
-				return logical;
-		}
+		const auto stable = multiplayer_ui::GetStableOpponent(GetLocalLogicalPlayer(),
+			active_player_mask, team1 + team2);
+		if(stable >= 0)
+			return static_cast<uint8_t>(stable);
 		return 0xff;
 	}
 	uint8_t GetBattleRoyaleDisplaySide(uint8_t logical) const {

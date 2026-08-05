@@ -598,9 +598,10 @@ void Game::DrawMisc() {
 			const bool second_side = logical >= dInfo.team1;
 			const auto row_index = side_rows && second_side
 				? logical - dInfo.team1 : logical;
-			const irr::s32 top = side_rows && second_side ? 48 : 8;
+			const irr::s32 top = multiplayer_ui::GetHudTop(side_rows && second_side);
 			const irr::s32 left = layout_left + row_index * panel_width;
-			const auto panel = Resize(left, top, left + panel_width - 6, top + 36);
+			const auto panel_height = multiplayer_ui::GetHudPanelHeight();
+			const auto panel = Resize(left, top, left + panel_width - 6, top + panel_height);
 			const bool eliminated = (dInfo.eliminated_player_mask & (1u << logical))
 				|| !(dInfo.active_player_mask & (1u << logical));
 			const bool current = logical == dInfo.logical_turn_player;
@@ -612,30 +613,33 @@ void Game::DrawMisc() {
 				&& dInfo.universal_format == OCG_MULTIPLAYER_FORMAT_TEAMS;
 			const auto color_key = teams_mode ? dInfo.logical_team[logical] : logical;
 			const auto player_color = player_colors[color_key % player_colors.size()];
-			driver->draw2DRectangle(player_color, Resize(left, top, left + 4, top + 36));
+			driver->draw2DRectangle(player_color, Resize(left, top, left + 4, top + panel_height));
 			driver->draw2DRectangleOutline(panel, current ? irr::video::SColor{ 0xffffd060 }
 				: focused ? irr::video::SColor{ 0xff60e8ff } : player_color);
 
 			const auto lp = std::max(0, dInfo.logical_lp[logical]);
 			const auto lp_text = dInfo.logical_strLP[logical].empty()
 				? epro::to_wstring(lp) : dInfo.logical_strLP[logical];
-			DrawShadowText(textFont, lp_text, Resize(left + 7, top + 2, left + 50, top + 20),
-				Resize(0, 1, 1, 0), 0xffffffff, 0xff000000, false, true);
 			const auto team_label = teams_mode
 				? epro::format(L" T{}", dInfo.logical_team[logical] + 1) : std::wstring{};
 			const auto name = epro::format(L"{}{}P{}{} {}", eliminated ? L"OUT " : L"",
 				current ? L"> " : focused ? L"* " : L"",
 				logical + 1, team_label, PlayerName(logical));
-			const auto name_rect = Resize(left + 48, top + 2, left + panel_width - 10, top + 20);
+			const auto name_rect = Resize(left + 8, top + 1, left + panel_width - 9, top + 17);
 			textFont->drawustring(name, name_rect, eliminated ? 0xffff7070 : current ? 0xffffd060 : 0xffffffff,
 				false, true, &name_rect);
+			const auto lp_label = panel_width >= 100 ? epro::format(L"LP  {}", lp_text) : lp_text;
+			DrawShadowText(numFont, lp_label,
+				Resize(left + 7, top + 16, left + panel_width - 10, top + 34),
+				Resize(0, 1, 2, 0), eliminated ? 0xffff7070 : 0xffffffff,
+				0xff000000, true, true);
 
-			const auto bar = Resize(left + 7, top + 22, left + panel_width - 10, top + 29);
+			const auto bar = Resize(left + 7, top + 34, left + panel_width - 10, top + 38);
 			driver->draw2DRectangle(irr::video::SColor{ 0xff202020 }, bar);
 			const auto ratio = std::clamp(lp / static_cast<double>(std::max(1, dInfo.startlp)), 0.0, 1.0);
 			const auto bar_width = std::max(1, panel_width - 17);
-			const auto fill = Resize(left + 7, top + 22,
-				left + 7 + static_cast<irr::s32>(bar_width * ratio), top + 29);
+			const auto fill = Resize(left + 7, top + 34,
+				left + 7 + static_cast<irr::s32>(bar_width * ratio), top + 38);
 			if(lp > 0)
 				driver->draw2DRectangle(player_color, fill);
 			driver->draw2DRectangleOutline(bar, 0xff808080);
@@ -652,8 +656,12 @@ void Game::DrawMisc() {
 			else
 				DrawShadowText(lpcFont, lpcstring, Resize(400, 160, 920, 210), Resize(0, 2, 2, 0), (lpcalpha << 24) | lpccolor, (lpcalpha << 24) | 0x00ffffff, true);
 		}
-		DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(635, 88, 685, 123),
-			Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0x80000000, true);
+		// A dedicated opaque badge keeps the turn readable and above the lower
+		// player row instead of letting it drift into the play field.
+		driver->draw2DRectangle(irr::video::SColor{ 0xe0080b10 }, Resize(486, 0, 538, 34));
+		driver->draw2DRectangleOutline(Resize(486, 0, 538, 34), irr::video::SColor{ 0xffffd060 });
+		DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(488, 0, 536, 32),
+			Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0xff000000, true);
 	} else {
 	//lp bar
 	const auto& self = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;

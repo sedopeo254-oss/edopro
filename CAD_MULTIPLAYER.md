@@ -50,6 +50,12 @@ safe match use the deterministic general strategy, which prioritizes threats,
 preserves Exodia pieces, spends weaker cards for costs, and uses staple
 interaction more carefully than the random Lucky engine.
 
+The general strategy also records cards repeatedly activated by opponents in
+`WindBot/KingOfAnime.memory`. On later turns and later duels it raises those
+cards' threat score, so removal and negation choices adapt to recurring enemy
+tactics. The memory is bounded to 512 card entries and never changes card or
+deck data.
+
 The bundled WindBot also understands the extended 26-seat CaD lobby protocol
 and allocates independent field zones for every logical duelist. This is what
 allows CaD rooms containing local AI players to become Ready and start.
