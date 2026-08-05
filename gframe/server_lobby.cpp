@@ -111,14 +111,19 @@ void ServerLobby::FillOnlineRooms() {
 		const auto duel_flag = static_cast<uint64_t>(room.info.duel_flag_low)
 			| (static_cast<uint64_t>(room.info.duel_flag_high) << 32);
 		const auto multiplayer_label = (duel_flag & DUEL_BATTLE_ROYALE) ? L" (Battle Royale)"
-			: ((duel_flag & DUEL_3_V_1) ? L" (3 vs 1)" : L"");
+			: ((duel_flag & DUEL_3_V_1) ? L" (3 vs 1)"
+				: ((duel_flag & DUEL_UNIVERSAL_MULTIPLAYER)
+					? (room.info.mode == MODE_UNIVERSAL_TEAMS ? L" (CaD Teams)"
+						: room.info.mode == MODE_UNIVERSAL_BATTLE_ROYALE
+							? L" (CaD Battle Royal)" : L" (CaD Single Duel)")
+					: L""));
 		roomListTable->setCellText(index, 2, epro::format(L"[{}vs{}]{}{}{}", room.info.team1, room.info.team2,
 			(room.info.best_of > 1) ? epro::format(L" (best of {})", room.info.best_of) : L"",
 			multiplayer_label,
 			(room.info.duel_flag_low & DUEL_RELAY) ? L" (Relay)" : L"").data());
 		int rule;
 		const auto rule_flags = duel_flag & ~(DUEL_RELAY | DUEL_TCG_SEGOC_NONPUBLIC | DUEL_PSEUDO_SHUFFLE
-			| DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+			| DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_UNIVERSAL_MULTIPLAYER);
 		mainGame->GetMasterRule(rule_flags, room.info.forbiddentypes, &rule);
 		if(rule == 6) {
 			if(rule_flags == (DUEL_MODE_GOAT & ~DUEL_TCG_SEGOC_NONPUBLIC)) {
@@ -148,7 +153,11 @@ void ServerLobby::FillOnlineRooms() {
 		irr::video::SColor color;
 		if(room.started)
 			color = started_room;
-		else if(rule == 5 && !room.info.no_check_deck_content && room.info.sizes == normal_sizes && !room.info.no_shuffle_deck && room.info.start_lp == 8000 && room.info.start_hand == 5 && room.info.draw_count == 1)
+		else if(rule == 5
+				&& !(room.info.no_check_deck_content & HOST_NO_CHECK_DECK_CONTENT)
+				&& room.info.sizes == normal_sizes && !room.info.no_shuffle_deck
+				&& room.info.start_lp == 8000 && room.info.start_hand == 5
+				&& room.info.draw_count == 1)
 			color = normal_room;
 		else
 			color = custom_room;
@@ -242,7 +251,10 @@ void ServerLobby::GetRoomsThread() {
 				room.info.draw_count = GET("draw_count", int);
 				room.info.time_limit = GET("time_limit", int);
 				room.info.rule = GET("rule", int);
-				room.info.no_check_deck_content = GET("no_check", bool);
+					const auto& no_check = obj["no_check"];
+					room.info.no_check_deck_content = no_check.is_number_unsigned()
+						? no_check.get<uint8_t>()
+						: (no_check.get<bool>() ? HOST_NO_CHECK_DECK_CONTENT : 0);
 				room.info.no_shuffle_deck = GET("no_shuffle", bool) || (flag & DUEL_PSEUDO_SHUFFLE);
 				room.info.lflist = GET("banlist_hash", int);
 				room.info.sizes.main.min = GET("main_min", uint16_t);

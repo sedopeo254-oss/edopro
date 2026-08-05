@@ -82,13 +82,14 @@ struct DuelInfo {
 	bool local_player_eliminated{ false };
 	int current_player[2];
 	int lp[2];
-	int logical_lp[4]{ 0, 0, 0, 0 };
-	uint32_t logical_deck_count[4]{ 0, 0, 0, 0 };
-	uint32_t logical_hand_count[4]{ 0, 0, 0, 0 };
-	uint32_t logical_extra_count[4]{ 0, 0, 0, 0 };
-	uint32_t logical_grave_count[4]{ 0, 0, 0, 0 };
-	uint32_t logical_banish_count[4]{ 0, 0, 0, 0 };
-	uint32_t logical_deck_master_code[4]{ 0, 0, 0, 0 };
+	int logical_lp[OCG_MULTIPLAYER_MAX_PLAYERS]{};
+	uint32_t logical_deck_count[OCG_MULTIPLAYER_MAX_PLAYERS]{};
+	uint32_t logical_hand_count[OCG_MULTIPLAYER_MAX_PLAYERS]{};
+	uint32_t logical_extra_count[OCG_MULTIPLAYER_MAX_PLAYERS]{};
+	uint32_t logical_grave_count[OCG_MULTIPLAYER_MAX_PLAYERS]{};
+	uint32_t logical_banish_count[OCG_MULTIPLAYER_MAX_PLAYERS]{};
+	uint32_t logical_deck_master_code[OCG_MULTIPLAYER_MAX_PLAYERS]{};
+	uint8_t logical_team[OCG_MULTIPLAYER_MAX_PLAYERS]{};
 	bool logical_deck_master_enabled{ false };
 	uint8_t logical_active[2]{ 0, 1 };
 	int startlp;
@@ -96,9 +97,11 @@ struct DuelInfo {
 	uint64_t duel_params;
 	int turn;
 	uint8_t curMsg;
-	uint8_t active_player_mask{ 0x03 };
-	uint8_t eliminated_player_mask{ 0 };
-	uint8_t elimination_reason[4]{ 0, 0, 0, 0 };
+	uint32_t active_player_mask{ 0x03 };
+	uint32_t eliminated_player_mask{ 0 };
+	uint8_t elimination_reason[OCG_MULTIPLAYER_MAX_PLAYERS]{};
+	uint8_t universal_format{ OCG_MULTIPLAYER_FORMAT_SOLO };
+	uint8_t universal_flags{ 0 };
 	uint8_t logical_turn_player{ 0 };
 	// Replays have no fixed local duelist. In Battle Royale the turn owner is
 	// projected as the lower player and the relevant opponent as the upper one.
@@ -117,7 +120,7 @@ struct DuelInfo {
 	std::vector<std::wstring> selfnames;
 	std::vector<std::wstring> opponames;
 	std::wstring strLP[2];
-	std::wstring logical_strLP[4];
+	std::wstring logical_strLP[OCG_MULTIPLAYER_MAX_PLAYERS];
 	std::wstring vic_string;
 	uint8_t player_type;
 	uint8_t time_player;
@@ -128,8 +131,25 @@ struct DuelInfo {
 	bool HasFieldFlag(uint64_t flag) const {
 		return (flag & duel_params) == flag;
 	}
+	bool IsUniversalMultiplayer() const {
+		return HasFieldFlag(DUEL_UNIVERSAL_MULTIPLAYER);
+	}
+	bool IsAnyMultiplayer() const {
+		return HasFieldFlag(DUEL_BATTLE_ROYALE) || HasFieldFlag(DUEL_3_V_1)
+			|| IsUniversalMultiplayer();
+	}
+	bool UsesFocusedMultiplayerView() const {
+		return HasFieldFlag(DUEL_BATTLE_ROYALE) || IsUniversalMultiplayer();
+	}
+	uint8_t GetPlayerCount() const {
+		return static_cast<uint8_t>(team1 + team2);
+	}
+	bool IsDuelist() const {
+		return player_type < GetPlayerCount();
+	}
 	uint8_t GetLogicalPlayer(uint8_t core_side) const {
-		return core_side < 2 && logical_active[core_side] < 4 ? logical_active[core_side] : 0xff;
+		return core_side < 2 && logical_active[core_side] < team1 + team2
+			? logical_active[core_side] : 0xff;
 	}
 	uint8_t GetFocusedLogicalPlayer(uint8_t core_side) const {
 		if(core_side > 1)
@@ -144,8 +164,8 @@ struct DuelInfo {
 		return logical < team1 + team2 ? logical : 0xff;
 	}
 	uint8_t GetLocalLogicalPlayer() const {
-		if(isReplay && HasFieldFlag(DUEL_BATTLE_ROYALE)) {
-			if(replay_battle_royale_perspective < team1 + team2
+		if(UsesFocusedMultiplayerView() && (isReplay || !IsDuelist())) {
+			if(isReplay && replay_battle_royale_perspective < team1 + team2
 					&& (active_player_mask
 						& (1u << replay_battle_royale_perspective)))
 				return replay_battle_royale_perspective;
@@ -175,7 +195,7 @@ struct DuelInfo {
 		return GetLogicalDuelist(GetLocalLogicalPlayer());
 	}
 	uint8_t GetBattleRoyaleDisplayLogical(uint8_t display_side) const {
-		if(!HasFieldFlag(DUEL_BATTLE_ROYALE) || display_side > 1)
+		if(!UsesFocusedMultiplayerView() || display_side > 1)
 			return 0xff;
 		if(display_side == 0)
 			return GetLocalLogicalPlayer();
@@ -183,6 +203,18 @@ struct DuelInfo {
 				&& battle_royale_opponent_logical != GetLocalLogicalPlayer()
 				&& (active_player_mask & (1u << battle_royale_opponent_logical)))
 			return battle_royale_opponent_logical;
+		if(IsUniversalMultiplayer()
+				&& universal_format == OCG_MULTIPLAYER_FORMAT_TEAMS) {
+			const auto local = GetLocalLogicalPlayer();
+			if(local < team1 + team2) {
+				for(uint8_t logical = 0; logical < team1 + team2; ++logical) {
+					if(logical != local
+							&& logical_team[logical] != logical_team[local]
+							&& (active_player_mask & (1u << logical)))
+						return logical;
+				}
+			}
+		}
 		for(uint8_t logical = 0; logical < team1 + team2; ++logical) {
 			if(logical != GetLocalLogicalPlayer()
 					&& (active_player_mask & (1u << logical)))
@@ -191,7 +223,7 @@ struct DuelInfo {
 		return 0xff;
 	}
 	uint8_t GetBattleRoyaleDisplaySide(uint8_t logical) const {
-		if(!HasFieldFlag(DUEL_BATTLE_ROYALE))
+		if(!UsesFocusedMultiplayerView())
 			return 0xff;
 		if(logical == GetBattleRoyaleDisplayLogical(0))
 			return 0;
@@ -200,7 +232,7 @@ struct DuelInfo {
 		return 0xff;
 	}
 	bool SetBattleRoyaleOpponent(uint8_t logical) {
-		if(!HasFieldFlag(DUEL_BATTLE_ROYALE)
+		if(!UsesFocusedMultiplayerView()
 				|| logical >= team1 + team2
 				|| logical == GetLocalLogicalPlayer()
 				|| !(active_player_mask & (1u << logical)))
@@ -208,12 +240,12 @@ struct DuelInfo {
 		battle_royale_opponent_logical = logical;
 		const auto core_side = GetLogicalCoreSide(logical);
 		const auto duelist = GetLogicalDuelist(logical);
-		if(core_side < 2 && duelist < 2)
+		if(core_side < 2 && duelist < (core_side == 0 ? team1 : team2))
 			field_focus[core_side] = duelist;
 		return true;
 	}
 	bool SetBattleRoyaleReplayPerspective(uint8_t logical) {
-		if(!isReplay || !HasFieldFlag(DUEL_BATTLE_ROYALE)
+		if(!isReplay || !UsesFocusedMultiplayerView()
 				|| logical >= team1 + team2
 				|| !(active_player_mask & (1u << logical)))
 			return false;
@@ -222,7 +254,7 @@ struct DuelInfo {
 		return changed;
 	}
 	uint8_t GetBattleRoyalePrivateDisplaySide(uint8_t core_side, uint8_t duelist) const {
-		if(!HasFieldFlag(DUEL_BATTLE_ROYALE))
+		if(!UsesFocusedMultiplayerView())
 			return 0xff;
 		return GetBattleRoyaleDisplaySide(GetLogicalPlayer(core_side, duelist));
 	}
@@ -234,8 +266,8 @@ struct DuelInfo {
 			? GetBattleRoyaleDisplaySide(logical) : 0xff;
 	}
 	bool IsPinnedLocalField(uint8_t core_side) const {
-		return HasFieldFlag(DUEL_BATTLE_ROYALE)
-			&& GetLocalLogicalPlayer() < 4
+		return UsesFocusedMultiplayerView()
+			&& GetLocalLogicalPlayer() < team1 + team2
 			&& core_side == GetLocalCoreSide();
 	}
 	bool SetFieldFocus(uint8_t core_side, uint8_t duelist) {
@@ -255,8 +287,8 @@ struct DuelInfo {
 		return GetLogicalDuelist(logical);
 	}
 	uint8_t GetPromptCoreSide(uint8_t selecting_player) const {
-		if((duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1))
-				&& selecting_player >= 2 && selecting_player < 6) {
+		if(IsAnyMultiplayer() && selecting_player >= 2
+				&& selecting_player < 2 + team1 + team2) {
 			const auto logical = static_cast<uint8_t>(selecting_player - 2);
 			if(logical < team1 + team2)
 				return logical < team1 ? 0 : 1;
@@ -367,6 +399,8 @@ struct host_creation_panel_elements {
 	irr::gui::IGUIButton* btnRelayMode;
 	irr::gui::IGUIComboBox* cbMatchMode;
 	irr::gui::IGUIComboBox* cbMultiplayerMode;
+	irr::gui::IGUIEditBox* ebUniversalTeamCount;
+	irr::gui::IGUIStaticText* stUniversalTeamCount;
 	irr::gui::IGUIComboBox* cbRule;
 	irr::gui::IGUIEditBox* ebTimeLimit;
 	irr::gui::IGUIEditBox* ebTeam1;
@@ -421,9 +455,9 @@ struct host_panel_elements {
 	irr::gui::IGUIButton* btnHostPrepDuelist;
 	irr::gui::IGUIButton* btnHostPrepWindBot;
 	irr::gui::IGUIButton* btnHostPrepOB;
-	irr::gui::IGUIStaticText* stHostPrepDuelist[6];
-	irr::gui::IGUICheckBox* chkHostPrepReady[6];
-	irr::gui::IGUIButton* btnHostPrepKick[6];
+	irr::gui::IGUIStaticText* stHostPrepDuelist[OCG_MULTIPLAYER_MAX_PLAYERS];
+	irr::gui::IGUICheckBox* chkHostPrepReady[OCG_MULTIPLAYER_MAX_PLAYERS];
+	irr::gui::IGUIButton* btnHostPrepKick[OCG_MULTIPLAYER_MAX_PLAYERS];
 	irr::gui::IGUIComboBox* cbDeckSelect;
 	irr::gui::IGUIStaticText* stHostPrepRule;
 	irr::gui::IGUIStaticText* stHostPrepRuleR;

@@ -1,4 +1,4 @@
-# Virtual World Deck Masters in 3v1
+# Virtual World Deck Masters in Multiplayer
 
 Replace the matching card scripts with:
 
@@ -20,11 +20,13 @@ The multiplayer core adds these Lua helpers:
 - `Card.GetLogicalOwner()`
 - `Card.GetLogicalControler()`
 
-In 3v1 each of Serenity, Tristan, Duke, and Nezbitt chooses and owns an
-independent Deck Master. Effects registered through
+In 3v1 and Universal Multiplayer, every active logical player chooses and owns
+an independent Deck Master. Effects registered through
 `DeckMaster.RegisterAbilities` retain the Deck Master token as their handler, so
 chain prompts and selections are routed to the correct logical owner even when
-it is another teammate's turn.
+it is another player's turn. Losing a Deck Master eliminates only its owner;
+the selected Solo, Teams, or Battle Royal win condition then decides whether
+the Duel continues.
 
 Outside multiplayer, the scripts keep the original two-player agreement and
 Deck Master behavior.

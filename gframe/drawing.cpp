@@ -64,10 +64,10 @@ void Game::DrawBackGround() {
 		if(!gGameConfig->draw_field_spell)
 			return false;
 		auto FieldSequence = [&](uint8_t controler) -> size_t {
-			if(dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			if(dInfo.UsesFocusedMultiplayerView()) {
 				const auto logical = dInfo.GetBattleRoyaleDisplayLogical(controler);
 				const auto duelist = dInfo.GetLogicalDuelist(logical);
-				if(duelist < 2)
+				if(duelist < OCG_MULTIPLAYER_MAX_SIDE_PLAYERS)
 					return static_cast<size_t>(duelist) * 8u + 5u;
 			} else if(dInfo.HasFieldFlag(DUEL_3_V_1)) {
 				const auto core_side = LocalPlayer(controler);
@@ -80,7 +80,7 @@ void Game::DrawBackGround() {
 		};
 		uint32_t fieldcode1 = 0;
 		const auto field_sequence1 = FieldSequence(0);
-		const auto field_storage1 = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+		const auto field_storage1 = dInfo.UsesFocusedMultiplayerView()
 			? LocalPlayer(dInfo.GetLogicalCoreSide(dInfo.GetBattleRoyaleDisplayLogical(0))) : 0;
 		if(field_storage1 < 2 && field_sequence1 < dField.szone[field_storage1].size()
 				&& dField.szone[field_storage1][field_sequence1]
@@ -88,7 +88,7 @@ void Game::DrawBackGround() {
 			fieldcode1 = dField.szone[field_storage1][field_sequence1]->code;
 		uint32_t fieldcode2 = 0;
 		const auto field_sequence2 = FieldSequence(1);
-		const auto field_storage2 = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+		const auto field_storage2 = dInfo.UsesFocusedMultiplayerView()
 			? LocalPlayer(dInfo.GetLogicalCoreSide(dInfo.GetBattleRoyaleDisplayLogical(1))) : 1;
 		if(field_storage2 < 2 && field_sequence2 < dField.szone[field_storage2].size()
 				&& dField.szone[field_storage2][field_sequence2]
@@ -182,7 +182,7 @@ void Game::DrawBackGround() {
 	if(dField.hovered_location == 0 || dField.hovered_location == LOCATION_HAND || dField.hovered_location == POSITION_HINT)
 		return;
 	uint32_t display_sequence = dField.hovered_sequence;
-	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.UsesFocusedMultiplayerView()) {
 		if(dField.hovered_location == LOCATION_MZONE)
 			display_sequence %= 7u;
 		else if(dField.hovered_location == LOCATION_SZONE)
@@ -230,7 +230,7 @@ void Game::DrawBackGround() {
 	driver->drawVertexPrimitiveList(vertex, 4, matManager.iRectangle, 2);
 }
 void Game::DrawLinkedZones(ClientCard* pcard) {
-	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+	if(dInfo.IsAnyMultiplayer())
 		return;
 	auto CheckMutual = [&](ClientCard* pcard, int mark)->bool {
 		driver->setMaterial(matManager.mLinkedField);
@@ -565,15 +565,19 @@ void Game::DrawMisc() {
 		driver->setTransform(irr::video::ETS_WORLD, it);
 		driver->drawVertexPrimitiveList(matManager.vChainNum, 4, matManager.iRectangle, 2);
 	}
-	// Multiplayer modes have four independent LP panels. Reusing the normal
-	// two-team HUD stacked three names under one LP bar, which made inactive
-	// players look disabled and hid whose LP belonged to whom.
-	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+	// Independent LP panels keep every logical duelist visible. Universal
+	// rooms use one compact row per physical side, up to thirteen seats each.
+	if(dInfo.IsAnyMultiplayer()) {
 		const auto& team1_names = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
 		const auto& team2_names = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
-		const std::array<irr::video::SColor, 4> player_colors{
+		const std::array<irr::video::SColor, 13> player_colors{
 			irr::video::SColor{ 0xff4f7dff }, irr::video::SColor{ 0xffffd34f },
-			irr::video::SColor{ 0xff57e389 }, irr::video::SColor{ 0xffff5555 }
+			irr::video::SColor{ 0xff57e389 }, irr::video::SColor{ 0xffff5555 },
+			irr::video::SColor{ 0xffc77dff }, irr::video::SColor{ 0xff50d6d6 },
+			irr::video::SColor{ 0xffff9f43 }, irr::video::SColor{ 0xffd8e06b },
+			irr::video::SColor{ 0xffec7db8 }, irr::video::SColor{ 0xff8dcbff },
+			irr::video::SColor{ 0xffb0e35a }, irr::video::SColor{ 0xffff7b72 },
+			irr::video::SColor{ 0xffb69cff }
 		};
 		auto PlayerName = [&](uint8_t logical) -> const std::wstring& {
 			static const std::wstring unknown = L"Player";
@@ -582,9 +586,19 @@ void Game::DrawMisc() {
 			const auto index = static_cast<size_t>(logical - dInfo.team1);
 			return index < team2_names.size() ? team2_names[index] : unknown;
 		};
-		for(uint8_t logical = 0; logical < 4; ++logical) {
-			const irr::s32 left = 330 + logical * 165;
-			const auto panel = Resize(left, 8, left + 157, 44);
+		const auto player_count = dInfo.GetPlayerCount();
+		const auto max_row_count = std::max(dInfo.team1, dInfo.team2);
+		const bool side_rows = dInfo.IsUniversalMultiplayer();
+		const auto layout_columns = side_rows ? max_row_count : player_count;
+		const irr::s32 panel_width = std::clamp(
+			960 / std::max<int>(1, layout_columns), 70, 157);
+		for(uint8_t logical = 0; logical < player_count; ++logical) {
+			const bool second_side = logical >= dInfo.team1;
+			const auto row_index = side_rows && second_side
+				? logical - dInfo.team1 : logical;
+			const irr::s32 top = side_rows && second_side ? 48 : 8;
+			const irr::s32 left = 25 + row_index * panel_width;
+			const auto panel = Resize(left, top, left + panel_width - 6, top + 36);
 			const bool eliminated = (dInfo.eliminated_player_mask & (1u << logical))
 				|| !(dInfo.active_player_mask & (1u << logical));
 			const bool current = logical == dInfo.logical_turn_player;
@@ -592,28 +606,36 @@ void Game::DrawMisc() {
 			const bool focused = logical == dInfo.GetFocusedLogicalPlayer(core_side);
 			driver->draw2DRectangle(eliminated ? irr::video::SColor{ 0xd0401010 }
 				: irr::video::SColor{ 0xc010151d }, panel);
-			driver->draw2DRectangle(player_colors[logical], Resize(left, 8, left + 4, 44));
+			const bool teams_mode = dInfo.IsUniversalMultiplayer()
+				&& dInfo.universal_format == OCG_MULTIPLAYER_FORMAT_TEAMS;
+			const auto color_key = teams_mode ? dInfo.logical_team[logical] : logical;
+			const auto player_color = player_colors[color_key % player_colors.size()];
+			driver->draw2DRectangle(player_color, Resize(left, top, left + 4, top + 36));
 			driver->draw2DRectangleOutline(panel, current ? irr::video::SColor{ 0xffffd060 }
-				: focused ? irr::video::SColor{ 0xff60e8ff } : player_colors[logical]);
+				: focused ? irr::video::SColor{ 0xff60e8ff } : player_color);
 
 			const auto lp = std::max(0, dInfo.logical_lp[logical]);
 			const auto lp_text = dInfo.logical_strLP[logical].empty()
 				? epro::to_wstring(lp) : dInfo.logical_strLP[logical];
-			DrawShadowText(textFont, lp_text, Resize(left + 7, 10, left + 54, 28),
+			DrawShadowText(textFont, lp_text, Resize(left + 7, top + 2, left + 50, top + 20),
 				Resize(0, 1, 1, 0), 0xffffffff, 0xff000000, false, true);
-			const auto name = epro::format(L"{}{}P{} {}", eliminated ? L"OUT " : L"",
+			const auto team_label = teams_mode
+				? epro::format(L" T{}", dInfo.logical_team[logical] + 1) : std::wstring{};
+			const auto name = epro::format(L"{}{}P{}{} {}", eliminated ? L"OUT " : L"",
 				current ? L"> " : focused ? L"* " : L"",
-				logical + 1, PlayerName(logical));
-			const auto name_rect = Resize(left + 55, 10, left + 153, 28);
+				logical + 1, team_label, PlayerName(logical));
+			const auto name_rect = Resize(left + 48, top + 2, left + panel_width - 10, top + 20);
 			textFont->drawustring(name, name_rect, eliminated ? 0xffff7070 : current ? 0xffffd060 : 0xffffffff,
 				false, true, &name_rect);
 
-			const auto bar = Resize(left + 7, 30, left + 153, 37);
+			const auto bar = Resize(left + 7, top + 22, left + panel_width - 10, top + 29);
 			driver->draw2DRectangle(irr::video::SColor{ 0xff202020 }, bar);
 			const auto ratio = std::clamp(lp / static_cast<double>(std::max(1, dInfo.startlp)), 0.0, 1.0);
-			const auto fill = Resize(left + 7, 30, left + 7 + static_cast<irr::s32>(146 * ratio), 37);
+			const auto bar_width = std::max(1, panel_width - 17);
+			const auto fill = Resize(left + 7, top + 22,
+				left + 7 + static_cast<irr::s32>(bar_width * ratio), top + 29);
 			if(lp > 0)
-				driver->draw2DRectangle(player_colors[logical], fill);
+				driver->draw2DRectangle(player_color, fill);
 			driver->draw2DRectangleOutline(bar, 0xff808080);
 		}
 		if(lpframe > 0 && delta_frames) {
@@ -628,7 +650,7 @@ void Game::DrawMisc() {
 			else
 				DrawShadowText(lpcFont, lpcstring, Resize(400, 160, 920, 210), Resize(0, 2, 2, 0), (lpcalpha << 24) | lpccolor, (lpcalpha << 24) | 0x00ffffff, true);
 		}
-		DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(635, 65, 685, 100),
+		DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(635, 88, 685, 123),
 			Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0x80000000, true);
 	} else {
 	//lp bar
@@ -684,7 +706,7 @@ void Game::DrawMisc() {
 #undef SKCOLOR
 #define SKCOLOR(what) skin::TIMEBAR_##what##_VAL
 
-	if(!dInfo.isReplay && !dInfo.isSingleMode && dInfo.player_type < 7 && dInfo.time_limit) {
+	if(!dInfo.isReplay && !dInfo.isSingleMode && dInfo.IsDuelist() && dInfo.time_limit) {
 		auto rectpos = Resize(525, 34, 625, 44);
 		auto cliprect = Resize(525, 34, 525 + dInfo.time_left[0] * 100 / dInfo.time_limit, 44);
 		DRAWRECT(rectpos, 1, &cliprect);
@@ -774,20 +796,25 @@ void Game::DrawMisc() {
 	const size_t pzones[]{ dInfo.GetPzoneIndex(0), dInfo.GetPzoneIndex(1) };
 	for (size_t p = 0; p < 2; ++p) {
 		const auto displayed_logical = dInfo.GetBattleRoyaleDisplayLogical(static_cast<uint8_t>(p));
-		const auto core_side = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+		const auto core_side = dInfo.UsesFocusedMultiplayerView()
 			? dInfo.GetLogicalCoreSide(displayed_logical)
 			: LocalPlayer(static_cast<uint8_t>(p));
-		const auto storage_side = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+		// There can briefly be no second active field between the final
+		// elimination packet and MSG_WIN. Never turn the 0xff sentinel into
+		// an array index or a 255-field zone offset while drawing that frame.
+		if(core_side >= 2)
+			continue;
+		const auto storage_side = dInfo.UsesFocusedMultiplayerView()
 			? LocalPlayer(core_side) : static_cast<uint8_t>(p);
 		const auto field_count = dInfo.HasFieldFlag(DUEL_3_V_1) && core_side == 0
 			? static_cast<uint32_t>(dInfo.team1) : 1u;
 		const size_t monster_offset = field_count > 1
 			? static_cast<size_t>(dInfo.field_focus[core_side]) * 7u
-			: dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			: dInfo.UsesFocusedMultiplayerView()
 				? static_cast<size_t>(dInfo.GetLogicalDuelist(displayed_logical)) * 7u : 0u;
 		const size_t spell_offset = field_count > 1
 			? static_cast<size_t>(dInfo.field_focus[core_side]) * 8u
-			: dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			: dInfo.UsesFocusedMultiplayerView()
 				? static_cast<size_t>(dInfo.GetLogicalDuelist(displayed_logical)) * 8u : 0u;
 		for (size_t i = 0; i < 7; ++i) {
 			pcard = storage_side < 2 && monster_offset + i < dField.mzone[storage_side].size()

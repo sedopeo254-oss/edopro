@@ -9,6 +9,7 @@
 #include <IEventReceiver.h>
 #include <vector3d.h>
 #include <vector2d.h>
+#include "ocgapi_types.h"
 
 namespace ygo {
 
@@ -66,8 +67,8 @@ public:
 	std::vector<uint64_t> select_options;
 	std::vector<ChainInfo> chains;
 	int extra_p_count[2];
-	std::array<MultiplayerPrivatePileSnapshot, 4> multiplayer_private_piles;
-	std::array<bool, 4> multiplayer_private_piles_valid{};
+	std::array<MultiplayerPrivatePileSnapshot, OCG_MULTIPLAYER_MAX_PLAYERS> multiplayer_private_piles;
+	std::array<bool, OCG_MULTIPLAYER_MAX_PLAYERS> multiplayer_private_piles_valid{};
 
 	size_t selected_option;
 	ClientCard* attacker;

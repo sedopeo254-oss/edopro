@@ -43,6 +43,8 @@ private:
 	static epro::thread parsing_thread;
 	static epro::thread client_thread;
 	static epro::condition_variable cv;
+	static void ApplyTypeChange(uint8_t type, bool host);
+	static void ApplyPlayerChange(uint8_t pos, uint8_t value, bool is_move);
 public:
 	static RNG::mt19937 rnd;
 	static epro::Address temp_ip;

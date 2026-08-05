@@ -120,7 +120,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					ReplayMode::SwapField();
 				else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 					mainGame->dField.CycleTeamField();
-				else if(mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated)
+				else if(!mainGame->dInfo.IsDuelist() || mainGame->dInfo.local_player_eliminated)
 					DuelClient::SwapField();
 				break;
 			}
@@ -150,7 +150,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					SingleMode::StopPlay(false);
 					break;
 				}
-				if(mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated) {
+				if(!mainGame->dInfo.IsDuelist() || mainGame->dInfo.local_player_eliminated) {
 					if(mainGame->wFileSave->isVisible()) {
 						mainGame->saveReplay = false;
 						mainGame->HideElement(mainGame->wFileSave);
@@ -853,7 +853,8 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 				break;
 			}
 			case CHECKBOX_CHAIN_BUTTONS: {
-				if(mainGame->dInfo.isStarted && !mainGame->dInfo.isReplay && mainGame->dInfo.player_type < 7) {
+				if(mainGame->dInfo.isStarted && !mainGame->dInfo.isReplay
+						&& mainGame->dInfo.IsDuelist()) {
 					const bool checked = !mainGame->tabSettings.chkHideChainButtons->isChecked();
 					mainGame->btnChainIgnore->setVisible(checked);
 					mainGame->btnChainAlways->setVisible(checked);
@@ -1098,7 +1099,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 		case irr::EMIE_LMOUSE_DOUBLE_CLICK: {
 			if(mainGame->dInfo.isReplay)
 				break;
-			if(mainGame->dInfo.player_type == 7)
+			if(!mainGame->dInfo.IsDuelist())
 				break;
 			if(!mainGame->dInfo.isInDuel)
 				break;
@@ -1193,7 +1194,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					ShowSelectCard(true);
 				break;
 			}
-			if(mainGame->dInfo.player_type == 7) {
+			if(!mainGame->dInfo.IsDuelist()) {
 				if(mainGame->wCardSelect->isVisible())
 					break;
 				selectable_cards.clear();
@@ -1348,11 +1349,11 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					break;
 				uint32_t response_sequence = hovered_sequence;
 				if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+						|| mainGame->dInfo.UsesFocusedMultiplayerView()) {
 					const uint32_t stride = hovered_location == LOCATION_MZONE ? 7u : 8u;
 					const auto field_duelist = static_cast<uint8_t>(hovered_sequence / stride);
 					const auto core_side = mainGame->LocalPlayer(hovered_controler);
-					if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+					if(mainGame->dInfo.UsesFocusedMultiplayerView()) {
 						const auto logical = mainGame->dInfo.GetLogicalPlayer(core_side, field_duelist);
 						if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical) > 1)
 							break;
@@ -1746,7 +1747,8 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 		case irr::KEY_F6:
 		case irr::KEY_F7:
 		case irr::KEY_F8: {
-			if(!event.KeyInput.PressedDown && !mainGame->dInfo.isReplay && mainGame->dInfo.player_type != 7 && mainGame->dInfo.isInDuel
+			if(!event.KeyInput.PressedDown && !mainGame->dInfo.isReplay
+					&& mainGame->dInfo.IsDuelist() && mainGame->dInfo.isInDuel
 					&& !mainGame->wCardDisplay->isVisible() && !mainGame->HasFocus(irr::gui::EGUIET_EDIT_BOX)) {
 				switch(event.KeyInput.Key) {
 					case irr::KEY_F1:
@@ -2495,21 +2497,24 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 		auto MapBattleRoyaleField = [&](uint8_t display_side, uint8_t location,
 				uint32_t local_sequence, uint8_t& storage_controler,
 				uint32_t& storage_sequence) -> bool {
-			if(!mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+			if(!mainGame->dInfo.UsesFocusedMultiplayerView())
 				return false;
 			const auto logical = mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side);
 			const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical);
 			const auto duelist = mainGame->dInfo.GetLogicalDuelist(logical);
 			const uint32_t stride = location == LOCATION_MZONE ? 7u
 				: location == LOCATION_SZONE ? 8u : 0u;
-			if(core_side > 1 || duelist > 1 || !stride)
+			if(core_side > 1
+					|| duelist >= (core_side == 0
+						? mainGame->dInfo.team1 : mainGame->dInfo.team2)
+					|| !stride)
 				return false;
 			storage_controler = mainGame->LocalPlayer(core_side);
 			storage_sequence = local_sequence + static_cast<uint32_t>(duelist) * stride;
 			return true;
 		};
 		auto DisplayMzone = [&](uint8_t controler, uint32_t sequence) -> ClientCard* {
-			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			if(mainGame->dInfo.UsesFocusedMultiplayerView()) {
 				uint8_t storage_controler = controler;
 				uint32_t storage_sequence = sequence;
 				if(!MapBattleRoyaleField(controler, LOCATION_MZONE, sequence,
@@ -2675,7 +2680,7 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 				hovered_sequence = 4 - sequence;
 			}
 		}
-		if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+		if(mainGame->dInfo.UsesFocusedMultiplayerView()
 				&& (hovered_location == LOCATION_MZONE || hovered_location == LOCATION_SZONE)) {
 			uint8_t storage_controler = hovered_controler;
 			uint32_t storage_sequence = hovered_sequence;
@@ -2947,9 +2952,9 @@ void ClientField::SetResponseSelectedOption() const {
 		if((option & MULTIPLAYER_OPTION_PLAYER_MASK) == MULTIPLAYER_OPTION_PLAYER_BASE) {
 			const auto logical = static_cast<uint8_t>(option & 0xffu);
 			if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+						|| mainGame->dInfo.UsesFocusedMultiplayerView())
 					&& logical < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
-				if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				if(mainGame->dInfo.UsesFocusedMultiplayerView()) {
 					if(mainGame->dInfo.SetBattleRoyaleOpponent(logical))
 						mainGame->dField.RefreshAllCards();
 				} else {

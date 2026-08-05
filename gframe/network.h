@@ -12,6 +12,8 @@
 
 namespace ygo {
 
+static constexpr uint8_t MAX_DUELISTS = OCG_MULTIPLAYER_MAX_PLAYERS;
+
 struct ClientVersion {
 	struct {
 		uint8_t major;
@@ -202,8 +204,17 @@ struct STOC_HS_PlayerChange {
 	//pos<<4 | state
 	uint8_t status;
 };
+struct STOC_HS_PlayerChangeExtended {
+	uint8_t pos;
+	uint8_t action;
+	uint8_t value;
+};
 struct STOC_HS_WatchChange {
 	uint16_t watch_count;
+};
+struct STOC_TypeChangeExtended {
+	uint8_t type;
+	uint8_t is_host;
 };
 
 class DuelMode;
@@ -318,11 +329,16 @@ public:
 #define STOC_CHAT_2			0xf3
 
 #define STOC_NEW_REPLAY			0x30
+#define STOC_TYPE_CHANGE_EXTENDED 0x31
+#define STOC_HS_PLAYER_CHANGE_EXTENDED 0x32
 
 #define PLAYERCHANGE_OBSERVE	0x8
 #define PLAYERCHANGE_READY		0x9
 #define PLAYERCHANGE_NOTREADY	0xa
 #define PLAYERCHANGE_LEAVE		0xb
+
+#define PLAYERCHANGE_EXTENDED_MOVE 0x0
+#define PLAYERCHANGE_EXTENDED_STATE 0x1
 
 #define ERRMSG_JOINERROR	0x1
 #define ERRMSG_DECKERROR	0x2
@@ -335,6 +351,15 @@ public:
 #define MODE_TAG		0x2
 #define MODE_RELAY		0x3
 #define MODE_ARBITRARY	0x4
+#define MODE_UNIVERSAL_SOLO 0x5
+#define MODE_UNIVERSAL_TEAMS 0x6
+#define MODE_UNIVERSAL_BATTLE_ROYALE 0x7
+
+#define HOST_NO_CHECK_DECK_CONTENT 0x1
+#define HOST_UNIVERSAL_ARC_V_RULES 0x2
+#define HOST_UNIVERSAL_ALLOW_INTRUSION 0x4
+#define HOST_UNIVERSAL_TEAM_COUNT_SHIFT 3
+#define HOST_UNIVERSAL_TEAM_COUNT_MASK 0xf8
 
 #define SEALED_DUEL         0x1
 #define BOOSTER_DUEL        0x2

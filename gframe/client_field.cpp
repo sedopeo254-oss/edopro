@@ -665,7 +665,7 @@ void ClientField::ShowSelectOption(uint64_t select_hint, bool should_lock) {
 	mainGame->PopupElement(mainGame->wOptions);
 }
 void ClientField::ReplaySwap() {
-	if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+	if(mainGame->dInfo.UsesFocusedMultiplayerView())
 		return;
 	auto reset = [](ClientCard* const& pcard)->void {
 		if(pcard) {
@@ -866,7 +866,7 @@ void ClientField::CacheMultiplayerPrivatePiles(uint8_t logical_player,
 }
 void ClientField::CaptureBattleRoyaleReplayPrivatePiles() {
 	if(!mainGame->dInfo.isReplay
-			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			|| !mainGame->dInfo.UsesFocusedMultiplayerView()
 			|| mainGame->dInfo.replay_battle_royale_perspective
 				>= mainGame->dInfo.team1 + mainGame->dInfo.team2)
 		return;
@@ -902,7 +902,7 @@ void ClientField::CaptureBattleRoyaleReplayPrivatePiles() {
 }
 void ClientField::ApplyBattleRoyaleReplayPrivatePiles() {
 	if(!mainGame->dInfo.isReplay
-			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+			|| !mainGame->dInfo.UsesFocusedMultiplayerView())
 		return;
 	bool clear_transient = true;
 	for(uint8_t display_side = 0; display_side < 2; ++display_side) {
@@ -937,7 +937,7 @@ void ClientField::UpdateMultiplayerPrivateMove(uint8_t previous_logical,
 		uint8_t current_logical, uint8_t current_location,
 		uint32_t current_sequence, uint32_t code, uint8_t position) {
 	if(!mainGame->dInfo.isReplay
-			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+			|| !mainGame->dInfo.UsesFocusedMultiplayerView())
 		return;
 	auto get_cards = [](MultiplayerPrivatePileSnapshot& snapshot,
 			uint8_t location) -> std::vector<MultiplayerPrivatePileCard>* {
@@ -1000,12 +1000,12 @@ void ClientField::UpdateMultiplayerPrivateMove(uint8_t previous_logical,
 	}
 }
 void ClientField::RefreshLogicalDeckMasters() {
-	if(!mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+	if(!mainGame->dInfo.IsAnyMultiplayer()
 			|| !mainGame->dInfo.logical_deck_master_enabled)
 		return;
 	for(uint8_t field_side = 0; field_side < 2; ++field_side) {
 		const auto logical_player = mainGame->dInfo.GetFocusedLogicalPlayer(field_side);
-		if(logical_player >= 4)
+		if(logical_player >= mainGame->dInfo.GetPlayerCount())
 			continue;
 		const auto local_side = mainGame->LocalPlayer(field_side);
 		const auto code = mainGame->dInfo.logical_deck_master_code[logical_player];
@@ -1045,14 +1045,14 @@ void ClientField::GetChainDrawCoordinates(uint8_t controler, uint8_t location, u
 		return;
 	}
 	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-			|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			|| mainGame->dInfo.UsesFocusedMultiplayerView()) {
 		const auto base_location = location & (~LOCATION_OVERLAY);
 		const uint32_t stride = base_location == LOCATION_MZONE ? 7u
 			: base_location == LOCATION_SZONE ? 8u : 0u;
 		if(stride) {
 			const auto core_side = mainGame->LocalPlayer(controler);
 			const auto field_duelist = static_cast<uint8_t>(sequence / stride);
-			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			if(mainGame->dInfo.UsesFocusedMultiplayerView()) {
 				const auto logical = mainGame->dInfo.GetLogicalPlayer(core_side, field_duelist);
 				const auto display_side = mainGame->dInfo.GetBattleRoyaleDisplaySide(logical);
 				if(display_side > 1) {
@@ -1141,7 +1141,7 @@ static void getCardScreenCoordinates(ClientCard* pcard) {
 
 	const bool reveal_battle_royale_replay_hand =
 		mainGame->dInfo.isReplay
-		&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE);
+		&& mainGame->dInfo.UsesFocusedMultiplayerView();
 	const auto& frontmat = (pcard->code
 		&& (!mainGame->dInfo.isReplay
 			|| reveal_battle_royale_replay_hand
@@ -1182,7 +1182,7 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 	const int& location = pcard->location;
 	pcard->draw_scale = 1.0f;
 	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-			|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			|| mainGame->dInfo.UsesFocusedMultiplayerView()) {
 		const auto base_location = location == LOCATION_OVERLAY && pcard->overlayTarget
 			? pcard->overlayTarget->location : location;
 		const auto base_sequence = location == LOCATION_OVERLAY && pcard->overlayTarget
@@ -1190,7 +1190,7 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 		const uint32_t stride = base_location == LOCATION_MZONE ? 7u
 			: base_location == LOCATION_SZONE ? 8u : 0u;
 		const auto core_side = mainGame->LocalPlayer(static_cast<uint8_t>(controler));
-		if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) && stride) {
+		if(mainGame->dInfo.UsesFocusedMultiplayerView() && stride) {
 			const auto field_duelist = static_cast<uint8_t>(base_sequence / stride);
 			const auto logical = mainGame->dInfo.GetLogicalPlayer(core_side, field_duelist);
 			const auto display_side = mainGame->dInfo.GetBattleRoyaleDisplaySide(logical);
@@ -1207,7 +1207,7 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 			draw_controler = display_side;
 			sequence = static_cast<int>(base_sequence % stride);
 		} else {
-			const auto field_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			const auto field_count = mainGame->dInfo.UsesFocusedMultiplayerView()
 				? 2u : (core_side == 0 ? static_cast<uint32_t>(mainGame->dInfo.team1) : 1u);
 			if(stride && field_count > 1) {
 				const auto field_duelist = static_cast<uint8_t>(base_sequence / stride);
@@ -1291,7 +1291,7 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 		auto ShouldCardShow = [pcard] {
 			return pcard->code
 				&& (!mainGame->dInfo.isReplay
-					|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+					|| mainGame->dInfo.UsesFocusedMultiplayerView()
 					|| !gGameConfig->hideHandsInReplays
 					|| pcard->is_public || pcard->is_hovered);
 		};

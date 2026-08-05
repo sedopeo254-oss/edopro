@@ -1,5 +1,5 @@
 --機械軍曹機械軍曹
---Robotic Knight (Deck Master) - 3v1 effect expansion example
+--Robotic Knight (Deck Master) - universal multiplayer effect expansion example
 --Scripted by Larry126
 local s,id=GetID()
 function s.initial_effect(c)
@@ -33,10 +33,9 @@ function s.op(e,tp,eg,ep,ev,re,r,rp)
 		Duel.Damage(1-tp,ct*500,REASON_EFFECT)
 		return
 	end
-	for player=0,3 do
+	for player=0,25 do
 		if players&(1<<player)~=0 then
 			Duel.DamagePlayer(player,ct*500,REASON_EFFECT,false,tp,false)
 		end
 	end
 end
-
