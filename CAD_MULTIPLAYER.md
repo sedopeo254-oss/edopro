@@ -32,3 +32,17 @@ The live intrusion state and the 2000 LP intrusion penalty are implemented in
 the core rules model. Joining an already-running network Duel still requires a
 future server/client join protocol; the current lobby starts all configured
 seats together.
+
+## King of Anime AI
+
+Select **King of Anime** in the AI engine list, then choose an anime deck (or
+any custom `.ydk` deck). The engine detects signature cards and delegates to a
+dedicated strategy for Blue-Eyes, Dark Magician, Cyber Dragon, Yubel, Sacred
+Beasts, Utopia/ZW, Blackwing, Cyberse, Salamangreat, Trickstar, Altergeist,
+Gravekeeper, and Yosenju. Other decks use a deterministic general strategy
+with safer targeting, material selection, staple interaction, summoning, and
+position choices than the random Lucky engine.
+
+The bundled WindBot also understands the extended 26-seat CaD lobby protocol
+and allocates independent field zones for every logical duelist. This is what
+allows CaD rooms containing local AI players to become Ready and start.

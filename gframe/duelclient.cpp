@@ -30,6 +30,7 @@
 #include "porting.h"
 #include "fmt.h"
 #include "localtime.h"
+#include "multiplayer_ui.h"
 
 #define DEFAULT_DUEL_RULE 5
 namespace ygo {
@@ -4932,9 +4933,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			return true;
 		const float sy = distance / 2.0f;
 		mainGame->atk_t.set((xa + xd) / 2, (ya + yd) / 2, 0);
-		mainGame->atk_r.set(0, 0, -std::atan2(xd - xa, yd - ya));
-		if(ya <= yd)
-			mainGame->atk_r.Z += irr::core::PI;
+		mainGame->atk_r.set(0, 0,
+			multiplayer_ui::GetAttackArrowRotation(xa, ya, xd, yd));
 		matManager.GenArrow(sy);
 		mainGame->attack_sv = 0.0f;
 		mainGame->is_attacking = true;

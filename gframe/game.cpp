@@ -2533,7 +2533,9 @@ void Game::RefreshAiDecks() {
 							bot.masterRules.insert(masterRule.get<int>());
 						}
 					}
-					bool is_generic_engine = bot.deck == L"Lucky";
+					// King of Anime is the generic engine for custom/anime decks. Lucky
+					// remains available as a normal bot with its bundled test deck.
+					bool is_generic_engine = bot.deck == L"KingOfAnime";
 					if(is_generic_engine)
 						generic_engine_bot = bot;
 					else

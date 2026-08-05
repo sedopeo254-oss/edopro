@@ -32,9 +32,11 @@ jobs:
         run: |
           sh ./ocgcore/tests/run_multiplayer_state_tests.sh
           sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          c++ -std=c++17 -I. .github/tests/multiplayer_ui_test.cpp -o /tmp/multiplayer-ui-test
+          /tmp/multiplayer-ui-test
 
   windbot-compat:
-    name: WindBot 3-vs-1 compatibility
+    name: WindBot multiplayer and King of Anime
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +46,7 @@ jobs:
           ref: fa0ae767967afc6a820784837f11cd3fabb9c47c
           path: windbot
           submodules: recursive
-      - name: Apply expanded-field compatibility patch
+      - name: Apply multiplayer and anime-AI patch
         shell: bash
         run: git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
       - name: Pull Mono builder image
@@ -71,7 +73,7 @@ jobs:
           test -f windbot-package/WindBot/ExecutorBase.dll
       - uses: actions/upload-artifact@v4
         with:
-          name: windbot-multiplayer-3v1
+          name: windbot-multiplayer
           path: windbot-package/
           if-no-files-found: error
 
@@ -115,7 +117,7 @@ jobs:
           cp -r multiplayer-deck-master deploy/
       - uses: actions/download-artifact@v4
         with:
-          name: windbot-multiplayer-3v1
+          name: windbot-multiplayer
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:
@@ -175,7 +177,7 @@ jobs:
           cp -r multiplayer-deck-master deploy/
       - uses: actions/download-artifact@v4
         with:
-          name: windbot-multiplayer-3v1
+          name: windbot-multiplayer
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:

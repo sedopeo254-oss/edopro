@@ -10,6 +10,7 @@
 #include "custom_skin_enum.h"
 #include "image_manager.h"
 #include "fmt.h"
+#include "multiplayer_ui.h"
 
 namespace ygo {
 void Game::DrawSelectionLine(const Materials::QuadVertex vec, bool strip, int width, irr::video::SColor color) {
@@ -590,14 +591,15 @@ void Game::DrawMisc() {
 		const auto max_row_count = std::max(dInfo.team1, dInfo.team2);
 		const bool side_rows = dInfo.IsUniversalMultiplayer();
 		const auto layout_columns = side_rows ? max_row_count : player_count;
-		const irr::s32 panel_width = std::clamp(
-			960 / std::max<int>(1, layout_columns), 70, 157);
+		const irr::s32 panel_width = multiplayer_ui::GetHudPanelWidth(layout_columns);
+		const irr::s32 layout_left =
+			multiplayer_ui::GetHudLayoutLeft(layout_columns, panel_width);
 		for(uint8_t logical = 0; logical < player_count; ++logical) {
 			const bool second_side = logical >= dInfo.team1;
 			const auto row_index = side_rows && second_side
 				? logical - dInfo.team1 : logical;
 			const irr::s32 top = side_rows && second_side ? 48 : 8;
-			const irr::s32 left = 25 + row_index * panel_width;
+			const irr::s32 left = layout_left + row_index * panel_width;
 			const auto panel = Resize(left, top, left + panel_width - 6, top + 36);
 			const bool eliminated = (dInfo.eliminated_player_mask & (1u << logical))
 				|| !(dInfo.active_player_mask & (1u << logical));
