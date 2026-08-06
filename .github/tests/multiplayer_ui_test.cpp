@@ -21,6 +21,7 @@ int main() {
 	assert(GetStableOpponent(3, 0x02, 4) == 1);
 	assert(GetStableOpponent(0, 0x01, 4) == -1);
 	assert(GetStableOpponent(-1, 0x0f, 4) == -1);
+	assert(GetStableOpponent(0, 0x01, 1) == -1);
 
 	// Common 3v1/CaD layouts have enough margin to lift the turn counter all
 	// the way to the top. Dense/single-row layouts use the first non-overlap row.
