@@ -63,7 +63,8 @@ tosses, dice, and effects that explicitly select randomly—remains unchanged.
 The multiplayer HUD centers every LP panel inside the screen. Its turn counter
 uses the top margin whenever that space is free and otherwise occupies the
 first non-overlapping row beneath the LP panels, so it never covers a player's
-LP or name.
+LP or name. Opponent focus and replay/UI fallback choices are deterministic in
+CaD, legacy Battle Royale, and 3v1; Standard Duel behavior remains unchanged.
 
 The bundled WindBot also understands the extended 26-seat CaD lobby protocol
 and allocates independent field zones for every logical duelist. This is what
