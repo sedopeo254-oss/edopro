@@ -13,8 +13,17 @@ int main() {
 	assert(thirteen_player_width == 73);
 	assert(GetHudLayoutLeft(13, thirteen_player_width) == 37);
 	assert(GetHudPanelHeight() == 40);
-	assert(GetHudTop(false) == 6);
-	assert(GetHudTop(true) == 50);
+	assert(GetHudTop(false) == 39);
+	assert(GetHudTop(true) == 83);
+	assert(GetTurnBadgeBottom() < GetHudTop(false));
+	assert(GetTurnBadgeLeft() >= 0);
+	assert(GetTurnBadgeRight() <= HUD_BASE_WIDTH);
+	for(int columns = 1; columns <= 13; ++columns) {
+		const auto width = GetHudPanelWidth(columns);
+		const auto left = GetHudLayoutLeft(columns, width);
+		assert(left >= 0);
+		assert(left + columns * width <= HUD_BASE_WIDTH);
+	}
 	assert(GetStableOpponent(0, 0x0f, 4) == 1);
 	assert(GetStableOpponent(1, 0x0d, 4) == 2);
 	assert(GetStableOpponent(3, 0x09, 4) == 0);
@@ -22,14 +31,6 @@ int main() {
 	assert(GetStableOpponent(0, 0x01, 4) == -1);
 	assert(GetStableOpponent(-1, 0x0f, 4) == -1);
 	assert(GetStableOpponent(0, 0x01, 1) == -1);
-
-	// Common 3v1/CaD layouts have enough margin to lift the turn counter all
-	// the way to the top. Dense/single-row layouts use the first non-overlap row.
-	assert(GetTurnCounterLeft(159) == 51);
-	assert(GetTurnCounterTop(159, true) == 8);
-	assert(GetTurnCounterLeft(42) == 484);
-	assert(GetTurnCounterTop(42, false) == 48);
-	assert(GetTurnCounterTop(37, true) == 92);
 
 	constexpr float epsilon = 0.0001f;
 	const auto bottom_to_top = GetAttackArrowRotation(3.95f, 3.2f, 3.95f, -3.2f);
@@ -46,5 +47,15 @@ int main() {
 	assert(std::abs(right_to_left + 1.57079632f) < epsilon);
 	// Replaying the same packet must always produce exactly the same direction.
 	assert(GetAttackArrowRotation(3.0f, 3.0f, 4.0f, -3.0f) == bottom_to_top_right);
+	const auto stale_attacker = GetStableAttackPoint(3.0f, -1.4f, 0);
+	const auto stale_target = GetStableAttackPoint(4.0f, 1.4f, 1);
+	assert(stale_attacker.y > 0.0f);
+	assert(stale_target.y < 0.0f);
+	const auto corrected = GetAttackArrowRotation(stale_attacker.x,
+		stale_attacker.y, stale_target.x, stale_target.y);
+	assert(corrected > -1.0f && corrected < 1.0f);
+	assert(IsValidLogicalAttack(0, 2, 4, 0x0f));
+	assert(!IsValidLogicalAttack(2, 2, 4, 0x0f));
+	assert(!IsValidLogicalAttack(0, 3, 4, 0x07));
 	return 0;
 }

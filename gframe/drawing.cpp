@@ -656,15 +656,23 @@ void Game::DrawMisc() {
 			else
 				DrawShadowText(lpcFont, lpcstring, Resize(400, 160, 920, 210), Resize(0, 2, 2, 0), (lpcalpha << 24) | lpccolor, (lpcalpha << 24) | 0x00ffffff, true);
 		}
-		const auto turn_left = multiplayer_ui::GetTurnCounterLeft(layout_left);
-		const auto turn_top = multiplayer_ui::GetTurnCounterTop(layout_left, side_rows);
-		const auto turn_rect = Resize(turn_left, turn_top,
-			turn_left + multiplayer_ui::HUD_TURN_COUNTER_WIDTH,
-			turn_top + multiplayer_ui::HUD_TURN_COUNTER_HEIGHT);
-		driver->draw2DRectangle(irr::video::SColor{ 0xe0080b10 }, turn_rect);
-		driver->draw2DRectangleOutline(turn_rect, irr::video::SColor{ 0xffffd060 });
-		DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), turn_rect,
-			Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0xff000000, true);
+		// Reserve a dedicated top row for the turn badge. It never intersects
+		// either LP row, including the full 13-vs-13 CaD layout.
+		const auto turn_left = multiplayer_ui::GetTurnBadgeLeft();
+		const auto turn_right = multiplayer_ui::GetTurnBadgeRight();
+		const auto turn_top = multiplayer_ui::HUD_TURN_TOP;
+		const auto turn_bottom = multiplayer_ui::GetTurnBadgeBottom();
+		driver->draw2DRectangle(irr::video::SColor{ 0xf0080b10 },
+			Resize(turn_left, turn_top, turn_right, turn_bottom));
+		driver->draw2DRectangleOutline(
+			Resize(turn_left, turn_top, turn_right, turn_bottom),
+			irr::video::SColor{ 0xffffd060 });
+		const auto turn_text = epro::format(L"TURN  {}",
+			gDataManager->GetNumString(dInfo.turn));
+		DrawShadowText(numFont, turn_text,
+			Resize(turn_left + 3, turn_top + 1, turn_right - 3, turn_bottom - 1),
+			Resize(0, 1, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL,
+			0xff000000, true, true);
 	} else {
 	//lp bar
 	const auto& self = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;

@@ -60,11 +60,27 @@ by this layer are deterministic so identical replay packets keep identical UI
 directions and selections. Legal Yu-Gi-Oh! randomness—deck shuffling, coin
 tosses, dice, and effects that explicitly select randomly—remains unchanged.
 
-The multiplayer HUD centers every LP panel inside the screen. Its turn counter
-uses the top margin whenever that space is free and otherwise occupies the
-first non-overlapping row beneath the LP panels, so it never covers a player's
-LP or name. Opponent focus and replay/UI fallback choices are deterministic in
-CaD, legacy Battle Royale, and 3v1; Standard Duel behavior remains unchanged.
+The multiplayer HUD centers every LP panel inside the screen. A dedicated top
+row contains the turn badge, followed by two separated LP rows, so the counter
+never covers a player's LP or name even in the full 13-vs-13 layout. Opponent
+focus and replay/UI fallback choices are deterministic in CaD, legacy Battle
+Royale, and 3v1; Standard Duel behavior remains unchanged.
+
+King of Anime's persistent memory is an outcome-ranked opponent model, not an
+unbounded machine-learning service. It records only information revealed by
+legal game messages, keeps the memory file bounded, merges concurrent bot
+results safely, and uses prior wins/losses to rank threats, answers, option
+choices, and the first-or-second preference. Hand-written play lines remain
+limited to the specialized WindBot profiles bundled with this build; an anime
+or manga deck without a sufficiently close profile uses the deterministic
+general strategy.
+
+Strategy/profile work was checked against official Yu-Gi-Oh! sources:
+
+- Official card database: <https://www.db.yugioh-card.com/yugiohdb/card_search.action>
+- Legendary Dragon Decks: <https://www.yugioh-card.com/eu/product/legendary-dragon-decks/>
+- Jesse Anderson character profile: <https://www.yugioh.com/characters/jesse-anderson>
+- Official Kaiba deck recipe: <https://www.db.yugioh-card.com/yugiohdb/member_deck.action?cgid=8f06eba90ffaf38a3f7194ba670f72f6&dno=664&request_locale=en>
 
 The bundled WindBot also understands the extended 26-seat CaD lobby protocol
 and allocates independent field zones for every logical duelist. This is what

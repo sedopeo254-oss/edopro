@@ -51,6 +51,18 @@ jobs:
         run: |
           git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
           git -C windbot apply --unidiff-zero ../.github/patches/windbot-king-learning.patch
+          git -C windbot apply --unidiff-zero ../.github/patches/windbot-cad-fixes.patch
+      - name: Validate multiplayer bot sources
+        shell: bash
+        run: |
+          git -C windbot diff --check
+          test -f windbot/ExecutorBase/Game/AI/KingOfAnimeLearning.cs
+          grep -q 'Game\\AI\\KingOfAnimeLearning.cs' windbot/ExecutorBase/ExecutorBase.csproj
+          grep -q '\[Deck("Lucky", "AI_BlueEyes"' windbot/Game/AI/Decks/LuckyExecutor.cs
+          grep -q '\[Deck("KingOfAnime", "AI_BlueEyes"' windbot/Game/AI/Decks/KingOfAnimeExecutor.cs
+          grep -q 'LocalLogicalPlayer' windbot/Game/GameBehavior.cs
+          grep -q 'SelectKingLearnedCards' windbot/ExecutorBase/Game/GameAI.cs
+          ! grep -R '\[Deck("\(Lucky\|KingOfAnime\)", "AI_Test"' windbot/Game/AI/Decks
       - name: Pull Mono builder image
         shell: bash
         run: |

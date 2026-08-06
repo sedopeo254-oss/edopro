@@ -3,37 +3,28 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace ygo::multiplayer_ui {
+
+struct AttackPoint {
+	float x;
+	float y;
+};
+
+constexpr int HUD_BASE_WIDTH = 1024;
+constexpr int HUD_TURN_TOP = 3;
+constexpr int HUD_TURN_HEIGHT = 32;
+constexpr int HUD_TURN_WIDTH = 112;
+constexpr int HUD_FIRST_ROW_TOP = 39;
+constexpr int HUD_ROW_GAP = 44;
 
 constexpr int GetHudPanelWidth(int columns) {
 	return std::clamp(960 / std::max(1, columns), 70, 235);
 }
 
 constexpr int GetHudLayoutLeft(int columns, int panel_width) {
-	return std::max(8, (1024 - std::max(1, columns) * panel_width) / 2);
-}
-
-constexpr int HUD_TURN_COUNTER_WIDTH = 56;
-constexpr int HUD_TURN_COUNTER_HEIGHT = 35;
-
-// Prefer the unused left margin so the counter sits at the very top without
-// covering a player's LP/name. Dense layouts fall back to the first free row
-// directly beneath the LP panels.
-constexpr bool HasTurnCounterSideSpace(int layout_left) {
-	return layout_left >= HUD_TURN_COUNTER_WIDTH + 20;
-}
-
-constexpr int GetTurnCounterLeft(int layout_left) {
-	return HasTurnCounterSideSpace(layout_left)
-		? std::max(8, (layout_left - HUD_TURN_COUNTER_WIDTH) / 2)
-		: (1024 - HUD_TURN_COUNTER_WIDTH) / 2;
-}
-
-constexpr int GetTurnCounterTop(int layout_left, bool has_second_row) {
-	if(HasTurnCounterSideSpace(layout_left))
-		return 8;
-	return has_second_row ? 92 : 48;
+	return std::max(8, (HUD_BASE_WIDTH - std::max(1, columns) * panel_width) / 2);
 }
 
 constexpr int GetHudPanelHeight() {
@@ -41,7 +32,19 @@ constexpr int GetHudPanelHeight() {
 }
 
 constexpr int GetHudTop(bool second_side) {
-	return second_side ? 50 : 6;
+	return second_side ? HUD_FIRST_ROW_TOP + HUD_ROW_GAP : HUD_FIRST_ROW_TOP;
+}
+
+constexpr int GetTurnBadgeLeft() {
+	return (HUD_BASE_WIDTH - HUD_TURN_WIDTH) / 2;
+}
+
+constexpr int GetTurnBadgeRight() {
+	return GetTurnBadgeLeft() + HUD_TURN_WIDTH;
+}
+
+constexpr int GetTurnBadgeBottom() {
+	return HUD_TURN_TOP + HUD_TURN_HEIGHT;
 }
 
 // Keep fallback opponent selection stable. Starting immediately after the
@@ -63,6 +66,27 @@ constexpr int GetStableOpponent(int local, unsigned int active_mask, int player_
 inline float GetAttackArrowRotation(float attacker_x, float attacker_y,
 		float target_x, float target_y) {
 	return std::atan2(target_x - attacker_x, attacker_y - target_y);
+}
+
+// Focused multiplayer replays always render the perspective player on the
+// lower field (display side 0) and the selected opponent on the upper field
+// (display side 1). During a replay seek or camera change Irrlicht can retain
+// a card's previous transform for one frame. Correcting only that stale side
+// prevents a semantically reversed arrow while preserving exact zone-to-zone
+// arrows whenever the card transform is already current.
+constexpr AttackPoint GetStableAttackPoint(float x, float y, uint8_t display_side) {
+	if(display_side == 0 && y < 0.0f)
+		return { 3.95f, 3.2f };
+	if(display_side == 1 && y > 0.0f)
+		return { 3.95f, -3.2f };
+	return { x, y };
+}
+
+constexpr bool IsValidLogicalAttack(uint8_t attacker, uint8_t target,
+		uint8_t player_count, uint32_t active_mask) {
+	return attacker < player_count && target < player_count
+		&& attacker != target && (active_mask & (1u << attacker))
+		&& (active_mask & (1u << target));
 }
 
 }

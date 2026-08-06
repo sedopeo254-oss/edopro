@@ -4861,19 +4861,23 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		CoreUtils::loc_info info2 = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
 		const bool is_direct = info2.location == 0;
 		info2.controler = mainGame->LocalPlayer(info2.controler);
-		const auto attacker_logical =
-			!mainGame->dInfo.compat_mode
-				&& mainGame->dInfo.UsesFocusedMultiplayerView()
-				&& len >= 22 ? BufferIO::Read<uint8_t>(pbuf) : 0xff;
-		const auto attack_target_logical =
-			!mainGame->dInfo.compat_mode
-				&& mainGame->dInfo.UsesFocusedMultiplayerView()
-				&& len >= 22 ? BufferIO::Read<uint8_t>(pbuf) : 0xff;
+		const bool has_logical_attack = !mainGame->dInfo.compat_mode
+			&& mainGame->dInfo.UsesFocusedMultiplayerView() && len >= 22;
+		const auto attacker_logical = has_logical_attack
+			? BufferIO::Read<uint8_t>(pbuf) : 0xff;
+		const auto attack_target_logical = has_logical_attack
+			? BufferIO::Read<uint8_t>(pbuf) : 0xff;
+		const bool valid_logical_attack = multiplayer_ui::IsValidLogicalAttack(
+			attacker_logical, attack_target_logical,
+			mainGame->dInfo.GetPlayerCount(), mainGame->dInfo.active_player_mask);
 		if(mainGame->dInfo.UsesFocusedMultiplayerView()) {
-			if(mainGame->dInfo.isReplay
-					&& attacker_logical < mainGame->dInfo.GetPlayerCount()) {
+			if(mainGame->dInfo.isReplay && valid_logical_attack) {
 				SetBattleRoyaleReplayView(
 					attacker_logical, attack_target_logical);
+				// Re-apply card transforms even if a preceding replay-view packet
+				// already selected the same pair. This removes the one-frame stale
+				// transform that made P1 -> P3 look like P3 -> P1.
+				mainGame->dField.RefreshAllCards();
 			} else {
 				const auto local_logical = mainGame->dInfo.GetLocalLogicalPlayer();
 				const auto displayed_opponent = attacker_logical == local_logical
@@ -4927,6 +4931,16 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				? target_display : attacker_display == 0 ? 1 : 0);
 			xd = anchor.X;
 			yd = anchor.Y;
+		}
+		if(valid_logical_attack) {
+			const auto stable_attacker = multiplayer_ui::GetStableAttackPoint(
+				xa, ya, attacker_display);
+			const auto stable_target = multiplayer_ui::GetStableAttackPoint(
+				xd, yd, target_display);
+			xa = stable_attacker.x;
+			ya = stable_attacker.y;
+			xd = stable_target.x;
+			yd = stable_target.y;
 		}
 		const float distance = std::sqrt((xa - xd) * (xa - xd) + (ya - yd) * (ya - yd));
 		if(distance < 0.001f)
