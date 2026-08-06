@@ -669,7 +669,7 @@ void Game::DrawMisc() {
 			irr::video::SColor{ 0xffffd060 });
 		const auto turn_text = epro::format(L"TURN  {}",
 			gDataManager->GetNumString(dInfo.turn));
-		DrawShadowText(numFont, turn_text,
+		DrawShadowText(textFont, turn_text,
 			Resize(turn_left + 3, turn_top + 1, turn_right - 3, turn_bottom - 1),
 			Resize(0, 1, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL,
 			0xff000000, true, true);

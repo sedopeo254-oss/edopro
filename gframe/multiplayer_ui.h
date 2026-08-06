@@ -13,6 +13,14 @@ struct AttackPoint {
 };
 
 constexpr int HUD_BASE_WIDTH = 1024;
+// The card image/replay controls occupy the left edge of every duel screen.
+// Keep custom-mode HUD elements inside the unobstructed play area so P1 is
+// never hidden behind that panel at any window size or DPI scale.
+constexpr int HUD_CARD_PANEL_RIGHT = 198;
+constexpr int HUD_EDGE_PADDING = 8;
+constexpr int HUD_CONTENT_LEFT = HUD_CARD_PANEL_RIGHT + HUD_EDGE_PADDING;
+constexpr int HUD_CONTENT_RIGHT = HUD_BASE_WIDTH - HUD_EDGE_PADDING;
+constexpr int HUD_CONTENT_WIDTH = HUD_CONTENT_RIGHT - HUD_CONTENT_LEFT;
 constexpr int HUD_TURN_TOP = 3;
 constexpr int HUD_TURN_HEIGHT = 32;
 constexpr int HUD_TURN_WIDTH = 112;
@@ -20,11 +28,12 @@ constexpr int HUD_FIRST_ROW_TOP = 39;
 constexpr int HUD_ROW_GAP = 44;
 
 constexpr int GetHudPanelWidth(int columns) {
-	return std::clamp(960 / std::max(1, columns), 70, 235);
+	return std::clamp(HUD_CONTENT_WIDTH / std::max(1, columns), 60, 235);
 }
 
 constexpr int GetHudLayoutLeft(int columns, int panel_width) {
-	return std::max(8, (HUD_BASE_WIDTH - std::max(1, columns) * panel_width) / 2);
+	const int used_width = std::max(1, columns) * panel_width;
+	return HUD_CONTENT_LEFT + std::max(0, (HUD_CONTENT_WIDTH - used_width) / 2);
 }
 
 constexpr int GetHudPanelHeight() {
@@ -36,7 +45,7 @@ constexpr int GetHudTop(bool second_side) {
 }
 
 constexpr int GetTurnBadgeLeft() {
-	return (HUD_BASE_WIDTH - HUD_TURN_WIDTH) / 2;
+	return HUD_CONTENT_LEFT + (HUD_CONTENT_WIDTH - HUD_TURN_WIDTH) / 2;
 }
 
 constexpr int GetTurnBadgeRight() {

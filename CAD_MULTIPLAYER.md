@@ -60,11 +60,13 @@ by this layer are deterministic so identical replay packets keep identical UI
 directions and selections. Legal Yu-Gi-Oh! randomness—deck shuffling, coin
 tosses, dice, and effects that explicitly select randomly—remains unchanged.
 
-The multiplayer HUD centers every LP panel inside the screen. A dedicated top
-row contains the turn badge, followed by two separated LP rows, so the counter
-never covers a player's LP or name even in the full 13-vs-13 layout. Opponent
-focus and replay/UI fallback choices are deterministic in CaD, legacy Battle
-Royale, and 3v1; Standard Duel behavior remains unchanged.
+The multiplayer HUD centers every LP panel inside the unobstructed play area,
+to the right of the card-image and replay-control panel. A dedicated top row
+contains the turn badge, followed by two separated LP rows, so neither the
+sidebar nor the counter can cover a player's LP or name even in the full
+13-vs-13 layout. Opponent focus and replay/UI fallback choices are
+deterministic in CaD, legacy Battle Royale, and 3v1; Standard Duel behavior
+remains unchanged.
 
 King of Anime's persistent memory is an outcome-ranked opponent model, not an
 unbounded machine-learning service. It records only information revealed by

@@ -5,24 +5,27 @@
 
 int main() {
 	using namespace ygo::multiplayer_ui;
+	assert(HUD_CONTENT_LEFT > HUD_CARD_PANEL_RIGHT);
 	const auto four_player_width = GetHudPanelWidth(4);
-	assert(four_player_width == 235);
-	assert(GetHudLayoutLeft(4, four_player_width) == 42);
+	assert(four_player_width == 202);
+	assert(GetHudLayoutLeft(4, four_player_width) == 207);
+	assert(GetHudLayoutLeft(4, four_player_width) + 4 * four_player_width == 1015);
 
 	const auto thirteen_player_width = GetHudPanelWidth(13);
-	assert(thirteen_player_width == 73);
-	assert(GetHudLayoutLeft(13, thirteen_player_width) == 37);
+	assert(thirteen_player_width == 62);
+	assert(GetHudLayoutLeft(13, thirteen_player_width) == 208);
+	assert(GetHudLayoutLeft(13, thirteen_player_width) + 13 * thirteen_player_width == 1014);
 	assert(GetHudPanelHeight() == 40);
 	assert(GetHudTop(false) == 39);
 	assert(GetHudTop(true) == 83);
 	assert(GetTurnBadgeBottom() < GetHudTop(false));
-	assert(GetTurnBadgeLeft() >= 0);
-	assert(GetTurnBadgeRight() <= HUD_BASE_WIDTH);
+	assert(GetTurnBadgeLeft() >= HUD_CONTENT_LEFT);
+	assert(GetTurnBadgeRight() <= HUD_CONTENT_RIGHT);
 	for(int columns = 1; columns <= 13; ++columns) {
 		const auto width = GetHudPanelWidth(columns);
 		const auto left = GetHudLayoutLeft(columns, width);
-		assert(left >= 0);
-		assert(left + columns * width <= HUD_BASE_WIDTH);
+		assert(left >= HUD_CONTENT_LEFT);
+		assert(left + columns * width <= HUD_CONTENT_RIGHT);
 	}
 	assert(GetStableOpponent(0, 0x0f, 4) == 1);
 	assert(GetStableOpponent(1, 0x0d, 4) == 2);
