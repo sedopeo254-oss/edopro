@@ -87,3 +87,5 @@ Strategy/profile work was checked against official Yu-Gi-Oh! sources:
 The bundled WindBot also understands the extended 26-seat CaD lobby protocol
 and allocates independent field zones for every logical duelist. This is what
 allows CaD rooms containing local AI players to become Ready and start.
+
+<!-- CI trigger: HUD visible-area Windows build -->
