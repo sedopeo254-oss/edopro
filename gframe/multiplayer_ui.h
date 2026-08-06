@@ -14,6 +14,28 @@ constexpr int GetHudLayoutLeft(int columns, int panel_width) {
 	return std::max(8, (1024 - std::max(1, columns) * panel_width) / 2);
 }
 
+constexpr int HUD_TURN_COUNTER_WIDTH = 56;
+constexpr int HUD_TURN_COUNTER_HEIGHT = 35;
+
+// Prefer the unused left margin so the counter sits at the very top without
+// covering a player's LP/name. Dense layouts fall back to the first free row
+// directly beneath the LP panels.
+constexpr bool HasTurnCounterSideSpace(int layout_left) {
+	return layout_left >= HUD_TURN_COUNTER_WIDTH + 20;
+}
+
+constexpr int GetTurnCounterLeft(int layout_left) {
+	return HasTurnCounterSideSpace(layout_left)
+		? std::max(8, (layout_left - HUD_TURN_COUNTER_WIDTH) / 2)
+		: (1024 - HUD_TURN_COUNTER_WIDTH) / 2;
+}
+
+constexpr int GetTurnCounterTop(int layout_left, bool has_second_row) {
+	if(HasTurnCounterSideSpace(layout_left))
+		return 8;
+	return has_second_row ? 92 : 48;
+}
+
 constexpr int GetHudPanelHeight() {
 	return 40;
 }

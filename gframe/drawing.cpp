@@ -656,11 +656,14 @@ void Game::DrawMisc() {
 			else
 				DrawShadowText(lpcFont, lpcstring, Resize(400, 160, 920, 210), Resize(0, 2, 2, 0), (lpcalpha << 24) | lpccolor, (lpcalpha << 24) | 0x00ffffff, true);
 		}
-		// A dedicated opaque badge keeps the turn readable and above the lower
-		// player row instead of letting it drift into the play field.
-		driver->draw2DRectangle(irr::video::SColor{ 0xe0080b10 }, Resize(486, 0, 538, 34));
-		driver->draw2DRectangleOutline(Resize(486, 0, 538, 34), irr::video::SColor{ 0xffffd060 });
-		DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(488, 0, 536, 32),
+		const auto turn_left = multiplayer_ui::GetTurnCounterLeft(layout_left);
+		const auto turn_top = multiplayer_ui::GetTurnCounterTop(layout_left, side_rows);
+		const auto turn_rect = Resize(turn_left, turn_top,
+			turn_left + multiplayer_ui::HUD_TURN_COUNTER_WIDTH,
+			turn_top + multiplayer_ui::HUD_TURN_COUNTER_HEIGHT);
+		driver->draw2DRectangle(irr::video::SColor{ 0xe0080b10 }, turn_rect);
+		driver->draw2DRectangleOutline(turn_rect, irr::video::SColor{ 0xffffd060 });
+		DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), turn_rect,
 			Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0xff000000, true);
 	} else {
 	//lp bar

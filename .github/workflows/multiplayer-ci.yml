@@ -48,7 +48,9 @@ jobs:
           submodules: recursive
       - name: Apply multiplayer and anime-AI patch
         shell: bash
-        run: git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
+        run: |
+          git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
+          git -C windbot apply --unidiff-zero ../.github/patches/windbot-king-learning.patch
       - name: Pull Mono builder image
         shell: bash
         run: |

@@ -50,11 +50,20 @@ safe match use the deterministic general strategy, which prioritizes threats,
 preserves Exodia pieces, spends weaker cards for costs, and uses staple
 interaction more carefully than the random Lucky engine.
 
-The general strategy also records cards repeatedly activated by opponents in
-`WindBot/KingOfAnime.memory`. On later turns and later duels it raises those
-cards' threat score, so removal and negation choices adapt to recurring enemy
-tactics. The memory is bounded to 512 card entries and never changes card or
-deck data.
+King of Anime also keeps a persistent opponent model in
+`WindBot/KingOfAnimeMemory/opponent-memory.json`. It remembers revealed cards,
+activation sequences, direct-attack threats, first/second outcomes, option
+results, and which answer cards were associated with wins or losses. Later
+duels use that history to prioritize dangerous targets, search previously
+successful answers, and avoid repeating failed option choices. Decisions made
+by this layer are deterministic so identical replay packets keep identical UI
+directions and selections. Legal Yu-Gi-Oh! randomness—deck shuffling, coin
+tosses, dice, and effects that explicitly select randomly—remains unchanged.
+
+The multiplayer HUD centers every LP panel inside the screen. Its turn counter
+uses the top margin whenever that space is free and otherwise occupies the
+first non-overlapping row beneath the LP panels, so it never covers a player's
+LP or name.
 
 The bundled WindBot also understands the extended 26-seat CaD lobby protocol
 and allocates independent field zones for every logical duelist. This is what

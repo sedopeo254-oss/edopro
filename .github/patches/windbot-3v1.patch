@@ -68,10 +68,9 @@ new file mode 100644
 index 0000000..afa36b3
 --- /dev/null
 +++ b/Game/AI/Decks/KingOfAnimeExecutor.cs
-@@ -0,0 +1,240 @@
+@@ -0,0 +1,160 @@
 +﻿using System;
 +using System.Collections.Generic;
-+using System.IO;
 +using System.Linq;
 +using YGOSharp.OCGWrapper.Enums;
 +using WindBot;
@@ -88,9 +87,6 @@ index 0000000..afa36b3
 +    [Deck("KingOfAnime", "AI_Test", "Test")]
 +    public class KingOfAnimeExecutor : DefaultExecutor
 +    {
-+        private static readonly object MemoryLock = new object();
-+        private static readonly Dictionary<int, int> OpponentTacticMemory = LoadTacticMemory();
-+        private static bool MemoryDirty;
 +        private static readonly HashSet<int> ForbiddenOnePieces = new HashSet<int>
 +        {
 +            _CardId.ExodiaTheForbiddenOne,
@@ -172,26 +168,6 @@ index 0000000..afa36b3
 +            return true;
 +        }
 +
-+        public override void OnChaining(int player, ClientCard card)
-+        {
-+            base.OnChaining(player, card);
-+            if (player != 1 || card == null || card.Id <= 0)
-+                return;
-+            lock (MemoryLock)
-+            {
-+                int uses;
-+                OpponentTacticMemory.TryGetValue(card.Id, out uses);
-+                OpponentTacticMemory[card.Id] = Math.Min(1000, uses + 1);
-+                MemoryDirty = true;
-+            }
-+        }
-+
-+        public override void OnNewTurn()
-+        {
-+            base.OnNewTurn();
-+            SaveTacticMemory();
-+        }
-+
 +        public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
 +        {
 +            IList<ClientCard> inherited = base.OnSelectCard(cards, min, max, hint, cancelable);
@@ -243,63 +219,7 @@ index 0000000..afa36b3
 +                power += 250;
 +            if (card.IsExtraCard())
 +                power += 500;
-+            lock (MemoryLock)
-+            {
-+                int rememberedUses;
-+                if (OpponentTacticMemory.TryGetValue(card.Id, out rememberedUses))
-+                    power += Math.Min(2500, rememberedUses * 125);
-+            }
 +            return power;
-+        }
-+
-+        private static Dictionary<int, int> LoadTacticMemory()
-+        {
-+            Dictionary<int, int> result = new Dictionary<int, int>();
-+            try
-+            {
-+                string path = Path.Combine(Program.AssetPath, "KingOfAnime.memory");
-+                if (!File.Exists(path))
-+                    return result;
-+                foreach (string line in File.ReadAllLines(path))
-+                {
-+                    string[] fields = line.Split(new char[] { ':' });
-+                    int id;
-+                    int uses;
-+                    if (fields.Length == 2 && Int32.TryParse(fields[0], out id)
-+                        && Int32.TryParse(fields[1], out uses) && id > 0 && uses > 0)
-+                        result[id] = Math.Min(1000, uses);
-+                }
-+            }
-+            catch (Exception exception)
-+            {
-+                Logger.WriteLine("King of Anime could not load tactic memory: " + exception.Message);
-+            }
-+            return result;
-+        }
-+
-+        private static void SaveTacticMemory()
-+        {
-+            lock (MemoryLock)
-+            {
-+                if (!MemoryDirty)
-+                    return;
-+                try
-+                {
-+                    string path = Path.Combine(Program.AssetPath, "KingOfAnime.memory");
-+                    string[] lines = OpponentTacticMemory
-+                        .OrderByDescending(entry => entry.Value)
-+                        .ThenBy(entry => entry.Key)
-+                        .Take(512)
-+                        .Select(entry => entry.Key + ":" + entry.Value)
-+                        .ToArray();
-+                    File.WriteAllLines(path, lines);
-+                    MemoryDirty = false;
-+                }
-+                catch (Exception exception)
-+                {
-+                    Logger.WriteLine("King of Anime could not save tactic memory: " + exception.Message);
-+                }
-+            }
 +        }
 +
 +        public override int OnSelectOption(IList<long> options)
