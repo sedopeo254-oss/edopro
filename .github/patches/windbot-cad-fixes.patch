@@ -14,7 +14,7 @@ index 875fe51..0d50b3c 100644
 +            if (IsThreeVsOne)
 +                return logicalPlayer < 3 ? 0 : 1;
 +            if (IsUniversalMultiplayer && UniversalFormat == 6)
-+                return logicalPlayer % Math.Max(2, UniversalTeamCount);
++                return logicalPlayer % System.Math.Max(2, UniversalTeamCount);
 +            return logicalPlayer;
 +        }
 +
@@ -50,19 +50,19 @@ index a3845b9..362e4cc 100644
 +            if (opponentTarget)
 +                candidates = candidates.Where(card => card.Controller == 1)
 +                    .OrderByDescending(card => _kingLearning.GetThreatScore(card.Id))
-+                    .ThenByDescending(card => Math.Max(card.Attack, card.GetDefensePower()))
++                    .ThenByDescending(card => System.Math.Max(card.Attack, card.GetDefensePower()))
 +                    .ThenBy(card => card.Id).ThenBy(card => card.Sequence);
 +            else if (costChoice)
 +                candidates = candidates.Where(card => card.Controller == 0)
 +                    .OrderBy(card => _kingLearning.GetSolutionScore(card.Id))
-+                    .ThenBy(card => Math.Max(card.Attack, card.GetDefensePower()))
++                    .ThenBy(card => System.Math.Max(card.Attack, card.GetDefensePower()))
 +                    .ThenBy(card => card.Id).ThenBy(card => card.Sequence);
 +            else
 +                candidates = candidates.OrderByDescending(card => _kingLearning.GetSolutionScore(card.Id))
-+                    .ThenByDescending(card => Math.Max(card.Attack, card.GetDefensePower()))
++                    .ThenByDescending(card => System.Math.Max(card.Attack, card.GetDefensePower()))
 +                    .ThenBy(card => card.Id).ThenBy(card => card.Sequence);
 +
-+            IList<ClientCard> learned = candidates.Take(Math.Min(max, cards.Count)).ToList();
++            IList<ClientCard> learned = candidates.Take(System.Math.Min(max, cards.Count)).ToList();
 +            return learned.Count >= min ? learned : null;
 +        }
 +
@@ -172,7 +172,7 @@ index e77090e..ea89e51 100644
 +            _duel.IsUniversalMultiplayer =
 +                (duel_flag_high & DUEL_UNIVERSAL_MULTIPLAYER_HIGH) != 0;
 +            _duel.UniversalFormat = mode;
-+            _duel.UniversalTeamCount = Math.Max(2, (noCheckDeck >> 3) & 0x1f);
++            _duel.UniversalTeamCount = System.Math.Max(2, (noCheckDeck >> 3) & 0x1f);
 @@ -287,0 +303 @@ namespace WindBot.Game
 +            _duel.LocalLogicalPlayer = pos;
 @@ -529,2 +545,31 @@ namespace WindBot.Game
