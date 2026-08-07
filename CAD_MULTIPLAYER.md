@@ -60,13 +60,15 @@ by this layer are deterministic so identical replay packets keep identical UI
 directions and selections. Legal Yu-Gi-Oh! randomness—deck shuffling, coin
 tosses, dice, and effects that explicitly select randomly—remains unchanged.
 
-The multiplayer HUD centers every LP panel inside the unobstructed play area,
-to the right of the card-image and replay-control panel. A dedicated top row
-contains the turn badge, followed by two separated LP rows, so neither the
-sidebar nor the counter can cover a player's LP or name even in the full
-13-vs-13 layout. Opponent focus and replay/UI fallback choices are
-deterministic in CaD, legacy Battle Royale, and 3v1; Standard Duel behavior
-remains unchanged.
+The multiplayer HUD uses the original Standard Duel positions: the local
+transport side fills the stock left LP-frame area, the opposing side fills the
+stock right LP-frame area, and the turn number uses Standard's original centre
+rectangle and font. Additional logical players wrap into up to three readable
+columns per side and continue downward, so neither edge nor the card/replay
+sidebar can hide a player's LP or name even in the full 13-vs-13 layout.
+Opponent focus and replay/UI fallback choices are deterministic in CaD, legacy
+Battle Royale, and 3v1; the actual Standard Duel drawing path remains
+unchanged.
 
 King of Anime's persistent memory is an outcome-ranked opponent model, not an
 unbounded machine-learning service. It records only information revealed by
@@ -87,5 +89,3 @@ Strategy/profile work was checked against official Yu-Gi-Oh! sources:
 The bundled WindBot also understands the extended 26-seat CaD lobby protocol
 and allocates independent field zones for every logical duelist. This is what
 allows CaD rooms containing local AI players to become Ready and start.
-
-<!-- CI trigger: HUD visible-area Windows build -->

@@ -567,7 +567,9 @@ void Game::DrawMisc() {
 		driver->drawVertexPrimitiveList(matManager.vChainNum, 4, matManager.iRectangle, 2);
 	}
 	// Independent LP panels keep every logical duelist visible. Universal
-	// rooms use one compact row per physical side, up to thirteen seats each.
+	// Match Standard Duel's left/right LP positions. Additional logical players
+	// wrap down inside their own side, keeping every panel clear of the card and
+	// replay sidebar without changing the stock Standard Duel path below.
 	if(dInfo.IsAnyMultiplayer()) {
 		const auto& team1_names = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
 		const auto& team2_names = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
@@ -588,20 +590,22 @@ void Game::DrawMisc() {
 			return index < team2_names.size() ? team2_names[index] : unknown;
 		};
 		const auto player_count = dInfo.GetPlayerCount();
-		const auto max_row_count = std::max(dInfo.team1, dInfo.team2);
-		const bool side_rows = dInfo.IsUniversalMultiplayer();
-		const auto layout_columns = side_rows ? max_row_count : player_count;
-		const irr::s32 panel_width = multiplayer_ui::GetHudPanelWidth(layout_columns);
-		const irr::s32 layout_left =
-			multiplayer_ui::GetHudLayoutLeft(layout_columns, panel_width);
 		for(uint8_t logical = 0; logical < player_count; ++logical) {
 			const bool second_side = logical >= dInfo.team1;
-			const auto row_index = side_rows && second_side
-				? logical - dInfo.team1 : logical;
-			const irr::s32 top = multiplayer_ui::GetHudTop(side_rows && second_side);
-			const irr::s32 left = layout_left + row_index * panel_width;
+			const auto side_index = second_side ? logical - dInfo.team1 : logical;
+			const auto side_count = second_side ? dInfo.team2 : dInfo.team1;
+			// Standard always shows the local transport side on the left.
+			const bool right_side = multiplayer_ui::IsHudRightSide(
+				second_side, dInfo.isTeam1);
+			const auto layout = multiplayer_ui::GetHudPanelLayout(
+				side_index, side_count, right_side);
+			const irr::s32 top = layout.top;
+			const irr::s32 left = layout.left;
+			const irr::s32 panel_width = layout.width;
 			const auto panel_height = multiplayer_ui::GetHudPanelHeight();
-			const auto panel = Resize(left, top, left + panel_width - 6, top + panel_height);
+			const auto panel_gap = side_count > 1 ? 6 : 0;
+			const auto panel = Resize(left, top,
+				left + panel_width - panel_gap, top + panel_height);
 			const bool eliminated = (dInfo.eliminated_player_mask & (1u << logical))
 				|| !(dInfo.active_player_mask & (1u << logical));
 			const bool current = logical == dInfo.logical_turn_player;
@@ -625,24 +629,32 @@ void Game::DrawMisc() {
 			const auto name = epro::format(L"{}{}P{}{} {}", eliminated ? L"OUT " : L"",
 				current ? L"> " : focused ? L"* " : L"",
 				logical + 1, team_label, PlayerName(logical));
-			const auto name_rect = Resize(left + 8, top + 1, left + panel_width - 9, top + 17);
-			textFont->drawustring(name, name_rect, eliminated ? 0xffff7070 : current ? 0xffffd060 : 0xffffffff,
-				false, true, &name_rect);
-			const auto lp_label = panel_width >= 100 ? epro::format(L"LP  {}", lp_text) : lp_text;
-			DrawShadowText(numFont, lp_label,
-				Resize(left + 7, top + 16, left + panel_width - 10, top + 34),
-				Resize(0, 1, 2, 0), eliminated ? 0xffff7070 : 0xffffffff,
-				0xff000000, true, true);
 
-			const auto bar = Resize(left + 7, top + 34, left + panel_width - 10, top + 38);
+			// Standard shows the LP bar/value first and the player name beneath it.
+			const irr::s32 inner_left = left + 5;
+			const irr::s32 inner_right = left + panel_width - (side_count > 1 ? 10 : 4);
+			const auto bar = Resize(inner_left, top + 3, inner_right, top + 20);
 			driver->draw2DRectangle(irr::video::SColor{ 0xff202020 }, bar);
 			const auto ratio = std::clamp(lp / static_cast<double>(std::max(1, dInfo.startlp)), 0.0, 1.0);
-			const auto bar_width = std::max(1, panel_width - 17);
-			const auto fill = Resize(left + 7, top + 34,
-				left + 7 + static_cast<irr::s32>(bar_width * ratio), top + 38);
+			const auto bar_width = std::max<irr::s32>(1, inner_right - inner_left);
+			const auto filled_width = static_cast<irr::s32>(bar_width * ratio);
+			const auto fill = right_side
+				? Resize(inner_right - filled_width, top + 3, inner_right, top + 20)
+				: Resize(inner_left, top + 3, inner_left + filled_width, top + 20);
 			if(lp > 0)
 				driver->draw2DRectangle(player_color, fill);
 			driver->draw2DRectangleOutline(bar, 0xff808080);
+			const auto lp_color = eliminated ? irr::video::SColor{ 0xffff7070 }
+				: right_side ? skin::DUELFIELD_LP_2_VAL : skin::DUELFIELD_LP_1_VAL;
+			DrawShadowText(numFont, lp_text,
+				Resize(inner_left, top + 1, inner_right, top + 21),
+				Resize(0, 1, 2, 0), lp_color, 0xff000000, true, true);
+
+			const auto name_rect = Resize(left + 8, top + 21,
+				left + panel_width - (side_count > 1 ? 9 : 1), top + 39);
+			textFont->drawustring(name, name_rect,
+				eliminated ? 0xffff7070 : current ? 0xffffd060 : 0xffffffff,
+				false, true, &name_rect);
 		}
 		if(lpframe > 0 && delta_frames) {
 			dInfo.lp[lpplayer] -= lpd * delta_frames;
@@ -656,23 +668,12 @@ void Game::DrawMisc() {
 			else
 				DrawShadowText(lpcFont, lpcstring, Resize(400, 160, 920, 210), Resize(0, 2, 2, 0), (lpcalpha << 24) | lpccolor, (lpcalpha << 24) | 0x00ffffff, true);
 		}
-		// Reserve a dedicated top row for the turn badge. It never intersects
-		// either LP row, including the full 13-vs-13 CaD layout.
-		const auto turn_left = multiplayer_ui::GetTurnBadgeLeft();
-		const auto turn_right = multiplayer_ui::GetTurnBadgeRight();
-		const auto turn_top = multiplayer_ui::HUD_TURN_TOP;
-		const auto turn_bottom = multiplayer_ui::GetTurnBadgeBottom();
-		driver->draw2DRectangle(irr::video::SColor{ 0xf0080b10 },
-			Resize(turn_left, turn_top, turn_right, turn_bottom));
-		driver->draw2DRectangleOutline(
-			Resize(turn_left, turn_top, turn_right, turn_bottom),
-			irr::video::SColor{ 0xffffd060 });
-		const auto turn_text = epro::format(L"TURN  {}",
-			gDataManager->GetNumString(dInfo.turn));
-		DrawShadowText(textFont, turn_text,
-			Resize(turn_left + 3, turn_top + 1, turn_right - 3, turn_bottom - 1),
-			Resize(0, 1, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL,
-			0xff000000, true, true);
+		// Use the exact stock Standard Duel turn-counter rectangle and font.
+		DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn),
+			Resize(multiplayer_ui::HUD_TURN_LEFT, multiplayer_ui::HUD_TURN_TOP,
+				multiplayer_ui::HUD_TURN_RIGHT, multiplayer_ui::HUD_TURN_BOTTOM),
+			Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL,
+			0x80000000, true);
 	} else {
 	//lp bar
 	const auto& self = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;

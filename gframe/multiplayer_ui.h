@@ -12,48 +12,62 @@ struct AttackPoint {
 	float y;
 };
 
-constexpr int HUD_BASE_WIDTH = 1024;
-// The card image/replay controls occupy the left edge of every duel screen.
-// Keep custom-mode HUD elements inside the unobstructed play area so P1 is
-// never hidden behind that panel at any window size or DPI scale.
-constexpr int HUD_CARD_PANEL_RIGHT = 198;
-constexpr int HUD_EDGE_PADDING = 8;
-constexpr int HUD_CONTENT_LEFT = HUD_CARD_PANEL_RIGHT + HUD_EDGE_PADDING;
-constexpr int HUD_CONTENT_RIGHT = HUD_BASE_WIDTH - HUD_EDGE_PADDING;
-constexpr int HUD_CONTENT_WIDTH = HUD_CONTENT_RIGHT - HUD_CONTENT_LEFT;
-constexpr int HUD_TURN_TOP = 3;
-constexpr int HUD_TURN_HEIGHT = 32;
-constexpr int HUD_TURN_WIDTH = 112;
-constexpr int HUD_FIRST_ROW_TOP = 39;
+struct HudPanelLayout {
+	int left;
+	int top;
+	int width;
+};
+
+// Mirror the stock Standard Duel HUD exactly: the local side occupies the
+// standard left LP frame, the opposing transport side occupies the standard
+// right LP frame, and the turn counter remains in the original centre gap.
+// Extra logical players wrap down within their own side instead of stretching
+// behind the card/replay sidebar or beyond the right edge of the screen.
+constexpr int HUD_LEFT_SIDE_LEFT = 330;
+constexpr int HUD_RIGHT_SIDE_LEFT = 691;
+constexpr int HUD_SIDE_WIDTH = 299;
+constexpr int HUD_MAX_SIDE_COLUMNS = 3;
+constexpr int HUD_TURN_LEFT = 635;
+constexpr int HUD_TURN_RIGHT = 685;
+constexpr int HUD_TURN_TOP = 5;
+constexpr int HUD_TURN_BOTTOM = 40;
+constexpr int HUD_FIRST_ROW_TOP = 8;
 constexpr int HUD_ROW_GAP = 44;
 
-constexpr int GetHudPanelWidth(int columns) {
-	return std::clamp(HUD_CONTENT_WIDTH / std::max(1, columns), 60, 235);
+constexpr int GetHudColumns(int player_count) {
+	return std::clamp(player_count, 1, HUD_MAX_SIDE_COLUMNS);
 }
 
-constexpr int GetHudLayoutLeft(int columns, int panel_width) {
-	const int used_width = std::max(1, columns) * panel_width;
-	return HUD_CONTENT_LEFT + std::max(0, (HUD_CONTENT_WIDTH - used_width) / 2);
+constexpr int GetHudRowCount(int player_count) {
+	const int columns = GetHudColumns(player_count);
+	return (std::max(1, player_count) + columns - 1) / columns;
 }
 
 constexpr int GetHudPanelHeight() {
 	return 40;
 }
 
-constexpr int GetHudTop(bool second_side) {
-	return second_side ? HUD_FIRST_ROW_TOP + HUD_ROW_GAP : HUD_FIRST_ROW_TOP;
+constexpr bool IsHudRightSide(bool second_transport_side, bool local_is_team1) {
+	return second_transport_side == local_is_team1;
 }
 
-constexpr int GetTurnBadgeLeft() {
-	return HUD_CONTENT_LEFT + (HUD_CONTENT_WIDTH - HUD_TURN_WIDTH) / 2;
-}
-
-constexpr int GetTurnBadgeRight() {
-	return GetTurnBadgeLeft() + HUD_TURN_WIDTH;
-}
-
-constexpr int GetTurnBadgeBottom() {
-	return HUD_TURN_TOP + HUD_TURN_HEIGHT;
+constexpr HudPanelLayout GetHudPanelLayout(int player_index, int player_count,
+		bool right_side) {
+	const int safe_count = std::max(1, player_count);
+	const int columns = GetHudColumns(safe_count);
+	const int safe_index = std::clamp(player_index, 0, safe_count - 1);
+	const int row = safe_index / columns;
+	const int column = safe_index % columns;
+	const int row_start = row * columns;
+	const int row_count = std::min(columns, safe_count - row_start);
+	const int panel_width = HUD_SIDE_WIDTH / columns;
+	const int side_left = right_side ? HUD_RIGHT_SIDE_LEFT : HUD_LEFT_SIDE_LEFT;
+	const int row_left = side_left + (HUD_SIDE_WIDTH - row_count * panel_width) / 2;
+	return {
+		row_left + column * panel_width,
+		HUD_FIRST_ROW_TOP + row * HUD_ROW_GAP,
+		panel_width
+	};
 }
 
 // Keep fallback opponent selection stable. Starting immediately after the
