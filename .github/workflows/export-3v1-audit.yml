@@ -1,0 +1,35 @@
+name: Export 3v1 audit snapshots
+
+on:
+  push:
+    branches:
+      - automation/audit-3v1-stable
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Export known-good and current trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --recursive https://github.com/sedopeo254-oss/edopro.git edopro-stable
+          git -C edopro-stable checkout 5777d9b101bf7c789aa23a6fa6f94723238617cf
+          git -C edopro-stable submodule update --init --recursive
+          rm -rf edopro-stable/.git edopro-stable/ocgcore/.git edopro-stable/ocgcore/lua/src/.git
+
+          git clone --recursive https://github.com/sedopeo254-oss/edopro.git edopro-current
+          git -C edopro-current checkout 0d455ba218b1e4aa5da4d46e6fb56198c28036d7
+          git -C edopro-current submodule update --init --recursive
+          rm -rf edopro-current/.git edopro-current/ocgcore/.git edopro-current/ocgcore/lua/src/.git
+
+          tar -czf three-v-one-audit-sources.tar.gz edopro-stable edopro-current
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: three-v-one-audit-sources
+          path: three-v-one-audit-sources.tar.gz
+          if-no-files-found: error
