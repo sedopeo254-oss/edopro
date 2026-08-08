@@ -31,19 +31,14 @@ jobs:
         env:
           TARGET_BRANCH: agent/multiplayer-foundation
           CORE_SHA: 97ab43e00959d77573e74110212dd0d1e221b988
-          STABLE_CLIENT_SHA: 5777d9b101bf7c789aa23a6fa6f94723238617cf
         run: |
           set -euo pipefail
           git fetch origin "$TARGET_BRANCH"
           git checkout -B publish-target "origin/$TARGET_BRANCH"
           git apply --check /tmp/client.patch
           git apply /tmp/client.patch
-
-          # Restore the full production workflow that was temporarily replaced
-          # only to export the exact source snapshot.
-          git show "$STABLE_CLIENT_SHA:.github/workflows/multiplayer-ci.yml" > .github/workflows/multiplayer-ci.yml
-
           git diff --check
+
           c++ -std=c++17 -Wall -Wextra -Werror -I. \
             .github/tests/multiplayer_ui_test.cpp \
             -o /tmp/multiplayer-ui-test
@@ -53,7 +48,6 @@ jobs:
           git config user.email "sedopeo254@gmail.com"
           git add -- \
             .github/tests/multiplayer_ui_test.cpp \
-            .github/workflows/multiplayer-ci.yml \
             gframe/client_field.cpp \
             gframe/client_field.h \
             gframe/drawing.cpp \
