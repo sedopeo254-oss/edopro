@@ -129,6 +129,8 @@ jobs:
           cp CAD_MULTIPLAYER.md deploy/
           cp -r multiplayer-effect-examples deploy/
           cp -r multiplayer-deck-master deploy/
+          mkdir -p deploy/expansions/script
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
       - uses: actions/download-artifact@v4
         with:
           name: windbot-multiplayer
@@ -189,6 +191,8 @@ jobs:
           cp CAD_MULTIPLAYER.md deploy/
           cp -r multiplayer-effect-examples deploy/
           cp -r multiplayer-deck-master deploy/
+          mkdir -p deploy/expansions/script
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
       - uses: actions/download-artifact@v4
         with:
           name: windbot-multiplayer
