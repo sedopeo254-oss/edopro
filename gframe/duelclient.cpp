@@ -4744,7 +4744,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_LPUPDATE: {
 		const auto core_player = BufferIO::Read<uint8_t>(pbuf);
-		const auto val = NormalizeSerializedLP(BufferIO::Read<uint32_t>(pbuf));
+		const auto val = multiplayer_ui::NormalizeSerializedLifePoints(
+			BufferIO::Read<uint32_t>(pbuf));
 		const bool has_logical_player =
 			mainGame->dInfo.IsAnyMultiplayer() && len >= 6;
 		const auto logical_player = has_logical_player

@@ -663,11 +663,13 @@ void Game::DrawMisc() {
 			if(dInfo.IsAnyMultiplayer() && lp_logical_player >= 0
 					&& lp_logical_player < dInfo.GetPlayerCount()) {
 				auto& logical_lp = dInfo.logical_lp[lp_logical_player];
-				logical_lp = std::max(0, logical_lp - lpd * static_cast<int>(frames));
+				logical_lp = static_cast<int>(std::max(0.0f,
+					static_cast<float>(logical_lp) - lpd * static_cast<float>(frames)));
 				dInfo.logical_strLP[lp_logical_player] = epro::to_wstring(logical_lp);
 			}
 			if(lpplayer >= 0 && lpplayer < 2) {
-				dInfo.lp[lpplayer] = std::max(0, dInfo.lp[lpplayer] - lpd * static_cast<int>(frames));
+				dInfo.lp[lpplayer] = static_cast<int>(std::max(0.0f,
+					static_cast<float>(dInfo.lp[lpplayer]) - lpd * static_cast<float>(frames)));
 				dInfo.strLP[lpplayer] = epro::to_wstring(dInfo.lp[lpplayer]);
 			}
 			lpcalpha = std::max(0, lpcalpha - 0x19 * static_cast<int>(frames));
@@ -730,11 +732,13 @@ void Game::DrawMisc() {
 		if(dInfo.IsAnyMultiplayer() && lp_logical_player >= 0
 				&& lp_logical_player < dInfo.GetPlayerCount()) {
 			auto& logical_lp = dInfo.logical_lp[lp_logical_player];
-			logical_lp = std::max(0, logical_lp - lpd * static_cast<int>(frames));
+			logical_lp = static_cast<int>(std::max(0.0f,
+					static_cast<float>(logical_lp) - lpd * static_cast<float>(frames)));
 			dInfo.logical_strLP[lp_logical_player] = epro::to_wstring(logical_lp);
 		}
 		if(lpplayer >= 0 && lpplayer < 2) {
-			dInfo.lp[lpplayer] = std::max(0, dInfo.lp[lpplayer] - lpd * static_cast<int>(frames));
+			dInfo.lp[lpplayer] = static_cast<int>(std::max(0.0f,
+					static_cast<float>(dInfo.lp[lpplayer]) - lpd * static_cast<float>(frames)));
 			dInfo.strLP[lpplayer] = epro::to_wstring(dInfo.lp[lpplayer]);
 		}
 		lpcalpha = std::max(0, lpcalpha - 0x19 * static_cast<int>(frames));
