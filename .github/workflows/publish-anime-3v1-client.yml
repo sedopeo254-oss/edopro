@@ -34,11 +34,28 @@ jobs:
           set -euo pipefail
           git fetch origin "$TARGET_BRANCH"
           git checkout -B publish-target "origin/$TARGET_BRANCH"
-          git apply --check /tmp/client-hotfix.patch
-          git apply /tmp/client-hotfix.patch
+
+          # The drawing hunks are stable. Apply only that file from the
+          # reviewed patch; duelclient had equivalent one-line wrapping on CI.
+          git apply --check --include=gframe/drawing.cpp /tmp/client-hotfix.patch
+          git apply --include=gframe/drawing.cpp /tmp/client-hotfix.patch
+
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('gframe/duelclient.cpp')
+          text = path.read_text()
+          old = 'const auto val = NormalizeSerializedLP(BufferIO::Read<uint32_t>(pbuf));'
+          new = ('const auto val = multiplayer_ui::NormalizeSerializedLifePoints(\n'
+                 '\t\t\tBufferIO::Read<uint32_t>(pbuf));')
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one legacy LP helper, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
           git diff --check
           grep -q 'static_cast<int>(std::max(0.0f' gframe/drawing.cpp
           grep -q 'multiplayer_ui::NormalizeSerializedLifePoints' gframe/duelclient.cpp
+          ! grep -q 'NormalizeSerializedLP' gframe/duelclient.cpp
 
           git config user.name "sedopeo254-oss"
           git config user.email "sedopeo254@gmail.com"
