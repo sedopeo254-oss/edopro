@@ -133,7 +133,7 @@ public:
 	void ReplaceMultiplayerPrivatePiles(uint8_t player,
 		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient = true);
 	void CacheMultiplayerPrivatePiles(uint8_t logical_player, const MultiplayerPrivatePileSnapshot& snapshot);
-	void CaptureBattleRoyaleReplayPrivatePiles();
+	void CaptureDisplayedMultiplayerPrivatePiles();
 	bool IsMultiplayerPrivatePileDisplayed(uint8_t logical_player) const;
 	void ApplyDisplayedMultiplayerPrivatePiles();
 	void UpdateMultiplayerPrivateDraw(uint8_t logical_player,

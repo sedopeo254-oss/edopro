@@ -603,15 +603,16 @@ std::wstring ClientField::GetOptionText(uint64_t option) const {
 	if((option & MULTIPLAYER_OPTION_PLAYER_MASK) != MULTIPLAYER_OPTION_PLAYER_BASE)
 		return std::wstring(gDataManager->GetDesc(option, mainGame->dInfo.compat_mode));
 	const auto logical = static_cast<uint8_t>(option & 0xffu);
+	const auto& team1_names = mainGame->dInfo.isTeam1 ? mainGame->dInfo.selfnames : mainGame->dInfo.opponames;
+	const auto& team2_names = mainGame->dInfo.isTeam1 ? mainGame->dInfo.opponames : mainGame->dInfo.selfnames;
 	std::wstring name = L"Player";
-	const auto slot = multiplayer_ui::GetLogicalNameSlot(logical,
-		static_cast<uint8_t>(mainGame->dInfo.team1),
-		static_cast<uint8_t>(mainGame->dInfo.team2));
-	if(slot.valid) {
-		const auto& names = slot.second_side
-			? mainGame->dInfo.opponames : mainGame->dInfo.selfnames;
-		if(slot.index < names.size() && !names[slot.index].empty())
-			name = names[slot.index];
+	if(logical < mainGame->dInfo.team1) {
+		if(logical < team1_names.size() && !team1_names[logical].empty())
+			name = team1_names[logical];
+	} else {
+		const auto index = static_cast<size_t>(logical - mainGame->dInfo.team1);
+		if(index < team2_names.size() && !team2_names[index].empty())
+			name = team2_names[index];
 	}
 	return epro::format(L"P{} {}", static_cast<unsigned>(logical) + 1u, name);
 }
@@ -863,11 +864,8 @@ void ClientField::CacheMultiplayerPrivatePiles(uint8_t logical_player,
 	multiplayer_private_piles[logical_player] = snapshot;
 	multiplayer_private_piles_valid[logical_player] = true;
 }
-void ClientField::CaptureBattleRoyaleReplayPrivatePiles() {
-	if(!mainGame->dInfo.isReplay
-			|| !mainGame->dInfo.UsesFocusedMultiplayerView()
-			|| mainGame->dInfo.replay_battle_royale_perspective
-				>= mainGame->dInfo.team1 + mainGame->dInfo.team2)
+void ClientField::CaptureDisplayedMultiplayerPrivatePiles() {
+	if(!mainGame->dInfo.isReplay || !mainGame->dInfo.IsAnyMultiplayer())
 		return;
 	auto capture_cards = [](const auto& source, auto& destination) {
 		destination.clear();
@@ -880,8 +878,12 @@ void ClientField::CaptureBattleRoyaleReplayPrivatePiles() {
 		}
 	};
 	for(uint8_t display_side = 0; display_side < 2; ++display_side) {
-		const auto logical =
-			mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side);
+		uint8_t logical = 0xff;
+		if(mainGame->dInfo.UsesFocusedMultiplayerView())
+			logical = mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side);
+		else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+			logical = mainGame->dInfo.GetFocusedLogicalPlayer(
+				mainGame->LocalPlayer(display_side));
 		if(logical >= multiplayer_private_piles.size())
 			continue;
 		MultiplayerPrivatePileSnapshot snapshot;
@@ -899,7 +901,8 @@ void ClientField::CaptureBattleRoyaleReplayPrivatePiles() {
 		CacheMultiplayerPrivatePiles(logical, snapshot);
 	}
 }
-bool ClientField::IsMultiplayerPrivatePileDisplayed(uint8_t logical_player) const {
+bool ClientField::IsMultiplayerPrivatePileDisplayed(
+		uint8_t logical_player) const {
 	if(!mainGame->dInfo.IsAnyMultiplayer()
 			|| logical_player >= mainGame->dInfo.GetPlayerCount())
 		return false;
@@ -907,7 +910,8 @@ bool ClientField::IsMultiplayerPrivatePileDisplayed(uint8_t logical_player) cons
 		return mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2;
 	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
 		for(uint8_t core_side = 0; core_side < 2; ++core_side)
-			if(mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player)
+			if(mainGame->dInfo.GetFocusedLogicalPlayer(core_side)
+					== logical_player)
 				return true;
 	}
 	return logical_player == mainGame->dInfo.GetLocalLogicalPlayer();

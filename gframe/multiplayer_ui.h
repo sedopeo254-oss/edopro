@@ -18,38 +18,8 @@ struct HudPanelLayout {
 	int width;
 };
 
-struct LogicalNameSlot {
-	bool valid;
-	bool second_side;
-	uint8_t index;
-};
-
-// Battle Royale and Universal Multiplayer always use the two-seat focused
-// renderer. Legacy 3-vs-1 keeps its live Swap-the-Team board, but replays use
-// the same focused renderer so every camera packet restores an exact player
-// pair and its private piles.
-constexpr bool UsesFocusedMultiplayerView(bool battle_royale, bool universal,
-		bool three_v_one, bool replay) {
-	return battle_royale || universal || (three_v_one && replay);
-}
-
-// Logical player numbers are canonical (team 1 followed by team 2) and must
-// never depend on which side is currently drawn at the bottom of the screen.
-constexpr LogicalNameSlot GetLogicalNameSlot(uint8_t logical, uint8_t team1,
-		uint8_t team2) {
-	if(logical < team1)
-		return { true, false, logical };
-	if(logical < static_cast<uint8_t>(team1 + team2))
-		return { true, true, static_cast<uint8_t>(logical - team1) };
-	return { false, false, 0 };
-}
-
-constexpr bool HasMultipleLogicalPlayers(uint32_t mask) {
-	return mask != 0 && (mask & (mask - 1u)) != 0;
-}
-
-// Older multiplayer replays could serialize a negative signed LP value through
-// uint32_t. Keep the HUD deterministic and never revive that underflow.
+// Old multiplayer replays could serialize a negative signed LP through a
+// uint32_t field. Never let that underflow reappear in the HUD.
 constexpr int32_t NormalizeSerializedLifePoints(uint32_t value) {
 	return value > 0x7fffffffu ? 0 : static_cast<int32_t>(value);
 }
@@ -59,27 +29,6 @@ constexpr int32_t ApplyLifePointDamage(int32_t current_lp, uint32_t damage) {
 		? static_cast<uint32_t>(current_lp) : 0u;
 	return damage >= available_lp
 		? 0 : current_lp - static_cast<int32_t>(damage);
-}
-
-// Normal focused modes only display active opponents. Anime 3-vs-1 replays
-// may temporarily focus any other configured field (including an eliminated
-// teammate whose cards remain on the board) when an effect targets it.
-constexpr bool CanFocusLogicalPlayer(bool three_v_one, bool replay,
-		uint8_t perspective, uint8_t candidate, uint8_t player_count,
-		uint32_t active_mask, bool are_opponents) {
-	if(perspective >= player_count || candidate >= player_count
-			|| perspective == candidate)
-		return false;
-	if(three_v_one && replay)
-		return true;
-	return (active_mask & (1u << candidate)) != 0 && are_opponents;
-}
-
-constexpr bool IsLogicalFieldAvailable(bool three_v_one, bool replay,
-		uint8_t logical, uint8_t player_count, uint32_t active_mask) {
-	return logical < player_count
-		&& ((three_v_one && replay)
-			|| (active_mask & (1u << logical)) != 0);
 }
 
 // Mirror the stock Standard Duel HUD exactly: the local side occupies the

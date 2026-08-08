@@ -22,23 +22,6 @@ can be completed safely. If a disconnected/timed-out player owns a mandatory
 private selection that cannot be transferred, the match ends as a no-contest
 instead of eliminating every seat carried by the same transport side.
 
-## Anime 3 vs 1 semantics
-
-The three allied duelists remain one team for victory, elimination, attack
-interception, and **Let me take it**, but card-effect scope follows the anime
-field model. In this mode, a legacy script's `tp` means the exact logical owner
-of the effect, while `1-tp` means every other logical duelist. Therefore an
-unchanged card such as **Block Attack** can select any eligible monster on a
-teammate's field or on Nezbitt's field according to its own text.
-
-LP is saturated at zero before messages and elimination are processed. Cards
-sent to the Graveyard return to their original owner's logical Graveyard even
-when another player controlled them. Public Graveyards and face-up banished
-cards are synchronized to all viewers, while Decks, hands, face-down Extra
-Deck cards, and face-down banished cards remain private. Replays record the
-exact logical attacker, target, redirected defender, focused field, names, and
-private-pile owner so visual side swaps cannot exchange player identities.
-
 ## Multiplayer-aware card scripts
 
 Normal EDOPro scripts still use physical player IDs `0` and `1`. Effects that

@@ -28,20 +28,18 @@ and test the returned mask; do not hard-code the original four-player range.
 
 The multiplayer build packages this directory so the examples can be copied into the matching card-script repository.
 
-## Exact 3-vs-1 card targeting
+## 3v1 card targeting without global rule changes
 
-The anime 3-vs-1 mode keeps each duelist's cards, Graveyard and private piles
-independent. For existing two-player scripts, `tp` means the exact effect owner
-and `1-tp` reaches every other logical duelist. This lets the attached stock
-`c25880422.lua` (Block Attack) target a teammate or Nezbitt without rewriting
-its normal target code.
+Anime 3v1 keeps the normal meaning of `tp` and `1-tp` for every existing card
+script. A card that is explicitly allowed to interact with another teammate's
+field should opt in with the logical-target helpers instead of changing the
+engine-wide controller rules:
 
-Scripts that must distinguish exact subsets can use:
+- `Duel.IsThreeVsOne()` checks the exact legacy 3v1 mode.
+- `Duel.GetLogicalPlayerMask(tp, include_self, include_teammates, include_opponents)` returns the eligible logical seats relative to the activating card's owner.
+- `Duel.IsExistingTargetLogical(filter, tp, mask, locations, count, exception, ...)` checks eligible cards across those seats.
+- `Duel.SelectTargetLogical(tp, filter, mask, locations, min, max, exception, ...)` selects and registers the card target while preserving its exact logical owner and replay view.
 
-- `Duel.IsThreeVsOne()` to identify the anime rule.
-- `Duel.GetLogicalPlayerMask(tp, include_self, include_teammates, include_opponents)` to build an exact logical-player mask.
-- `Duel.IsExistingMatchingCardLogical` and `Duel.SelectMatchingCardLogical` for selected players' fields or private piles.
-- `Duel.IsExistingTargetLogical` and `Duel.SelectTargetLogical` for the same selection while creating normal card-target relations.
-
-These helpers change card-effect scope only. Team membership, interception,
-elimination and victory rules remain independent.
+`c25880422.lua` is the ready-to-use Block Attack example. Outside 3v1 it is
+identical to the original script; inside 3v1 it can target an eligible monster
+on either teammate's field or Nezbitt's field.

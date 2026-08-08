@@ -571,10 +571,8 @@ void Game::DrawMisc() {
 	// wrap down inside their own side, keeping every panel clear of the card and
 	// replay sidebar without changing the stock Standard Duel path below.
 	if(dInfo.IsAnyMultiplayer()) {
-		// Logical identities stay canonical even when ReplaySwap flips the
-		// rendered top/bottom sides. Layout orientation is handled separately.
-		const auto& team1_names = dInfo.selfnames;
-		const auto& team2_names = dInfo.opponames;
+		const auto& team1_names = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
+		const auto& team2_names = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
 		const std::array<irr::video::SColor, 13> player_colors{
 			irr::video::SColor{ 0xff4f7dff }, irr::video::SColor{ 0xffffd34f },
 			irr::video::SColor{ 0xff57e389 }, irr::video::SColor{ 0xffff5555 },
@@ -659,23 +657,10 @@ void Game::DrawMisc() {
 				false, true, &name_rect);
 		}
 		if(lpframe > 0 && delta_frames) {
-			const auto frames = std::min<uint32_t>(delta_frames, static_cast<uint32_t>(lpframe));
-			if(dInfo.IsAnyMultiplayer() && lp_logical_player >= 0
-					&& lp_logical_player < dInfo.GetPlayerCount()) {
-				auto& logical_lp = dInfo.logical_lp[lp_logical_player];
-				logical_lp = static_cast<int>(std::max(0.0f,
-					static_cast<float>(logical_lp) - lpd * static_cast<float>(frames)));
-				dInfo.logical_strLP[lp_logical_player] = epro::to_wstring(logical_lp);
-			}
-			if(lpplayer >= 0 && lpplayer < 2) {
-				dInfo.lp[lpplayer] = static_cast<int>(std::max(0.0f,
-					static_cast<float>(dInfo.lp[lpplayer]) - lpd * static_cast<float>(frames)));
-				dInfo.strLP[lpplayer] = epro::to_wstring(dInfo.lp[lpplayer]);
-			}
-			lpcalpha = std::max(0, lpcalpha - 0x19 * static_cast<int>(frames));
-			lpframe = std::max(0, lpframe - static_cast<int>(frames));
-			if(lpframe == 0)
-				lp_logical_player = -1;
+			dInfo.lp[lpplayer] -= lpd * delta_frames;
+			dInfo.strLP[lpplayer] = epro::to_wstring(std::max(0, dInfo.lp[lpplayer]));
+			lpcalpha -= 0x19 * delta_frames;
+			lpframe -= delta_frames;
 		}
 		if(lpcstring.size()) {
 			if(lpplayer == 0)
@@ -728,23 +713,10 @@ void Game::DrawMisc() {
 	}
 
 	if(lpframe > 0 && delta_frames) {
-		const auto frames = std::min<uint32_t>(delta_frames, static_cast<uint32_t>(lpframe));
-		if(dInfo.IsAnyMultiplayer() && lp_logical_player >= 0
-				&& lp_logical_player < dInfo.GetPlayerCount()) {
-			auto& logical_lp = dInfo.logical_lp[lp_logical_player];
-			logical_lp = static_cast<int>(std::max(0.0f,
-					static_cast<float>(logical_lp) - lpd * static_cast<float>(frames)));
-			dInfo.logical_strLP[lp_logical_player] = epro::to_wstring(logical_lp);
-		}
-		if(lpplayer >= 0 && lpplayer < 2) {
-			dInfo.lp[lpplayer] = static_cast<int>(std::max(0.0f,
-					static_cast<float>(dInfo.lp[lpplayer]) - lpd * static_cast<float>(frames)));
-			dInfo.strLP[lpplayer] = epro::to_wstring(dInfo.lp[lpplayer]);
-		}
-		lpcalpha = std::max(0, lpcalpha - 0x19 * static_cast<int>(frames));
-		lpframe = std::max(0, lpframe - static_cast<int>(frames));
-		if(lpframe == 0)
-			lp_logical_player = -1;
+		dInfo.lp[lpplayer] -= lpd * delta_frames;
+		dInfo.strLP[lpplayer] = epro::to_wstring(std::max(0, dInfo.lp[lpplayer]));
+		lpcalpha -= 0x19 * delta_frames;
+		lpframe -= delta_frames;
 	}
 	if(lpcstring.size()) {
 		if(lpplayer == 0)

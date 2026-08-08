@@ -140,9 +140,7 @@ struct DuelInfo {
 			|| IsUniversalMultiplayer();
 	}
 	bool UsesFocusedMultiplayerView() const {
-		return multiplayer_ui::UsesFocusedMultiplayerView(
-			HasFieldFlag(DUEL_BATTLE_ROYALE), IsUniversalMultiplayer(),
-			HasFieldFlag(DUEL_3_V_1), isReplay);
+		return HasFieldFlag(DUEL_BATTLE_ROYALE) || IsUniversalMultiplayer();
 	}
 	uint8_t GetPlayerCount() const {
 		return static_cast<uint8_t>(team1 + team2);
@@ -166,15 +164,11 @@ struct DuelInfo {
 		const auto logical = static_cast<uint8_t>((core_side ? team1 : 0) + duelist);
 		return logical < team1 + team2 ? logical : 0xff;
 	}
-	bool IsLogicalFieldAvailable(uint8_t logical) const {
-		return multiplayer_ui::IsLogicalFieldAvailable(
-			HasFieldFlag(DUEL_3_V_1), isReplay, logical,
-			GetPlayerCount(), active_player_mask);
-	}
 	uint8_t GetLocalLogicalPlayer() const {
 		if(UsesFocusedMultiplayerView() && (isReplay || !IsDuelist())) {
-			if(isReplay && IsLogicalFieldAvailable(
-					replay_battle_royale_perspective))
+			if(isReplay && replay_battle_royale_perspective < team1 + team2
+					&& (active_player_mask
+						& (1u << replay_battle_royale_perspective)))
 				return replay_battle_royale_perspective;
 			if(logical_turn_player < team1 + team2
 					&& (active_player_mask & (1u << logical_turn_player)))
@@ -201,40 +195,31 @@ struct DuelInfo {
 	uint8_t GetLocalDuelist() const {
 		return GetLogicalDuelist(GetLocalLogicalPlayer());
 	}
-	bool AreLogicalOpponents(uint8_t first, uint8_t second) const {
-		if(first >= GetPlayerCount() || second >= GetPlayerCount()
-				|| first == second)
-			return false;
-		if(HasFieldFlag(DUEL_BATTLE_ROYALE))
-			return true;
-		if(HasFieldFlag(DUEL_3_V_1))
-			return (first < team1) != (second < team1);
-		if(IsUniversalMultiplayer()) {
-			if(universal_format == OCG_MULTIPLAYER_FORMAT_TEAMS)
-				return logical_team[first] != logical_team[second];
-			return true;
-		}
-		return GetLogicalCoreSide(first) != GetLogicalCoreSide(second);
-	}
-	bool CanFocusLogicalPlayer(uint8_t perspective, uint8_t candidate) const {
-		return multiplayer_ui::CanFocusLogicalPlayer(
-			HasFieldFlag(DUEL_3_V_1), isReplay, perspective, candidate,
-			GetPlayerCount(), active_player_mask,
-			AreLogicalOpponents(perspective, candidate));
-	}
 	uint8_t GetBattleRoyaleDisplayLogical(uint8_t display_side) const {
 		if(!UsesFocusedMultiplayerView() || display_side > 1)
 			return 0xff;
 		if(display_side == 0)
 			return GetLocalLogicalPlayer();
-		const auto local = GetLocalLogicalPlayer();
-		if(CanFocusLogicalPlayer(local, battle_royale_opponent_logical))
+		if(battle_royale_opponent_logical < team1 + team2
+				&& battle_royale_opponent_logical != GetLocalLogicalPlayer()
+				&& (active_player_mask & (1u << battle_royale_opponent_logical)))
 			return battle_royale_opponent_logical;
-		for(uint8_t logical = 0; logical < team1 + team2; ++logical) {
-			if((active_player_mask & (1u << logical))
-					&& AreLogicalOpponents(local, logical))
-				return logical;
+		if(IsUniversalMultiplayer()
+				&& universal_format == OCG_MULTIPLAYER_FORMAT_TEAMS) {
+			const auto local = GetLocalLogicalPlayer();
+			if(local < team1 + team2) {
+				for(uint8_t logical = 0; logical < team1 + team2; ++logical) {
+					if(logical != local
+							&& logical_team[logical] != logical_team[local]
+							&& (active_player_mask & (1u << logical)))
+						return logical;
+				}
+			}
 		}
+		const auto stable = multiplayer_ui::GetStableOpponent(GetLocalLogicalPlayer(),
+			active_player_mask, team1 + team2);
+		if(stable >= 0)
+			return static_cast<uint8_t>(stable);
 		return 0xff;
 	}
 	uint8_t GetBattleRoyaleDisplaySide(uint8_t logical) const {
@@ -248,7 +233,9 @@ struct DuelInfo {
 	}
 	bool SetBattleRoyaleOpponent(uint8_t logical) {
 		if(!UsesFocusedMultiplayerView()
-				|| !CanFocusLogicalPlayer(GetLocalLogicalPlayer(), logical))
+				|| logical >= team1 + team2
+				|| logical == GetLocalLogicalPlayer()
+				|| !(active_player_mask & (1u << logical)))
 			return false;
 		battle_royale_opponent_logical = logical;
 		const auto core_side = GetLogicalCoreSide(logical);
@@ -259,7 +246,8 @@ struct DuelInfo {
 	}
 	bool SetBattleRoyaleReplayPerspective(uint8_t logical) {
 		if(!isReplay || !UsesFocusedMultiplayerView()
-				|| !IsLogicalFieldAvailable(logical))
+				|| logical >= team1 + team2
+				|| !(active_player_mask & (1u << logical)))
 			return false;
 		const bool changed = replay_battle_royale_perspective != logical;
 		replay_battle_royale_perspective = logical;
@@ -295,8 +283,6 @@ struct DuelInfo {
 			return 0xff;
 		if(IsPinnedLocalField(core_side))
 			return GetLocalDuelist();
-		if(HasFieldFlag(DUEL_3_V_1) && !UsesFocusedMultiplayerView())
-			return field_focus[core_side];
 		const auto logical = GetLogicalPlayer(core_side);
 		return GetLogicalDuelist(logical);
 	}
@@ -888,7 +874,6 @@ public:
 	int lpframe;
 	float lpd;
 	int lpplayer;
-	int lp_logical_player = -1;
 	int lpccolor;
 	int lpcalpha;
 	std::wstring lpcstring;
