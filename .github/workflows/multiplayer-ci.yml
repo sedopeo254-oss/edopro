@@ -131,6 +131,11 @@ jobs:
           cp -r multiplayer-deck-master deploy/
           mkdir -p deploy/expansions/script
           cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c153999999.lua deploy/expansions/script/c153999999.lua
+          cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
+          test -f deploy/expansions/script/c25880422.lua
+          test -f deploy/expansions/script/c153999999.lua
+          test -f deploy/expansions/script/c153000000.lua
       - uses: actions/download-artifact@v4
         with:
           name: windbot-multiplayer
@@ -193,6 +198,11 @@ jobs:
           cp -r multiplayer-deck-master deploy/
           mkdir -p deploy/expansions/script
           cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c153999999.lua deploy/expansions/script/c153999999.lua
+          cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
+          test -f deploy/expansions/script/c25880422.lua
+          test -f deploy/expansions/script/c153999999.lua
+          test -f deploy/expansions/script/c153000000.lua
       - uses: actions/download-artifact@v4
         with:
           name: windbot-multiplayer
