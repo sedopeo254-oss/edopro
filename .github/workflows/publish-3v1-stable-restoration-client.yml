@@ -23,7 +23,24 @@ jobs:
       - name: Decode reviewed patch
         shell: bash
         run: |
-          base64 --decode .github/publish/client-stable-restoration.patch.gz.b64 | gzip -dc > /tmp/client-stable-restoration.patch
+          python - <<'PY'
+          from pathlib import Path
+          import base64, gzip, hashlib, string
+
+          source = Path('.github/publish/client-stable-restoration.patch.gz.b64')
+          encoded = ''.join(source.read_text(encoding='ascii').split())
+          invalid = sorted(set(encoded) - set(string.ascii_letters + string.digits + '+/='))
+          print(f'encoded-length={len(encoded)} modulo={len(encoded) % 4} invalid={invalid}')
+          if invalid:
+              raise SystemExit('invalid base64 characters')
+          encoded += '=' * ((-len(encoded)) % 4)
+          compressed = base64.b64decode(encoded, validate=True)
+          print(f'compressed-length={len(compressed)} gzip-prefix={compressed[:4].hex()}')
+          patch = gzip.decompress(compressed)
+          digest = hashlib.sha256(patch).hexdigest()
+          print(f'patch-length={len(patch)} patch-sha256={digest}')
+          Path('/tmp/client-stable-restoration.patch').write_bytes(patch)
+          PY
           test "$(sha256sum /tmp/client-stable-restoration.patch | cut -d' ' -f1)" = "b9fd2f1b2b28e8ee652072ec8f5d0f33a2c848f0ce62424e3646cc2ba9b8950a"
 
       - name: Restore, test, commit, and publish
