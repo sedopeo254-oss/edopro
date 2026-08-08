@@ -1,5 +1,7 @@
 name: Multiplayer CI
 
+# Stable multiplayer build: summon-video integration is intentionally disabled.
+
 on:
   push:
     branches:
@@ -13,23 +15,186 @@ concurrency:
   group: multiplayer-ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+
 jobs:
-  source-export:
-    name: Export exact multiplayer source snapshot
+  core-tests:
+    name: Multiplayer core tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
-      - name: Package checked-out sources
+      - name: Run multiplayer state tests
         shell: bash
         run: |
-          rm -rf .git ocgcore/.git
-          tar -czf ../edopro-multiplayer-source.tar.gz .
-          mv ../edopro-multiplayer-source.tar.gz ./
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          c++ -std=c++17 -I. .github/tests/multiplayer_ui_test.cpp -o /tmp/multiplayer-ui-test
+          /tmp/multiplayer-ui-test
+
+  windbot-compat:
+    name: WindBot multiplayer and King of Anime
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ProjectIgnis/windbot
+          ref: fa0ae767967afc6a820784837f11cd3fabb9c47c
+          path: windbot
+          submodules: recursive
+      - name: Apply multiplayer and anime-AI patch
+        shell: bash
+        run: |
+          git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
+          git -C windbot apply --unidiff-zero ../.github/patches/windbot-king-learning.patch
+          git -C windbot apply --unidiff-zero ../.github/patches/windbot-cad-fixes.patch
+      - name: Validate multiplayer bot sources
+        shell: bash
+        run: |
+          git -C windbot diff --check
+          test -f windbot/ExecutorBase/Game/AI/KingOfAnimeLearning.cs
+          grep -q 'Game\\AI\\KingOfAnimeLearning.cs' windbot/ExecutorBase/ExecutorBase.csproj
+          grep -q '\[Deck("Lucky", "AI_BlueEyes"' windbot/Game/AI/Decks/LuckyExecutor.cs
+          grep -q '\[Deck("KingOfAnime", "AI_BlueEyes"' windbot/Game/AI/Decks/KingOfAnimeExecutor.cs
+          grep -q 'LocalLogicalPlayer' windbot/Game/GameBehavior.cs
+          grep -q 'SelectKingLearnedCards' windbot/ExecutorBase/Game/GameAI.cs
+          ! grep -R '\[Deck("\(Lucky\|KingOfAnime\)", "AI_Test"' windbot/Game/AI/Decks
+      - name: Pull Mono builder image
+        shell: bash
+        run: |
+          docker pull ghcr.io/projectignis/mono_xamarin_builder_monodroid:master
+          docker image tag ghcr.io/projectignis/mono_xamarin_builder_monodroid:master monodroid
+      - name: Build patched WindBot
+        shell: bash
+        working-directory: windbot
+        run: |
+          docker run --rm --volume "$PWD:/project" monodroid -t:restore -p:RestorePackagesPath=./.nuget WindBot.sln
+          ./ci/install-patched-mono-runtime.sh
+          docker run --rm --volume "$PWD:/project" monodroid -m -p:Configuration=Release WindBot.sln -p:Posix=true
+      - name: Package patched WindBot
+        shell: bash
+        run: |
+          mkdir -p windbot-package/WindBot
+          cp -r windbot/bin/Release/. windbot-package/WindBot/
+          rm -f windbot-package/WindBot/mscorlib* windbot-package/WindBot/libWindbot*
+          cp windbot/COPYING windbot/LICENSE windbot/bots.json windbot-package/WindBot/
+          cp -r windbot/Decks windbot/Dialogs windbot-package/WindBot/
+          test -f windbot-package/WindBot/WindBot.exe
+          test -f windbot-package/WindBot/ExecutorBase.dll
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-multiplayer-source
-          path: edopro-multiplayer-source.tar.gz
+          name: windbot-multiplayer
+          path: windbot-package/
+          if-no-files-found: error
+
+  linux-bundled:
+    name: Linux bundled client
+    runs-on: ubuntu-24.04
+    needs: windbot-compat
+    env:
+      TRAVIS_OS_NAME: linux
+      BUILD_CONFIG: release
+      ARCH: x64
+      BUNDLED_CORE: "1"
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_CACHE_7Z_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x64-linux.7z
+      CC: gcc-14
+      CXX: g++-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Prepare runner
+        shell: bash
+        run: sudo apt-get remove -y libsqlite3-dev
+      - name: Install Premake
+        shell: bash
+        run: ./travis/install-premake5.sh
+      - name: Install dependencies
+        shell: bash
+        run: ./travis/dependencies.sh
+      - name: Build client with custom core
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package binary
+        shell: bash
+        run: |
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp CAD_MULTIPLAYER.md deploy/
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+      - uses: actions/download-artifact@v4
+        with:
+          name: windbot-multiplayer
+          path: deploy/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-multiplayer-linux-x64
+          path: deploy/
+          if-no-files-found: error
+
+  windows-bundled:
+    name: Windows bundled client
+    runs-on: windows-2022
+    needs: windbot-compat
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) {
+            throw "Visual Studio Installer exited with code $($process.ExitCode)"
+          }
+      - name: Install Premake
+        shell: bash
+        run: ./travis/install-premake5.sh
+      - name: Install dependencies
+        shell: bash
+        run: ./travis/dependencies.sh
+      - name: Build client with custom core
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package binary
+        shell: bash
+        run: |
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp CAD_MULTIPLAYER.md deploy/
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+      - uses: actions/download-artifact@v4
+        with:
+          name: windbot-multiplayer
+          path: deploy/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-multiplayer-windows-x86
+          path: deploy/
           if-no-files-found: error
