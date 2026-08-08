@@ -134,7 +134,8 @@ public:
 		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient = true);
 	void CacheMultiplayerPrivatePiles(uint8_t logical_player, const MultiplayerPrivatePileSnapshot& snapshot);
 	void CaptureBattleRoyaleReplayPrivatePiles();
-	void ApplyBattleRoyaleReplayPrivatePiles();
+	bool IsMultiplayerPrivatePileDisplayed(uint8_t logical_player) const;
+	void ApplyDisplayedMultiplayerPrivatePiles();
 	void UpdateMultiplayerPrivateDraw(uint8_t logical_player,
 		const std::vector<MultiplayerPrivatePileCard>& drawn_cards);
 	void UpdateMultiplayerPrivateMove(uint8_t previous_logical,

@@ -1487,8 +1487,25 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			return false;
 		if(!mainGame->dInfo.SetBattleRoyaleOpponent(logical))
 			return false;
+		mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 		mainGame->dField.RefreshAllCards();
 		return true;
+	};
+	auto GetOnFieldLogicalPlayer = [&](uint8_t core_controler,
+			const CoreUtils::loc_info& info) {
+		if(info.location != LOCATION_MZONE && info.location != LOCATION_SZONE)
+			return static_cast<uint8_t>(0xff);
+		const uint32_t stride = info.location == LOCATION_MZONE ? 7u : 8u;
+		const auto duelist = mainGame->dInfo.compat_mode
+			? static_cast<uint8_t>(info.sequence / stride) : info.duelist;
+		return mainGame->dInfo.GetLogicalPlayer(core_controler, duelist);
+	};
+	auto TrackOnFieldSelection = [&](uint32_t& logical_mask,
+			uint8_t core_controler, const CoreUtils::loc_info& info) {
+		const auto logical = GetOnFieldLogicalPlayer(core_controler, info);
+		if(logical < mainGame->dInfo.GetPlayerCount())
+			logical_mask |= 1u << logical;
+		return logical;
 	};
 	auto GetPrivateDisplaySide = [&](uint8_t core_controler, uint8_t duelist) {
 		if(!mainGame->dInfo.UsesFocusedMultiplayerView())
@@ -1540,8 +1557,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			for(uint8_t logical = 0;
 					logical < mainGame->dInfo.team1 + mainGame->dInfo.team2;
 					++logical) {
-				if(logical != perspective
-						&& (mainGame->dInfo.active_player_mask & (1u << logical))) {
+				if((mainGame->dInfo.active_player_mask & (1u << logical))
+						&& mainGame->dInfo.AreLogicalOpponents(perspective, logical)) {
 					opponent_changed =
 						mainGame->dInfo.SetBattleRoyaleOpponent(logical)
 						|| opponent_changed;
@@ -1549,7 +1566,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				}
 			}
 		}
-		mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+		mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 		if(perspective_changed || opponent_changed)
 			mainGame->dField.RefreshAllCards();
 		return perspective_changed || opponent_changed;
@@ -1950,8 +1967,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				|| mainGame->dInfo.IsUniversalMultiplayer())) {
 			for(uint8_t logical = 0;
 					logical < mainGame->dInfo.team1 + mainGame->dInfo.team2; ++logical) {
-				mainGame->dInfo.logical_lp[logical] = BufferIO::Read<uint32_t>(pbuf);
-				mainGame->dInfo.logical_strLP[logical] = epro::to_wstring(mainGame->dInfo.logical_lp[logical]);
+				mainGame->dInfo.logical_lp[logical] = multiplayer_ui::NormalizeSerializedLifePoints(
+					BufferIO::Read<uint32_t>(pbuf));
+				mainGame->dInfo.logical_strLP[logical] = epro::to_wstring(
+					mainGame->dInfo.logical_lp[logical]);
 				mainGame->dInfo.logical_deck_count[logical] = BufferIO::Read<uint32_t>(pbuf);
 				mainGame->dInfo.logical_hand_count[logical] = BufferIO::Read<uint32_t>(pbuf);
 				mainGame->dInfo.logical_extra_count[logical] = BufferIO::Read<uint32_t>(pbuf);
@@ -1994,11 +2013,16 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				mainGame->dInfo.current_player[mainGame->LocalPlayer(1)] = opposing_index;
 		}
 		// Multiplayer on-field arrays contain encoded per-duelist fields.
-		// Rebuild the normal two-side projection when either side changes focus.
+		// Rebuild the normal two-side projection and its exact private/public
+		// pile snapshot whenever the displayed logical seat changes.
 		if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				|| mainGame->dInfo.UsesFocusedMultiplayerView())
-				&& active_seat_changed)
+				&& active_seat_changed) {
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					&& !mainGame->dInfo.UsesFocusedMultiplayerView())
+				mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 			mainGame->dField.RefreshAllCards();
+		}
 		break;
 	}
 	case MSG_MULTIPLAYER_REPLAY_VIEW: {
@@ -2495,6 +2519,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		bool select_ready = mainGame->dField.select_min == 0;
 		int selection_focus = -1;
 		int selection_focus_side = -1;
+		uint32_t selection_scope_mask = 0;
 		bool battle_royale_selection_focused = false;
 		mainGame->dField.select_ready = select_ready;
 		ClientCard* pcard;
@@ -2505,12 +2530,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(!battle_royale_selection_focused)
 				battle_royale_selection_focused = FocusBattleRoyaleSelection(
 					core_controler, info.location, info.sequence);
+			const auto selection_logical = TrackOnFieldSelection(
+				selection_scope_mask, core_controler, info);
 			info.controler = mainGame->LocalPlayer(info.controler);
-			if(selection_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-						|| mainGame->dInfo.UsesFocusedMultiplayerView())
-					&& (info.location == LOCATION_MZONE || info.location == LOCATION_SZONE)) {
-				const uint32_t stride = info.location == LOCATION_MZONE ? 7u : 8u;
-				selection_focus = static_cast<int>(info.sequence / stride);
+			if(selection_focus < 0
+					&& selection_logical < mainGame->dInfo.GetPlayerCount()) {
+				selection_focus = mainGame->dInfo.GetLogicalDuelist(selection_logical);
 				selection_focus_side = core_controler;
 			}
 			if (info.location == 0) {
@@ -2536,12 +2561,18 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if (info.location & 0xf1)
 				panelmode = true;
 		}
-		if(!mainGame->dInfo.UsesFocusedMultiplayerView()
+		const bool multiple_selection_fields =
+			multiplayer_ui::HasMultipleLogicalPlayers(selection_scope_mask);
+		if(multiple_selection_fields)
+			panelmode = true;
+		if(!multiple_selection_fields
+				&& !mainGame->dInfo.UsesFocusedMultiplayerView()
 				&& selection_focus >= 0 && selection_focus_side >= 0
 				&& selection_focus_side < 2) {
 			if(mainGame->dInfo.SetFieldFocus(
 					static_cast<uint8_t>(selection_focus_side),
 					static_cast<uint8_t>(selection_focus))) {
+				mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 				mainGame->dField.RefreshAllCards();
 			} else {
 				panelmode = true;
@@ -2582,6 +2613,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		uint32_t code;
 		bool panelmode = false;
 		bool selection_focused = false;
+		int selection_focus = -1;
+		int selection_focus_side = -1;
+		uint32_t selection_scope_mask = 0;
 		mainGame->dField.select_ready = false;
 		ClientCard* pcard;
 		for(uint32_t i = 0; i < count1; ++i) {
@@ -2591,6 +2625,13 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(!selection_focused)
 				selection_focused = FocusBattleRoyaleSelection(
 					core_controler, info.location, info.sequence);
+			const auto selection_logical = TrackOnFieldSelection(
+				selection_scope_mask, core_controler, info);
+			if(selection_focus < 0
+					&& selection_logical < mainGame->dInfo.GetPlayerCount()) {
+				selection_focus = mainGame->dInfo.GetLogicalDuelist(selection_logical);
+				selection_focus_side = core_controler;
+			}
 			info.controler = mainGame->LocalPlayer(info.controler);
 			if (info.location == 0) {
 				pcard = new ClientCard{};
@@ -2623,6 +2664,13 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(!selection_focused)
 				selection_focused = FocusBattleRoyaleSelection(
 					core_controler, info.location, info.sequence);
+			const auto selection_logical = TrackOnFieldSelection(
+				selection_scope_mask, core_controler, info);
+			if(selection_focus < 0
+					&& selection_logical < mainGame->dInfo.GetPlayerCount()) {
+				selection_focus = mainGame->dInfo.GetLogicalDuelist(selection_logical);
+				selection_focus_side = core_controler;
+			}
 			info.controler = mainGame->LocalPlayer(info.controler);
 			if (info.location == 0) {
 				pcard = new ClientCard{};
@@ -2645,6 +2693,22 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			pcard->is_selectable = true;
 			pcard->is_selected = true;
 			if (info.location & 0xf1)
+				panelmode = true;
+		}
+		const bool multiple_selection_fields =
+			multiplayer_ui::HasMultipleLogicalPlayers(selection_scope_mask);
+		if(multiple_selection_fields) {
+			panelmode = true;
+		} else if(!mainGame->dInfo.UsesFocusedMultiplayerView()
+				&& selection_focus >= 0 && selection_focus_side >= 0
+				&& selection_focus_side < 2) {
+			if(mainGame->dInfo.SetFieldFocus(
+					static_cast<uint8_t>(selection_focus_side),
+					static_cast<uint8_t>(selection_focus))) {
+				mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
+				mainGame->dField.RefreshAllCards();
+			}
+			else
 				panelmode = true;
 		}
 		std::sort(mainGame->dField.selectable_cards.begin(), mainGame->dField.selectable_cards.end(), ClientCard::client_card_sort);
@@ -2690,6 +2754,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		bool select_trigger = (specount == 0x7f);
 		int chain_focus = -1;
 		int chain_focus_side = -1;
+		uint32_t chain_scope_mask = 0;
 		mainGame->dField.activatable_cards.clear();
 		mainGame->dField.activatable_descs.clear();
 		mainGame->dField.conti_cards.clear();
@@ -2702,12 +2767,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			code = BufferIO::Read<uint32_t>(pbuf);
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
 			const auto core_controler = info.controler;
+			const auto chain_logical = TrackOnFieldSelection(
+				chain_scope_mask, core_controler, info);
 			info.controler = mainGame->LocalPlayer(info.controler);
-			if(chain_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-						|| mainGame->dInfo.UsesFocusedMultiplayerView())
-					&& (info.location == LOCATION_MZONE || info.location == LOCATION_SZONE)) {
-				const uint32_t stride = info.location == LOCATION_MZONE ? 7u : 8u;
-				chain_focus = static_cast<int>(info.sequence / stride);
+			if(chain_focus < 0
+					&& chain_logical < mainGame->dInfo.GetPlayerCount()) {
+				chain_focus = mainGame->dInfo.GetLogicalDuelist(chain_logical);
 				chain_focus_side = core_controler;
 			}
 			desc = CompatRead<uint32_t, uint64_t>(pbuf);
@@ -2748,17 +2813,26 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					panelmode = true;
 			}
 		}
-		if(chain_focus >= 0 && chain_focus_side >= 0 && chain_focus_side < 2) {
+		const bool multiple_chain_fields =
+			multiplayer_ui::HasMultipleLogicalPlayers(chain_scope_mask);
+		if(multiple_chain_fields)
+			panelmode = true;
+		if(!multiple_chain_fields
+				&& chain_focus >= 0 && chain_focus_side >= 0
+				&& chain_focus_side < 2) {
 			if(mainGame->dInfo.UsesFocusedMultiplayerView()) {
 				const auto logical = mainGame->dInfo.GetLogicalPlayer(
 					static_cast<uint8_t>(chain_focus_side),
 					static_cast<uint8_t>(chain_focus));
 				if(logical != mainGame->dInfo.GetLocalLogicalPlayer()
-						&& mainGame->dInfo.SetBattleRoyaleOpponent(logical))
+						&& mainGame->dInfo.SetBattleRoyaleOpponent(logical)) {
+					mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 					mainGame->dField.RefreshAllCards();
+				}
 			} else if(mainGame->dInfo.SetFieldFocus(
 					static_cast<uint8_t>(chain_focus_side),
 					static_cast<uint8_t>(chain_focus))) {
+				mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 				mainGame->dField.RefreshAllCards();
 			} else {
 				panelmode = true;
@@ -4510,29 +4584,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			deck_count = deck_count > count ? deck_count - count : 0;
 			mainGame->dInfo.logical_hand_count[logical_player] += count;
 		}
-		if(mainGame->dInfo.isReplay) {
-			mainGame->dField.UpdateMultiplayerPrivateDraw(
-				logical_player, drawn_cards);
-			if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
-				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
-		}
-		if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()
-				&& !(mainGame->dInfo.isReplay
-					&& mainGame->dInfo.UsesFocusedMultiplayerView())) {
-			auto lock = LockIf();
-			const auto player = mainGame->LocalPlayer(mainGame->dInfo.GetLogicalCoreSide(logical_player));
-			auto& deck = mainGame->dField.deck[player];
-			for(const auto& drawn : drawn_cards) {
-				if(deck.empty())
-					break;
-				auto* pcard = deck.back();
-				deck.pop_back();
-				pcard->code = drawn.code;
-				pcard->position = drawn.position;
-				mainGame->dField.AddCard(pcard, player, LOCATION_HAND, 0);
-			}
-			mainGame->dField.RefreshAllCards();
-		}
+		mainGame->dField.UpdateMultiplayerPrivateDraw(
+			logical_player, drawn_cards);
+		if(mainGame->dField.IsMultiplayerPrivatePileDisplayed(logical_player))
+			mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 		for(uint32_t i = 0; i < count; ++i)
 			Play(SoundManager::SFX::DRAW);
 		return true;
@@ -4566,17 +4621,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dInfo.logical_grave_count[logical_player] = grave_count;
 			mainGame->dInfo.logical_banish_count[logical_player] = removed_count;
 		}
-		if(mainGame->dInfo.isReplay
-				&& mainGame->dInfo.UsesFocusedMultiplayerView()) {
-			mainGame->dField.CacheMultiplayerPrivatePiles(
-				logical_player, snapshot);
-			if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
-				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
-		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
+		mainGame->dField.CacheMultiplayerPrivatePiles(logical_player, snapshot);
+		if(mainGame->dField.IsMultiplayerPrivatePileDisplayed(logical_player)) {
 			auto lock = LockIf();
-			const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
-			mainGame->dField.ReplaceMultiplayerPrivatePiles(
-				mainGame->LocalPlayer(core_side), snapshot);
+			mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 		}
 		return true;
 	}
@@ -4600,9 +4648,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			? logical_display : mainGame->LocalPlayer(core_player);
 		const int current_lp = logical_player < mainGame->dInfo.GetPlayerCount()
 			? mainGame->dInfo.logical_lp[logical_player] : mainGame->dInfo.lp[player];
-		int final = current_lp - val;
-		if (final < 0)
-			final = 0;
+		const int final = multiplayer_ui::ApplyLifePointDamage(
+			current_lp, val);
 		auto lock = LockIf();
 		if(!mainGame->dInfo.isCatchingUp) {
 			mainGame->lpd = (current_lp - final) / 10;
@@ -4610,6 +4657,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->lpccolor = 0xff0000;
 			mainGame->lpcalpha = 0xff;
 			mainGame->lpplayer = player;
+			mainGame->lp_logical_player = logical_player < mainGame->dInfo.GetPlayerCount()
+				? logical_player : -1;
 			mainGame->lpcstring = epro::format(L"-{}", val);
 			mainGame->WaitFrameSignal(30, lock);
 			mainGame->lpframe = 10;
@@ -4649,6 +4698,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->lpccolor = 0x00ff00;
 			mainGame->lpcalpha = 0xff;
 			mainGame->lpplayer = player;
+			mainGame->lp_logical_player = logical_player < mainGame->dInfo.GetPlayerCount()
+				? logical_player : -1;
 			mainGame->lpcstring = epro::format(L"+{}", val);
 			mainGame->WaitFrameSignal(30, lock);
 			mainGame->lpframe = 10;
@@ -4693,7 +4744,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_LPUPDATE: {
 		const auto core_player = BufferIO::Read<uint8_t>(pbuf);
-		const auto val = BufferIO::Read<uint32_t>(pbuf);
+		const auto val = NormalizeSerializedLP(BufferIO::Read<uint32_t>(pbuf));
 		const bool has_logical_player =
 			mainGame->dInfo.IsAnyMultiplayer() && len >= 6;
 		const auto logical_player = has_logical_player
@@ -4704,8 +4755,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			? logical_display : mainGame->LocalPlayer(core_player);
 		auto lock = LockIf();
 		if(!mainGame->dInfo.isCatchingUp) {
-			mainGame->lpd = (mainGame->dInfo.lp[player] - val) / 10;
+			const int current_lp = logical_player < mainGame->dInfo.GetPlayerCount()
+				? mainGame->dInfo.logical_lp[logical_player] : mainGame->dInfo.lp[player];
+			mainGame->lpd = (current_lp - static_cast<int>(val)) / 10;
 			mainGame->lpplayer = player;
+			mainGame->lp_logical_player = logical_player < mainGame->dInfo.GetPlayerCount()
+				? logical_player : -1;
 			mainGame->lpframe = 10;
 			mainGame->WaitFrameSignal(11, lock);
 		}
@@ -4792,6 +4847,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->lpccolor = 0x0000ff;
 			mainGame->lpcalpha = 0xff;
 			mainGame->lpplayer = player;
+			mainGame->lp_logical_player = logical_player < mainGame->dInfo.GetPlayerCount()
+				? logical_player : -1;
 			mainGame->lpcstring = epro::format(L"-{}", cost);
 			mainGame->WaitFrameSignal(30, lock);
 			mainGame->lpframe = 10;
@@ -5240,16 +5297,53 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		return true;
 	}
 	case MSG_TAG_SWAP: {
+		const auto* payload_start = pbuf;
+		const auto* payload_end = payload_start + len;
 		const auto core_player = BufferIO::Read<uint8_t>(pbuf);
-		const auto logical_player = mainGame->dInfo.GetLogicalPlayer(core_player);
-		const auto private_display = GetActivePrivateDisplaySide(core_player);
-		const auto player = private_display < 2
-			? private_display : mainGame->LocalPlayer(core_player);
 		const auto mcount = CompatRead<uint8_t, uint32_t>(pbuf);
 		const auto ecount = CompatRead<uint8_t, uint32_t>(pbuf);
 		const auto pcount = CompatRead<uint8_t, uint32_t>(pbuf);
 		const auto hcount = CompatRead<uint8_t, uint32_t>(pbuf);
 		const auto topcode = BufferIO::Read<uint32_t>(pbuf);
+		uint8_t logical_player = mainGame->dInfo.GetLogicalPlayer(core_player);
+		bool has_authoritative_logical = false;
+		if(mainGame->dInfo.IsAnyMultiplayer()) {
+			const auto private_card_size = mainGame->dInfo.compat_mode
+				? sizeof(uint32_t) : 2u * sizeof(uint32_t);
+			const auto private_count = static_cast<size_t>(hcount) + ecount;
+			const auto private_bytes = private_count * private_card_size;
+			const auto* scan = pbuf;
+			if(private_bytes <= static_cast<size_t>(payload_end - scan)) {
+				scan += private_bytes;
+				if(static_cast<size_t>(payload_end - scan) >= 2u * sizeof(uint32_t)) {
+					const auto gcount = BufferIO::Read<uint32_t>(scan);
+					const auto rcount = BufferIO::Read<uint32_t>(scan);
+					const auto grave_bytes =
+						(static_cast<size_t>(gcount) + rcount)
+						* 2u * sizeof(uint32_t);
+					if(grave_bytes <= static_cast<size_t>(payload_end - scan)) {
+						scan += grave_bytes;
+						if(scan + 1 == payload_end) {
+							const auto candidate = *scan;
+							if(candidate < mainGame->dInfo.GetPlayerCount()) {
+								logical_player = candidate;
+								has_authoritative_logical = true;
+							}
+						}
+					}
+				}
+			}
+		}
+		const auto logical_core_side = logical_player < mainGame->dInfo.GetPlayerCount()
+			? mainGame->dInfo.GetLogicalCoreSide(logical_player) : core_player;
+		const auto logical_duelist = logical_player < mainGame->dInfo.GetPlayerCount()
+			? mainGame->dInfo.GetLogicalDuelist(logical_player) : 0xff;
+		const auto private_display = mainGame->dInfo.UsesFocusedMultiplayerView()
+			? mainGame->dInfo.GetBattleRoyalePrivateDisplaySide(
+				logical_core_side, logical_duelist)
+			: mainGame->LocalPlayer(core_player);
+		const auto player = private_display < 2
+			? private_display : mainGame->LocalPlayer(core_player);
 		if((mainGame->dInfo.UsesFocusedMultiplayerView()
 					&& private_display > 1)
 				|| (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
@@ -5270,6 +5364,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					BufferIO::Read<uint32_t>(pbuf);
 					BufferIO::Read<uint32_t>(pbuf);
 				}
+				if(has_authoritative_logical)
+					BufferIO::Read<uint8_t>(pbuf);
 			}
 			if(logical_player < mainGame->dInfo.GetPlayerCount()) {
 				mainGame->dInfo.logical_deck_count[logical_player] = mcount;
@@ -5441,6 +5537,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					pcard->UpdateDrawCoordinates(true);
 				}
 			}
+			if(has_authoritative_logical)
+				BufferIO::Read<uint8_t>(pbuf);
 			if(logical_player < mainGame->dInfo.GetPlayerCount()) {
 				mainGame->dInfo.logical_deck_count[logical_player] = mcount;
 				mainGame->dInfo.logical_hand_count[logical_player] = hcount;

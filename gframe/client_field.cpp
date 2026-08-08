@@ -603,16 +603,15 @@ std::wstring ClientField::GetOptionText(uint64_t option) const {
 	if((option & MULTIPLAYER_OPTION_PLAYER_MASK) != MULTIPLAYER_OPTION_PLAYER_BASE)
 		return std::wstring(gDataManager->GetDesc(option, mainGame->dInfo.compat_mode));
 	const auto logical = static_cast<uint8_t>(option & 0xffu);
-	const auto& team1_names = mainGame->dInfo.isTeam1 ? mainGame->dInfo.selfnames : mainGame->dInfo.opponames;
-	const auto& team2_names = mainGame->dInfo.isTeam1 ? mainGame->dInfo.opponames : mainGame->dInfo.selfnames;
 	std::wstring name = L"Player";
-	if(logical < mainGame->dInfo.team1) {
-		if(logical < team1_names.size() && !team1_names[logical].empty())
-			name = team1_names[logical];
-	} else {
-		const auto index = static_cast<size_t>(logical - mainGame->dInfo.team1);
-		if(index < team2_names.size() && !team2_names[index].empty())
-			name = team2_names[index];
+	const auto slot = multiplayer_ui::GetLogicalNameSlot(logical,
+		static_cast<uint8_t>(mainGame->dInfo.team1),
+		static_cast<uint8_t>(mainGame->dInfo.team2));
+	if(slot.valid) {
+		const auto& names = slot.second_side
+			? mainGame->dInfo.opponames : mainGame->dInfo.selfnames;
+		if(slot.index < names.size() && !names[slot.index].empty())
+			name = names[slot.index];
 	}
 	return epro::format(L"P{} {}", static_cast<unsigned>(logical) + 1u, name);
 }
@@ -900,23 +899,45 @@ void ClientField::CaptureBattleRoyaleReplayPrivatePiles() {
 		CacheMultiplayerPrivatePiles(logical, snapshot);
 	}
 }
-void ClientField::ApplyBattleRoyaleReplayPrivatePiles() {
-	if(!mainGame->dInfo.isReplay
-			|| !mainGame->dInfo.UsesFocusedMultiplayerView())
+bool ClientField::IsMultiplayerPrivatePileDisplayed(uint8_t logical_player) const {
+	if(!mainGame->dInfo.IsAnyMultiplayer()
+			|| logical_player >= mainGame->dInfo.GetPlayerCount())
+		return false;
+	if(mainGame->dInfo.UsesFocusedMultiplayerView())
+		return mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2;
+	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+		for(uint8_t core_side = 0; core_side < 2; ++core_side)
+			if(mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player)
+				return true;
+	}
+	return logical_player == mainGame->dInfo.GetLocalLogicalPlayer();
+}
+void ClientField::ApplyDisplayedMultiplayerPrivatePiles() {
+	if(!mainGame->dInfo.IsAnyMultiplayer())
 		return;
 	bool clear_transient = true;
-	for(uint8_t display_side = 0; display_side < 2; ++display_side) {
-		const auto logical =
-			mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side);
-		if(logical < multiplayer_private_piles.size()
-				&& multiplayer_private_piles_valid[logical]) {
+	auto apply = [&](uint8_t display_side, uint8_t logical_player) {
+		if(display_side > 1)
+			return;
+		if(logical_player < multiplayer_private_piles.size()
+				&& multiplayer_private_piles_valid[logical_player])
 			ReplaceMultiplayerPrivatePiles(display_side,
-				multiplayer_private_piles[logical], clear_transient);
-		} else {
+				multiplayer_private_piles[logical_player], clear_transient);
+		else
 			ReplaceMultiplayerPrivatePiles(display_side,
 				MultiplayerPrivatePileSnapshot{}, clear_transient);
-		}
 		clear_transient = false;
+	};
+	if(mainGame->dInfo.UsesFocusedMultiplayerView()) {
+		for(uint8_t display_side = 0; display_side < 2; ++display_side)
+			apply(display_side,
+				mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side));
+		return;
+	}
+	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+		for(uint8_t core_side = 0; core_side < 2; ++core_side)
+			apply(mainGame->LocalPlayer(core_side),
+				mainGame->dInfo.GetFocusedLogicalPlayer(core_side));
 	}
 }
 void ClientField::UpdateMultiplayerPrivateDraw(uint8_t logical_player,
@@ -936,8 +957,7 @@ void ClientField::UpdateMultiplayerPrivateMove(uint8_t previous_logical,
 		uint8_t previous_location, uint32_t previous_sequence,
 		uint8_t current_logical, uint8_t current_location,
 		uint32_t current_sequence, uint32_t code, uint8_t position) {
-	if(!mainGame->dInfo.isReplay
-			|| !mainGame->dInfo.UsesFocusedMultiplayerView())
+	if(!mainGame->dInfo.IsAnyMultiplayer())
 		return;
 	auto get_cards = [](MultiplayerPrivatePileSnapshot& snapshot,
 			uint8_t location) -> std::vector<MultiplayerPrivatePileCard>* {
@@ -1032,6 +1052,7 @@ void ClientField::CycleTeamField() {
 		return;
 	mainGame->dInfo.field_focus[0] = static_cast<uint8_t>(
 		(mainGame->dInfo.field_focus[0] + 1) % mainGame->dInfo.team1);
+	ApplyDisplayedMultiplayerPrivatePiles();
 	hovered_card = nullptr;
 	hovered_location = 0;
 	hovered_sequence = 0;

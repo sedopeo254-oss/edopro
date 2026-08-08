@@ -2955,14 +2955,18 @@ void ClientField::SetResponseSelectedOption() const {
 						|| mainGame->dInfo.UsesFocusedMultiplayerView())
 					&& logical < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
 				if(mainGame->dInfo.UsesFocusedMultiplayerView()) {
-					if(mainGame->dInfo.SetBattleRoyaleOpponent(logical))
+					if(mainGame->dInfo.SetBattleRoyaleOpponent(logical)) {
+						mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 						mainGame->dField.RefreshAllCards();
+					}
 				} else {
 					const auto core_side = static_cast<uint8_t>(logical < mainGame->dInfo.team1 ? 0 : 1);
 					const auto duelist = static_cast<uint8_t>(
 						core_side == 0 ? logical : logical - mainGame->dInfo.team1);
-					if(mainGame->dInfo.SetFieldFocus(core_side, duelist))
+					if(mainGame->dInfo.SetFieldFocus(core_side, duelist)) {
+						mainGame->dField.ApplyDisplayedMultiplayerPrivatePiles();
 						mainGame->dField.RefreshAllCards();
+					}
 				}
 			}
 		}

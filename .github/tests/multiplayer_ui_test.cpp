@@ -1,4 +1,7 @@
 #include "gframe/multiplayer_ui.h"
+#include "gframe/multiplayer_packets.h"
+#include <cstring>
+#include <vector>
 
 #include <cassert>
 #include <cmath>
@@ -17,6 +20,78 @@ int main() {
 	assert(IsHudRightSide(true, true));
 	assert(IsHudRightSide(false, false));
 	assert(!IsHudRightSide(true, false));
+
+	// Focused rendering is deterministic for all independent-field replays,
+	// while live 3-vs-1 retains its manual Swap-the-Team presentation.
+	assert(UsesFocusedMultiplayerView(true, false, false, false));
+	assert(UsesFocusedMultiplayerView(false, true, false, false));
+	assert(!UsesFocusedMultiplayerView(false, false, true, false));
+	assert(UsesFocusedMultiplayerView(false, false, true, true));
+	assert(!UsesFocusedMultiplayerView(false, false, false, true));
+
+	// Logical names never change when the visual side is swapped.
+	const auto p1_name = GetLogicalNameSlot(0, 3, 1);
+	const auto p3_name = GetLogicalNameSlot(2, 3, 1);
+	const auto p4_name = GetLogicalNameSlot(3, 3, 1);
+	assert(p1_name.valid && !p1_name.second_side && p1_name.index == 0);
+	assert(p3_name.valid && !p3_name.second_side && p3_name.index == 2);
+	assert(p4_name.valid && p4_name.second_side && p4_name.index == 0);
+	assert(!GetLogicalNameSlot(4, 3, 1).valid);
+	assert(!HasMultipleLogicalPlayers(0));
+	assert(!HasMultipleLogicalPlayers(1u << 2));
+	assert(HasMultipleLogicalPlayers((1u << 0) | (1u << 2)));
+
+	// Public private-pile packets expose Graveyards and face-up public cards,
+	// but never leak Deck top, Hand, face-down Extra or face-down banished codes.
+	std::vector<uint8_t> piles;
+	auto write_u8 = [&](uint8_t value) { piles.push_back(value); };
+	auto write_u32 = [&](uint32_t value) {
+		const auto old_size = piles.size();
+		piles.resize(old_size + sizeof(value));
+		std::memcpy(piles.data() + old_size, &value, sizeof(value));
+	};
+	auto read_u32 = [&](size_t offset) {
+		uint32_t value = 0;
+		std::memcpy(&value, piles.data() + offset, sizeof(value));
+		return value;
+	};
+	write_u8(1);       // logical player
+	write_u32(30);     // Deck count
+	write_u32(2);      // Extra count
+	write_u32(0);      // face-up Pendulum count
+	write_u32(2);      // Hand count
+	write_u32(999);    // Deck top
+	write_u32(101); write_u32(0x1); // Hand, even if position is face-up
+	write_u32(102); write_u32(0x8);
+	write_u32(201); write_u32(0x1); // face-up Extra
+	write_u32(202); write_u32(0x8); // face-down Extra
+	write_u32(1);      // Grave count
+	write_u32(2);      // banished count
+	write_u32(301); write_u32(0x1); // Graveyard stays public
+	write_u32(401); write_u32(0x1); // face-up banished
+	write_u32(402); write_u32(0x8); // face-down banished
+	assert(ygo::multiplayer_packets::SanitizePrivatePiles(
+		piles.data(), piles.size(), 0x5));
+	assert(read_u32(17) == 0); // top code
+	assert(read_u32(21) == 0 && read_u32(29) == 0); // Hand codes
+	assert(read_u32(37) == 201 && read_u32(45) == 0); // Extra codes
+	assert(read_u32(61) == 301); // Graveyard code
+	assert(read_u32(69) == 401 && read_u32(77) == 0); // banished codes
+	auto malformed = piles;
+	malformed.pop_back();
+	assert(!ygo::multiplayer_packets::SanitizePrivatePiles(
+		malformed.data(), malformed.size(), 0x5));
+	assert(NormalizeSerializedLifePoints(4000u) == 4000);
+	assert(NormalizeSerializedLifePoints(0xfffffc4au) == 0);
+	assert(ApplyLifePointDamage(4000, 950u) == 3050);
+	assert(ApplyLifePointDamage(4000, 4950u) == 0);
+	assert(ApplyLifePointDamage(0, 950u) == 0);
+	assert(CanFocusLogicalPlayer(false, false, 0, 3, 4, 0x0fu, true));
+	assert(!CanFocusLogicalPlayer(false, false, 0, 1, 4, 0x0fu, false));
+	assert(CanFocusLogicalPlayer(true, true, 2, 0, 4, 0x0eu, false));
+	assert(!CanFocusLogicalPlayer(true, false, 2, 0, 4, 0x0eu, false));
+	assert(IsLogicalFieldAvailable(true, true, 0, 4, 0x0eu));
+	assert(!IsLogicalFieldAvailable(false, true, 0, 4, 0x0eu));
 
 	// Legacy Battle Royale places two independent LP panels in each Standard
 	// side without entering the card/replay sidebar.

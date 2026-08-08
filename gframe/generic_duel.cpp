@@ -1,5 +1,6 @@
 #include <algorithm>
 #include "generic_duel.h"
+#include "multiplayer_packets.h"
 #include "netserver.h"
 #include "game.h"
 #include "core_utils.h"
@@ -1421,15 +1422,43 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		break;
 	}
 	case MSG_TAG_SWAP: {
+		const auto* payload_end = packet.data() + packet.buff_size();
 		player = BufferIO::Read<uint8_t>(pbuf);
 		/*uint32_t mcount = */BufferIO::Read<uint32_t>(pbuf);
 		uint32_t ecount = BufferIO::Read<uint32_t>(pbuf);
 		/*uint32_t pcount = */BufferIO::Read<uint32_t>(pbuf);
 		uint32_t hcount = BufferIO::Read<uint32_t>(pbuf);
 		pbufw = pbuf + 4;
+		DuelPlayer* logical_owner = IsMultiplayerMode() ? cur_player[player] : nullptr;
+		if(IsMultiplayerMode()) {
+			// Multiplayer TAG_SWAP carries the exact logical owner as its final
+			// byte. The physical side's current player may already have advanced,
+			// so using cur_player[player] here can reveal P2's private piles to P3
+			// and then make the client relabel that snapshot as another player.
+			const auto* scan = pbufw;
+			const auto private_count = static_cast<size_t>(hcount) + ecount;
+			const auto private_bytes = private_count * 2u * sizeof(uint32_t);
+			if(private_bytes <= static_cast<size_t>(payload_end - scan)) {
+				scan += private_bytes;
+				if(static_cast<size_t>(payload_end - scan) >= 2u * sizeof(uint32_t)) {
+					const auto gcount = BufferIO::Read<uint32_t>(scan);
+					const auto rcount = BufferIO::Read<uint32_t>(scan);
+					const auto public_bytes = (static_cast<size_t>(gcount) + rcount)
+						* 2u * sizeof(uint32_t);
+					if(public_bytes <= static_cast<size_t>(payload_end - scan)) {
+						scan += public_bytes;
+						if(scan + 1 == payload_end) {
+							const auto logical = *scan;
+							if(logical < players.home_size + players.opposing_size)
+								logical_owner = GetAtPos(logical).player;
+						}
+					}
+				}
+			}
+		}
 		SEND(nullptr);
 		if(IsMultiplayerMode()) {
-			NetServer::ReSendToPlayer(cur_player[player]);
+			NetServer::ReSendToPlayer(logical_owner);
 		} else {
 			for(auto& dueler : (player == 0) ? players.home : players.opposing)
 				NetServer::ReSendToPlayer(dueler);
@@ -1458,7 +1487,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		}
 		SEND(nullptr);
 		if(IsMultiplayerMode()) {
-			ResendToAll(cur_player[player]);
+			ResendToAll(logical_owner);
 		} else {
 			for(auto& dueler : (player == 1) ? players.home : players.opposing)
 				NetServer::ReSendToPlayer(dueler);
@@ -1513,8 +1542,22 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_MULTIPLAYER_PRIVATE_PILES: {
 		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
-		if(logical_player < players.home_size + players.opposing_size)
-			SEND(GetAtPos(logical_player).player);
+		auto* owner = logical_player < players.home_size + players.opposing_size
+			? GetAtPos(logical_player).player : nullptr;
+		// The exact owner receives the complete snapshot. Replays retain this
+		// original packet as well, which makes every 3-vs-1 camera seek exact.
+		if(owner)
+			SEND(owner);
+
+		// Everyone else needs the public Graveyard/Banish projection when the
+		// displayed teammate changes, but must never receive Hand, Deck top,
+		// face-down Extra Deck or face-down banished identities.
+		if(multiplayer_packets::SanitizePrivatePiles(
+				packet.data(), packet.buff_size(), POS_FACEUP)) {
+			SEND(nullptr);
+			ResendToAll(owner);
+			packets_cache.push_back(packet);
+		}
 		break;
 	}
 	case MSG_PLAYER_ELIMINATED: {
