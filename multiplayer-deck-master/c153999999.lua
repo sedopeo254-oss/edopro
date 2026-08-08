@@ -1,5 +1,5 @@
 --Virtual World
---Independent logical-player Deck Master support
+--3v1 logical-player Deck Master support
 local s,id=GetID()
 function s.initial_effect(c)
 	aux.EnableExtraRules(c,s,s.VirtualWorldStart)
@@ -31,7 +31,7 @@ function s.VirtualWorldStart()
 	local dm=Duel.CreateToken(0,153000000)
 	Duel.ConfirmCards(1,dm)
 	if Duel.GetActiveLogicalPlayerMask()~=0 then
-		--In multiplayer the rule is enabled directly and every active logical player
+		--In 3v1 the rule is enabled directly and every active logical player
 		--receives an independent Deck Master selection.
 		DeckMaster.RegisterRules(dm)
 		return

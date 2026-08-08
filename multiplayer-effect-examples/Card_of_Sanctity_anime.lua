@@ -1,4 +1,4 @@
---Card of Sanctity (anime) - universal multiplayer effect expansion example
+--Card of Sanctity (anime) - 3v1 effect expansion example
 local s,id=GetID()
 function s.initial_effect(c)
 	--Activate
@@ -34,7 +34,7 @@ function s.operation(e,tp,eg,ep,ev,re,r,rp)
 		s.draw_original(tp)
 		return
 	end
-	for player=0,25 do
+	for player=0,3 do
 		if players&(1<<player)~=0 then
 			local hand=Duel.GetPlayerFieldGroupCount(player,LOCATION_HAND)
 			if hand<6 then
@@ -43,3 +43,4 @@ function s.operation(e,tp,eg,ep,ev,re,r,rp)
 		end
 	end
 end
+

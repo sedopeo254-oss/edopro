@@ -360,9 +360,8 @@ void NetServer::HandleCTOSPacket(DuelPlayer* dp, uint8_t* data, uint32_t len) {
 		}
 		const uint64_t duel_flags = static_cast<uint64_t>(pkt.info.duel_flag_low)
 			| (static_cast<uint64_t>(pkt.info.duel_flag_high) << 32);
-		const auto multiplayer_flags = duel_flags
-			& (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_UNIVERSAL_MULTIPLAYER);
-		if(multiplayer_flags && (multiplayer_flags & (multiplayer_flags - 1)))
+		const auto multiplayer_flags = duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+		if(multiplayer_flags == (DUEL_BATTLE_ROYALE | DUEL_3_V_1))
 			return;
 		if(multiplayer_flags == DUEL_BATTLE_ROYALE) {
 			pkt.info.team1 = 2;
@@ -372,29 +371,9 @@ void NetServer::HandleCTOSPacket(DuelPlayer* dp, uint8_t* data, uint32_t len) {
 			pkt.info.team1 = 3;
 			pkt.info.team2 = 1;
 			pkt.info.duel_flag_low &= ~DUEL_RELAY;
-		} else if(multiplayer_flags == DUEL_UNIVERSAL_MULTIPLAYER) {
-			pkt.info.team1 = std::clamp(pkt.info.team1, 1,
-				static_cast<int32_t>(OCG_MULTIPLAYER_MAX_PLAYERS / 2));
-			pkt.info.team2 = std::clamp(pkt.info.team2, 1,
-				static_cast<int32_t>(OCG_MULTIPLAYER_MAX_PLAYERS / 2));
-			pkt.info.duel_flag_low &= ~DUEL_RELAY;
-			if(pkt.info.mode < MODE_UNIVERSAL_SOLO
-					|| pkt.info.mode > MODE_UNIVERSAL_BATTLE_ROYALE)
-				return;
-			if(pkt.info.mode == MODE_UNIVERSAL_TEAMS) {
-				auto team_count = static_cast<uint8_t>(pkt.info.no_check_deck_content
-					>> HOST_UNIVERSAL_TEAM_COUNT_SHIFT);
-				team_count = std::clamp<uint8_t>(team_count, 2,
-					static_cast<uint8_t>(pkt.info.team1 + pkt.info.team2));
-				pkt.info.no_check_deck_content = static_cast<uint8_t>(
-					(pkt.info.no_check_deck_content & ~HOST_UNIVERSAL_TEAM_COUNT_MASK)
-					| (team_count << HOST_UNIVERSAL_TEAM_COUNT_SHIFT));
-			}
 		}
-		if(multiplayer_flags != DUEL_UNIVERSAL_MULTIPLAYER) {
-			pkt.info.team1 = std::max(1, std::min(pkt.info.team1, 3));
-			pkt.info.team2 = std::max(1, std::min(pkt.info.team2, 3));
-		}
+		pkt.info.team1 = std::max(1, std::min(pkt.info.team1, 3));
+		pkt.info.team2 = std::max(1, std::min(pkt.info.team2, 3));
 		duel_mode = new GenericDuel(pkt.info.team1, pkt.info.team2, !!(pkt.info.duel_flag_low & DUEL_RELAY), pkt.info.best_of);
 		duel_mode->etimer = event_new(net_evbase, 0, EV_TIMEOUT | EV_PERSIST, GenericDuel::GenericTimer, duel_mode);
 		timeval timeout = { 1, 0 };

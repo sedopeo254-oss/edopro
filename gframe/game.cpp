@@ -1206,15 +1206,7 @@ void Game::PopulateGameHostWindows() {
 		cbMultiplayerMode->addItem(L"Standard");
 		cbMultiplayerMode->addItem(L"Battle Royale");
 		cbMultiplayerMode->addItem(L"3 vs 1");
-		cbMultiplayerMode->addItem(L"CaD: Single Duel");
-		cbMultiplayerMode->addItem(L"CaD: Teams");
-		cbMultiplayerMode->addItem(L"CaD: Battle Royal");
-		cbMultiplayerMode->setSelected((duel_param & DUEL_BATTLE_ROYALE) ? 1
-			: ((duel_param & DUEL_3_V_1) ? 2
-				: ((duel_param & DUEL_UNIVERSAL_MULTIPLAYER) ? 3 : 0)));
-		stUniversalTeamCount = env->addStaticText(L"Teams:", Scale(305, 130, 345, 150), false, false, tDuelSettings);
-		ebUniversalTeamCount = env->addEditBox(L"2", Scale(345, 125, 370, 150), true, tDuelSettings, EDITBOX_NUMERIC);
-		ebUniversalTeamCount->setTextAlignment(irr::gui::EGUIA_CENTER, irr::gui::EGUIA_CENTER);
+		cbMultiplayerMode->setSelected((duel_param & DUEL_BATTLE_ROYALE) ? 1 : ((duel_param & DUEL_3_V_1) ? 2 : 0));
 		UpdateMultiplayerMode();
 		defaultStrings.emplace_back(env->addStaticText(gDataManager->GetSysString(1236).data(), Scale(20, 130, 220, 150), false, false, tDuelSettings), 1236);
 		cbDuelRule = AddComboBox(env, Scale(140, 125, 300, 150), tDuelSettings, COMBOBOX_DUEL_RULE);
@@ -1403,7 +1395,7 @@ void Game::PopulateGameHostWindows() {
 	defaultStrings.emplace_back(btnHostPrepDuelist, 1251);
 	btnHostPrepWindBot = env->addButton(Scale(170, 30, 270, 55), wHostPrepare, BUTTON_HP_AI_TOGGLE, gDataManager->GetSysString(2050).data());
 	defaultStrings.emplace_back(btnHostPrepWindBot, 2050);
-	for(int i = 0; i < OCG_MULTIPLAYER_MAX_PLAYERS; ++i) {
+	for(int i = 0; i < 6; ++i) {
 		btnHostPrepKick[i] = env->addButton(Scale(10, 65 + i * 25, 30, 85 + i * 25), wHostPrepare, BUTTON_HP_KICK, L"X");
 		stHostPrepDuelist[i] = env->addStaticText(L"", Scale(40, 65 + i * 25, 240, 85 + i * 25), true, false, wHostPrepare);
 		chkHostPrepReady[i] = env->addCheckBox(false, Scale(250, 65 + i * 25, 270, 85 + i * 25), wHostPrepare, CHECKBOX_HP_READY, L"");
@@ -2533,9 +2525,7 @@ void Game::RefreshAiDecks() {
 							bot.masterRules.insert(masterRule.get<int>());
 						}
 					}
-					// King of Anime is the generic engine for custom/anime decks. Lucky
-					// remains available as a normal bot with its bundled test deck.
-					bool is_generic_engine = bot.deck == L"KingOfAnime";
+					bool is_generic_engine = bot.deck == L"Lucky";
 					if(is_generic_engine)
 						generic_engine_bot = bot;
 					else
@@ -3112,8 +3102,7 @@ uint8_t Game::LocalPlayer(uint8_t player) {
 	return dInfo.isFirst ? player : 1 - player;
 }
 void Game::UpdateDuelParam() {
-	const auto multiplayer_mode = duel_param
-		& (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_UNIVERSAL_MULTIPLAYER);
+	const auto multiplayer_mode = duel_param & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
 	ReloadCBDuelRule();
 	uint64_t flag = 0;
 	for(auto i = 0u; i < sizeofarr(chkCustomRules); ++i) {
@@ -3189,7 +3178,7 @@ void Game::UpdateDuelParam() {
 	forbiddentypes = flag2;
 }
 void Game::UpdateMultiplayerMode() {
-	duel_param &= ~(DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_UNIVERSAL_MULTIPLAYER);
+	duel_param &= ~(DUEL_BATTLE_ROYALE | DUEL_3_V_1);
 	const auto mode = cbMultiplayerMode->getSelected();
 	if(mode == 1) {
 		duel_param |= DUEL_BATTLE_ROYALE;
@@ -3199,17 +3188,11 @@ void Game::UpdateMultiplayerMode() {
 		duel_param |= DUEL_3_V_1;
 		ebTeam1->setText(L"1");
 		ebTeam2->setText(L"3");
-	} else if(mode >= 3 && mode <= 5) {
-		duel_param |= DUEL_UNIVERSAL_MULTIPLAYER;
 	}
 	const bool standard_mode = mode == 0;
-	const bool universal_mode = mode >= 3 && mode <= 5;
-	ebTeam1->setEnabled(standard_mode || universal_mode);
-	ebTeam2->setEnabled(standard_mode || universal_mode);
+	ebTeam1->setEnabled(standard_mode);
+	ebTeam2->setEnabled(standard_mode);
 	btnRelayMode->setEnabled(standard_mode);
-	const bool universal_teams = mode == 4;
-	stUniversalTeamCount->setVisible(universal_teams);
-	ebUniversalTeamCount->setVisible(universal_teams);
 	if(!standard_mode)
 		btnRelayMode->setPressed(false);
 }
@@ -3631,7 +3614,7 @@ void Game::ReloadElementsStrings() {
 	} else if(!dInfo.isReplay && !dInfo.isSingleMode && !dInfo.local_player_eliminated
 			&& dInfo.player_type < (dInfo.team1 + dInfo.team2)) {
 		btnLeaveGame->setText(gDataManager->GetSysString(1351).data());
-	} else if(!dInfo.IsDuelist() || dInfo.local_player_eliminated) {
+	} else if(dInfo.player_type == 7 || dInfo.local_player_eliminated) {
 		btnLeaveGame->setText(gDataManager->GetSysString(1350).data());
 	} else if(dInfo.isSingleMode) {
 		btnLeaveGame->setText(gDataManager->GetSysString(1210).data());

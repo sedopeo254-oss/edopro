@@ -81,14 +81,6 @@ protected:
 	};
 	bool CheckReady();
 	bool IsMultiplayerMode() const;
-	bool IsUniversalMode() const;
-	uint8_t GetLogicalTeam(uint8_t logical_player) const;
-	bool AreLogicalTeammates(uint8_t first, uint8_t second) const;
-	void AbortMultiplayerDuel(uint8_t reason);
-	uint8_t ObserverType() const;
-	void SendTypeChange(DuelPlayer* player, uint8_t type);
-	void SendPlayerChange(DuelPlayer* player, uint8_t pos, uint8_t state,
-		bool is_move = false);
 	void StartMultiplayerDuel();
 	int8_t GetFirstFree(int8_t start = 0);
 	void SetAtPos(DuelPlayer* dp, size_t pos);
@@ -152,7 +144,6 @@ protected:
 	std::set<DuelPlayer*> observers;
 	uint8_t hand_result[2];
 	uint8_t last_response;
-	uint8_t last_timer_player;
 	Replay last_replay;
 	Replay new_replay;
 	bool relay;
@@ -162,8 +153,8 @@ protected:
 	uint32_t turn_count;
 	std::vector<uint8_t> match_result;
 	CoreUtils::Packet pending_response[2];
-	uint32_t multiplayer_active_mask{ 0x0f };
-	uint16_t time_limit[MAX_DUELISTS];
+	uint8_t multiplayer_active_mask{ 0x0f };
+	uint16_t time_limit[2];
 	int16_t grace_period;
 };
 

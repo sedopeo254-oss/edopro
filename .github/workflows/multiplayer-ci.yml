@@ -1,7 +1,5 @@
 name: Multiplayer CI
 
-# Stable multiplayer build: summon-video integration is intentionally disabled.
-
 on:
   push:
     branches:
@@ -21,7 +19,7 @@ env:
 
 jobs:
   core-tests:
-    name: Multiplayer core tests
+    name: Stable 3v1 and Battle Royale tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -30,13 +28,26 @@ jobs:
       - name: Run multiplayer state tests
         shell: bash
         run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "88fa233215478688b4549b55edcf550fe2993518"
           sh ./ocgcore/tests/run_multiplayer_state_tests.sh
           sh ./ocgcore/tests/run_multiplayer_field_tests.sh
-          c++ -std=c++17 -I. .github/tests/multiplayer_ui_test.cpp -o /tmp/multiplayer-ui-test
-          /tmp/multiplayer-ui-test
+      - name: Verify the ec2d962 visual and script baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'DrawStatus(pcard, static_cast<uint8_t>(p));' gframe/drawing.cpp
+          grep -Fq 'DrawPendScale(pcard, static_cast<uint8_t>(p));' gframe/drawing.cpp
+          grep -Fq 'void DrawStatus(ClientCard* pcard, uint8_t display_side);' gframe/game.h
+          grep -Fq 'void DrawPendScale(ClientCard* pcard, uint8_t display_side);' gframe/game.h
+          grep -Fq 'Duel.SelectEffectPlayers(tp,true,true)' multiplayer-effect-examples/c25880422.lua
+          grep -Fq 'Duel.GetPlayerFieldGroup(logical,LOCATION_MZONE)' multiplayer-effect-examples/c25880422.lua
+          test -f multiplayer-deck-master/c153999999.lua
+          test -f multiplayer-deck-master/c153000000.lua
+          test -f textures/field-3v1.png
 
   windbot-compat:
-    name: WindBot multiplayer and King of Anime
+    name: WindBot 3-vs-1 compatibility
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -46,23 +57,9 @@ jobs:
           ref: fa0ae767967afc6a820784837f11cd3fabb9c47c
           path: windbot
           submodules: recursive
-      - name: Apply multiplayer and anime-AI patch
+      - name: Apply expanded-field compatibility patch
         shell: bash
-        run: |
-          git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
-          git -C windbot apply --unidiff-zero ../.github/patches/windbot-king-learning.patch
-          git -C windbot apply --unidiff-zero ../.github/patches/windbot-cad-fixes.patch
-      - name: Validate multiplayer bot sources
-        shell: bash
-        run: |
-          git -C windbot diff --check
-          test -f windbot/ExecutorBase/Game/AI/KingOfAnimeLearning.cs
-          grep -q 'Game\\AI\\KingOfAnimeLearning.cs' windbot/ExecutorBase/ExecutorBase.csproj
-          grep -q '\[Deck("Lucky", "AI_BlueEyes"' windbot/Game/AI/Decks/LuckyExecutor.cs
-          grep -q '\[Deck("KingOfAnime", "AI_BlueEyes"' windbot/Game/AI/Decks/KingOfAnimeExecutor.cs
-          grep -q 'LocalLogicalPlayer' windbot/Game/GameBehavior.cs
-          grep -q 'SelectKingLearnedCards' windbot/ExecutorBase/Game/GameAI.cs
-          ! grep -R '\[Deck("\(Lucky\|KingOfAnime\)", "AI_Test"' windbot/Game/AI/Decks
+        run: git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
       - name: Pull Mono builder image
         shell: bash
         run: |
@@ -87,7 +84,7 @@ jobs:
           test -f windbot-package/WindBot/ExecutorBase.dll
       - uses: actions/upload-artifact@v4
         with:
-          name: windbot-multiplayer
+          name: windbot-multiplayer-3v1
           path: windbot-package/
           if-no-files-found: error
 
@@ -120,16 +117,15 @@ jobs:
       - name: Build client with custom core
         shell: bash
         run: ./travis/build.sh
-      - name: Package binary
+      - name: Package binary and playable anime scripts
         shell: bash
         run: |
+          set -euo pipefail
           ./travis/predeploy.sh
-          mkdir -p deploy/textures
+          mkdir -p deploy/textures deploy/expansions/script
           cp textures/field-3v1.png deploy/textures/field-3v1.png
-          cp CAD_MULTIPLAYER.md deploy/
           cp -r multiplayer-effect-examples deploy/
           cp -r multiplayer-deck-master deploy/
-          mkdir -p deploy/expansions/script
           cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
           cp multiplayer-deck-master/c153999999.lua deploy/expansions/script/c153999999.lua
           cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
@@ -138,11 +134,11 @@ jobs:
           test -f deploy/expansions/script/c153000000.lua
       - uses: actions/download-artifact@v4
         with:
-          name: windbot-multiplayer
+          name: windbot-multiplayer-3v1
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-multiplayer-linux-x64
+          name: edopro-3v1-ec2d962-stable-linux-x64
           path: deploy/
           if-no-files-found: error
 
@@ -187,16 +183,15 @@ jobs:
       - name: Build client with custom core
         shell: bash
         run: ./travis/build.sh
-      - name: Package binary
+      - name: Package binary and playable anime scripts
         shell: bash
         run: |
+          set -euo pipefail
           ./travis/predeploy.sh
-          mkdir -p deploy/textures
+          mkdir -p deploy/textures deploy/expansions/script
           cp textures/field-3v1.png deploy/textures/field-3v1.png
-          cp CAD_MULTIPLAYER.md deploy/
           cp -r multiplayer-effect-examples deploy/
           cp -r multiplayer-deck-master deploy/
-          mkdir -p deploy/expansions/script
           cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
           cp multiplayer-deck-master/c153999999.lua deploy/expansions/script/c153999999.lua
           cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
@@ -205,10 +200,10 @@ jobs:
           test -f deploy/expansions/script/c153000000.lua
       - uses: actions/download-artifact@v4
         with:
-          name: windbot-multiplayer
+          name: windbot-multiplayer-3v1
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-multiplayer-windows-x86
+          name: edopro-3v1-ec2d962-stable-windows-x86
           path: deploy/
           if-no-files-found: error
