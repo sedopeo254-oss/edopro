@@ -1,0 +1,70 @@
+name: Publish tested EDOPro 3v1 stable restoration
+
+on:
+  push:
+    branches:
+      - automation/publish-3v1-stable-restoration-client
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-3v1-stable-restoration-client
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decode reviewed patch
+        shell: bash
+        run: |
+          base64 --decode .github/publish/client-stable-restoration.patch.gz.b64 | gzip -dc > /tmp/client-stable-restoration.patch
+          test "$(sha256sum /tmp/client-stable-restoration.patch | cut -d' ' -f1)" = "b9fd2f1b2b28e8ee652072ec8f5d0f33a2c848f0ce62424e3646cc2ba9b8950a"
+
+      - name: Restore, test, commit, and publish
+        shell: bash
+        env:
+          TARGET_BRANCH: agent/multiplayer-foundation
+          STABLE_CLIENT_SHA: 5777d9b101bf7c789aa23a6fa6f94723238617cf
+          CORE_SHA: ff812d7383a9fd882281869f482d2d88dc21c648
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          git checkout -B publish-target "origin/$TARGET_BRANCH"
+
+          # Preserve every production workflow byte-for-byte. GitHub's job token
+          # may publish source code, but must not rewrite workflow files.
+          rm -rf /tmp/current-workflows
+          mkdir -p /tmp/current-workflows
+          git archive "origin/$TARGET_BRANCH" .github/workflows | tar -x -C /tmp/current-workflows
+
+          # Restore the last user-confirmed stable 3v1 client tree, then apply
+          # only the reviewed LP/grave/targeting/replay corrections.
+          git read-tree --reset -u "$STABLE_CLIENT_SHA"
+          git clean -fdx
+          rm -rf .github/workflows
+          mkdir -p .github/workflows
+          cp -a /tmp/current-workflows/.github/workflows/. .github/workflows/
+
+          git apply --check /tmp/client-stable-restoration.patch
+          git apply /tmp/client-stable-restoration.patch
+          git diff --check
+
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_ui_test.cpp \
+            -o /tmp/multiplayer-ui-test
+          /tmp/multiplayer-ui-test
+
+          git config user.name "sedopeo254-oss"
+          git config user.email "sedopeo254@gmail.com"
+          git add -A
+          git update-index --add --cacheinfo 160000,"$CORE_SHA",ocgcore
+          git diff --cached --check
+          git diff --cached --quiet && { echo "No restoration changes were generated"; exit 1; }
+          git commit -m "Restore best 3v1 client and fix LP, graves and replay"
+          git push origin HEAD:"$TARGET_BRANCH"
