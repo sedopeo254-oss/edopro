@@ -33,7 +33,32 @@ jobs:
           print(f'encoded-length={len(encoded)} modulo={len(encoded) % 4} invalid={invalid}')
           if invalid:
               raise SystemExit('invalid base64 characters')
-          encoded += '=' * ((-len(encoded)) % 4)
+
+          expected_encoded_sha = '35d2f14e2c9b4ccfe191610b733af4182dfdb5ee3cc0a4947168a8c3245f6bfe'
+          if hashlib.sha256(encoded.encode('ascii')).hexdigest() != expected_encoded_sha:
+              # The contents API upload omitted exactly one character from the
+              # reviewed 12,484-byte base64 string. Recover it without trusting
+              # any guessed patch bytes: only the candidate matching the known
+              # SHA-256 of the original encoded artifact is accepted.
+              if len(encoded) != 12483:
+                  raise SystemExit('unexpected encoded patch length')
+              alphabet = string.ascii_letters + string.digits + '+/'
+              recovered = None
+              for offset in range(len(encoded) + 1):
+                  prefix = encoded[:offset]
+                  suffix = encoded[offset:]
+                  for char in alphabet:
+                      candidate = prefix + char + suffix
+                      if hashlib.sha256(candidate.encode('ascii')).hexdigest() == expected_encoded_sha:
+                          recovered = candidate
+                          print(f'recovered omitted character at offset={offset}: {char!r}')
+                          break
+                  if recovered is not None:
+                      break
+              if recovered is None:
+                  raise SystemExit('unable to recover reviewed base64 artifact')
+              encoded = recovered
+
           compressed = base64.b64decode(encoded, validate=True)
           print(f'compressed-length={len(compressed)} gzip-prefix={compressed[:4].hex()}')
           patch = gzip.decompress(compressed)
