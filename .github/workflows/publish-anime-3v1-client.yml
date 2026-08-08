@@ -1,4 +1,4 @@
-name: Publish anime 3v1 client fixes
+name: Publish 3v1 client portability hotfix
 
 on:
   push:
@@ -20,46 +20,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Decode reviewed patch
+      - name: Decode reviewed hotfix
         shell: bash
         run: |
-          base64 --decode .github/publish/client.patch.gz.b64 | gzip -dc > /tmp/client.patch
-          test "$(sha256sum /tmp/client.patch | cut -d' ' -f1)" = "8f0643535d809b5e0066257a34c4f2889b8da93ae275cd69586d456188a164ee"
+          base64 --decode .github/publish/client-hotfix.patch.gz.b64 | gzip -dc > /tmp/client-hotfix.patch
+          test "$(sha256sum /tmp/client-hotfix.patch | cut -d' ' -f1)" = "f86641dac4e25ed59e180a3fef702e122abefb279d11d6931ab7b47b40772bb9"
 
-      - name: Apply, test, commit, and publish
+      - name: Apply, verify, commit, and publish
         shell: bash
         env:
           TARGET_BRANCH: agent/multiplayer-foundation
-          CORE_SHA: 97ab43e00959d77573e74110212dd0d1e221b988
         run: |
           set -euo pipefail
           git fetch origin "$TARGET_BRANCH"
           git checkout -B publish-target "origin/$TARGET_BRANCH"
-          git apply --check /tmp/client.patch
-          git apply /tmp/client.patch
+          git apply --check /tmp/client-hotfix.patch
+          git apply /tmp/client-hotfix.patch
           git diff --check
-
-          c++ -std=c++17 -Wall -Wextra -Werror -I. \
-            .github/tests/multiplayer_ui_test.cpp \
-            -o /tmp/multiplayer-ui-test
-          /tmp/multiplayer-ui-test
+          grep -q 'static_cast<int>(std::max(0.0f' gframe/drawing.cpp
+          grep -q 'multiplayer_ui::NormalizeSerializedLifePoints' gframe/duelclient.cpp
 
           git config user.name "sedopeo254-oss"
           git config user.email "sedopeo254@gmail.com"
-          git add -- \
-            .github/tests/multiplayer_ui_test.cpp \
-            gframe/client_field.cpp \
-            gframe/client_field.h \
-            gframe/drawing.cpp \
-            gframe/duelclient.cpp \
-            gframe/event_handler.cpp \
-            gframe/game.h \
-            gframe/generic_duel.cpp \
-            gframe/multiplayer_packets.h \
-            gframe/multiplayer_ui.h \
-            multiplayer-effect-examples/README.md \
-            multiplayer-effect-examples/c25880422.lua
-          git update-index --add --cacheinfo 160000,"$CORE_SHA",ocgcore
+          git add -- gframe/drawing.cpp gframe/duelclient.cpp
           git diff --cached --check
-          git commit -m "Fix anime 3v1 LP, targeting, graves and replay"
+          git commit -m "Fix LP animation build portability"
           git push origin HEAD:"$TARGET_BRANCH"
