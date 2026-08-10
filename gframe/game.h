@@ -874,6 +874,7 @@ public:
 	int lpframe;
 	float lpd;
 	int lpplayer;
+	int lp_logical_player = -1;
 	int lpccolor;
 	int lpcalpha;
 	std::wstring lpcstring;
