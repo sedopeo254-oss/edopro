@@ -1,0 +1,110 @@
+name: Apply minimal replay and targeting client backport
+
+on:
+  push:
+    branches:
+      - automation/apply-minimal-replay-client-20260811
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-minimal-replay-client-20260811
+  cancel-in-progress: false
+
+jobs:
+  apply-and-publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply only the reviewed client replay and arrow patch
+        shell: bash
+        env:
+          TARGET_BRANCH: candidate/3v1-replay-targeting-minimal-20260811
+          CORE_SHA: 4f21cd92c0956e46f51fbaf8386e0fd4bce87bbf
+        run: |
+          set -euo pipefail
+          base64 -d .github/patches/minimal-replay-targeting-client.patch.gz.b64 | gzip -d > /tmp/minimal-client.patch
+          git fetch origin "$TARGET_BRANCH"
+          git checkout -B publish-target "origin/$TARGET_BRANCH"
+          git apply --check /tmp/minimal-client.patch
+          git apply /tmp/minimal-client.patch
+          git diff --check
+
+          expected=$(printf '%s\n' \
+            gframe/client_field.cpp \
+            gframe/client_field.h \
+            gframe/duelclient.cpp | sort)
+          actual=$(git diff --name-only | sort)
+          if [ "$actual" != "$expected" ]; then
+            echo "Unexpected changed files:"
+            printf '%s\n' "$actual"
+            exit 1
+          fi
+
+          ! git diff | grep -E 'DUEL_UNIVERSAL_MULTIPLAYER|UniversalMultiplayer|configure_universal|KingOfAnime'
+          grep -q 'SetThreeVsOneView' gframe/duelclient.cpp
+          grep -q 'IsThreeVsOneReplayPrivatePileDisplayed' gframe/client_field.cpp
+          grep -q 'final arrow attached to the authoritative fields' gframe/duelclient.cpp
+          grep -q 'std::atan2(xd - xa, ya - yd)' gframe/duelclient.cpp
+
+          test "${#CORE_SHA}" = 40
+          git cat-file -e "$CORE_SHA^{commit}" 2>/dev/null || git fetch https://github.com/sedopeo254-oss/ygopro-core.git "$CORE_SHA"
+          git update-index --add --cacheinfo 160000,"$CORE_SHA",ocgcore
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/multiplayer-ci.yml')
+          text = path.read_text()
+
+          branch_old = """    branches:\n      - agent/multiplayer-foundation\n"""
+          branch_new = """    branches:\n      - agent/multiplayer-foundation\n      - candidate/3v1-replay-targeting-minimal-20260811\n"""
+          if text.count(branch_old) != 1:
+              raise SystemExit('unexpected Multiplayer CI branch block')
+          text = text.replace(branch_old, branch_new, 1)
+
+          old_core = '88fa233215478688b4549b55edcf550fe2993518'
+          new_core = '4f21cd92c0956e46f51fbaf8386e0fd4bce87bbf'
+          if text.count(old_core) != 1:
+              raise SystemExit(f'unexpected stable core assertion count: {text.count(old_core)}')
+          text = text.replace(old_core, new_core, 1)
+
+          old_linux = 'edopro-3v1-ec2d962-stable-linux-x64'
+          old_windows = 'edopro-3v1-ec2d962-stable-windows-x86'
+          if text.count(old_linux) != 1 or text.count(old_windows) != 1:
+              raise SystemExit('unexpected artifact names')
+          text = text.replace(old_linux, 'edopro-3v1-replay-targeting-fixed-linux-x64')
+          text = text.replace(old_windows, 'edopro-3v1-replay-targeting-fixed-windows-x86')
+
+          marker = '          test -f textures/field-3v1.png\n'
+          checks = """          grep -Fq 'SetThreeVsOneView' gframe/duelclient.cpp\n          grep -Fq 'IsThreeVsOneReplayPrivatePileDisplayed' gframe/client_field.cpp\n          grep -Fq 'final arrow attached to the authoritative fields' gframe/duelclient.cpp\n          grep -Fq 'std::atan2(xd - xa, ya - yd)' gframe/duelclient.cpp\n"""
+          if text.count(marker) != 1:
+              raise SystemExit('unexpected visual baseline marker')
+          text = text.replace(marker, marker + checks, 1)
+          path.write_text(text)
+          PY
+
+          git diff --check
+          test "$(git diff --name-only | grep -E 'UNIVERSAL_MULTIPLAYER|CAD_MULTIPLAYER' | wc -l)" = 0
+
+      - name: Publish the isolated candidate client
+        shell: bash
+        env:
+          TARGET_BRANCH: candidate/3v1-replay-targeting-minimal-20260811
+        run: |
+          set -euo pipefail
+          git config user.name "sedopeo254-oss"
+          git config user.email "sedopeo254@gmail.com"
+          git add -- \
+            gframe/client_field.cpp \
+            gframe/client_field.h \
+            gframe/duelclient.cpp \
+            .github/workflows/multiplayer-ci.yml \
+            ocgcore
+          git diff --cached --check
+          git commit -m "Backport replay perspective, attack direction and targeting without CaD"
+          git push origin HEAD:"$TARGET_BRANCH"
