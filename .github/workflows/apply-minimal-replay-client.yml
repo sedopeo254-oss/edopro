@@ -27,7 +27,10 @@ jobs:
           CORE_SHA: 4f21cd92c0956e46f51fbaf8386e0fd4bce87bbf
         run: |
           set -euo pipefail
-          base64 -d .github/patches/minimal-replay-targeting-client.patch.gz.b64 | gzip -d > /tmp/minimal-client.patch
+          cat .github/patches/minimal-client.part*.b64 > /tmp/minimal-client.b64
+          test "$(wc -c < /tmp/minimal-client.b64)" = 7168
+          test "$(git hash-object /tmp/minimal-client.b64)" = 15d6a932ec94b39b64326c48e62bd10f548275e9
+          base64 -d /tmp/minimal-client.b64 | gzip -d > /tmp/minimal-client.patch
           git fetch origin "$TARGET_BRANCH"
           git checkout -B publish-target "origin/$TARGET_BRANCH"
           git apply --check /tmp/minimal-client.patch
