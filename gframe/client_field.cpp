@@ -919,6 +919,73 @@ void ClientField::ApplyBattleRoyaleReplayPrivatePiles() {
 		clear_transient = false;
 	}
 }
+void ClientField::CaptureThreeVsOneReplayPrivatePiles() {
+	if(!mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+		return;
+	auto capture_cards = [](const auto& source, auto& destination) {
+		destination.clear();
+		destination.reserve(source.size());
+		for(const auto* pcard : source) {
+			if(pcard)
+				destination.push_back({
+					pcard->code, static_cast<uint8_t>(pcard->position)
+				});
+		}
+	};
+	for(uint8_t display_side = 0; display_side < 2; ++display_side) {
+		const auto core_side = mainGame->LocalPlayer(display_side);
+		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
+		if(logical >= multiplayer_private_piles.size())
+			continue;
+		MultiplayerPrivatePileSnapshot snapshot;
+		snapshot.deck_count = static_cast<uint32_t>(deck[display_side].size());
+		snapshot.extra_p_count = extra_p_count[display_side] > 0
+			? static_cast<uint32_t>(std::min<size_t>(
+				extra_p_count[display_side], extra[display_side].size()))
+			: 0;
+		snapshot.top_code = deck[display_side].empty()
+			? 0 : deck[display_side].back()->code;
+		capture_cards(hand[display_side], snapshot.hand);
+		capture_cards(extra[display_side], snapshot.extra);
+		capture_cards(grave[display_side], snapshot.grave);
+		capture_cards(remove[display_side], snapshot.removed);
+		CacheMultiplayerPrivatePiles(logical, snapshot);
+	}
+}
+bool ClientField::IsThreeVsOneReplayPrivatePileDisplayed(
+		uint8_t logical_player) const {
+	if(!mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| logical_player >= mainGame->dInfo.team1 + mainGame->dInfo.team2)
+		return false;
+	for(uint8_t core_side = 0; core_side < 2; ++core_side) {
+		if(mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player)
+			return true;
+	}
+	return false;
+}
+void ClientField::ApplyThreeVsOneReplayPrivatePiles() {
+	if(!mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+		return;
+	bool clear_transient = true;
+	for(uint8_t core_side = 0; core_side < 2; ++core_side) {
+		const auto display_side = mainGame->LocalPlayer(core_side);
+		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
+		if(display_side > 1)
+			continue;
+		if(logical < multiplayer_private_piles.size()
+				&& multiplayer_private_piles_valid[logical]) {
+			ReplaceMultiplayerPrivatePiles(display_side,
+				multiplayer_private_piles[logical], clear_transient);
+		} else {
+			ReplaceMultiplayerPrivatePiles(display_side,
+				MultiplayerPrivatePileSnapshot{}, clear_transient);
+		}
+		clear_transient = false;
+	}
+}
 void ClientField::UpdateMultiplayerPrivateDraw(uint8_t logical_player,
 		const std::vector<MultiplayerPrivatePileCard>& drawn_cards) {
 	if(logical_player >= multiplayer_private_piles.size()
@@ -937,7 +1004,8 @@ void ClientField::UpdateMultiplayerPrivateMove(uint8_t previous_logical,
 		uint8_t current_logical, uint8_t current_location,
 		uint32_t current_sequence, uint32_t code, uint8_t position) {
 	if(!mainGame->dInfo.isReplay
-			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+			|| !(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))
 		return;
 	auto get_cards = [](MultiplayerPrivatePileSnapshot& snapshot,
 			uint8_t location) -> std::vector<MultiplayerPrivatePileCard>* {
