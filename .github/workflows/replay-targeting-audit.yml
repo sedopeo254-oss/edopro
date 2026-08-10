@@ -1,0 +1,134 @@
+name: Replay and targeting backport audit
+
+on:
+  push:
+    branches:
+      - automation/replay-targeting-audit-20260811
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out EDOPro history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all EDOPro branches
+        shell: bash
+        run: git fetch origin --no-tags --prune '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Check out ygopro-core history
+        uses: actions/checkout@v4
+        with:
+          repository: sedopeo254-oss/ygopro-core
+          path: core-src
+          fetch-depth: 0
+
+      - name: Fetch all core branches
+        shell: bash
+        working-directory: core-src
+        run: git fetch origin --no-tags --prune '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Collect reviewed source snapshots and diffs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          root = Path('audit')
+          root.mkdir(exist_ok=True)
+
+          client_refs = {
+              'ec2d962': 'ec2d962dc471abaea24cb1eba8371018ac17c952',
+              'stable_b101': 'b101c58685a128346a70fe7627cd136057a8a9c8',
+              'before_072': 'e9f8b4f5a86bf9ab629424770c9b26692e202e60',
+              'fix_072': '07266387562ce845ca7556dd20cc094f4a4e97b1',
+              'before_445': '0d455ba218b1e4aa5da4d46e6fb56198c28036d7',
+              'fix_445': '445028bce6f4d5c48f982eb5e5ef7c62d47de301',
+              'backup_e1d': 'e1d727a705a4ce26edced61c0ae815e2978c48bd',
+          }
+          client_paths = [
+              'gframe/client_field.cpp', 'gframe/client_field.h',
+              'gframe/drawing.cpp', 'gframe/duelclient.cpp', 'gframe/duelclient.h',
+              'gframe/event_handler.cpp', 'gframe/game.cpp', 'gframe/game.h',
+              'gframe/generic_duel.cpp', 'gframe/generic_duel.h',
+              'gframe/multiplayer_packets.h', 'gframe/multiplayer_ui.h',
+              'gframe/replay_mode.cpp', 'gframe/ocgapi_constants.h',
+              '.github/tests/multiplayer_ui_test.cpp',
+          ]
+
+          core_refs = {
+              'base_7bb': '7bb48dc41d8cd21cd8d9d574d3ef5ec40841b792',
+              'cad_612': '61252a80446c49bde8f375d7b5dbbb19030aa210',
+              'arrow_fea5': 'fea5c56a9ecb8b2f04171af041746e5153d51ad2',
+              'deckmaster_ce63': 'ce63fe01fd20629718b48585dfb5323db6984076',
+              'anime_97ab': '97ab43e00959d77573e74110212dd0d1e221b988',
+              'stable_ff812': 'ff812d7383a9fd882281869f482d2d88dc21c648',
+          }
+          core_paths = [
+              'effect.cpp', 'field.cpp', 'field.h', 'libduel.cpp',
+              'multiplayer.cpp', 'multiplayer.h', 'operations.cpp',
+              'processor.cpp', 'processor_unit.h', 'playerop.cpp',
+              'ocgapi.cpp', 'ocgapi_constants.h', 'ocgapi_types.h',
+              'tests/multiplayer_field_tests.cpp',
+              'tests/multiplayer_state_tests.cpp',
+          ]
+
+          def run(repo: Path, *args: str) -> bytes:
+              return subprocess.check_output(['git', '-C', str(repo), *args])
+
+          def collect(repo: Path, group: str, refs: dict[str, str], paths: list[str]):
+              for label, ref in refs.items():
+                  target = root / group / label
+                  target.mkdir(parents=True, exist_ok=True)
+                  (target / 'commit.txt').write_bytes(run(repo, 'show', '-s', '--format=fuller', ref))
+                  for rel in paths:
+                      try:
+                          data = run(repo, 'show', f'{ref}:{rel}')
+                      except subprocess.CalledProcessError:
+                          continue
+                      out = target / rel
+                      out.parent.mkdir(parents=True, exist_ok=True)
+                      out.write_bytes(data)
+
+          collect(Path('.'), 'client', client_refs, client_paths)
+          collect(Path('core-src'), 'core', core_refs, core_paths)
+
+          client_diffs = {
+              'ec2_to_072.patch': ('ec2d962dc471abaea24cb1eba8371018ac17c952', '07266387562ce845ca7556dd20cc094f4a4e97b1'),
+              '072_commit.patch': ('e9f8b4f5a86bf9ab629424770c9b26692e202e60', '07266387562ce845ca7556dd20cc094f4a4e97b1'),
+              '445_commit.patch': ('0d455ba218b1e4aa5da4d46e6fb56198c28036d7', '445028bce6f4d5c48f982eb5e5ef7c62d47de301'),
+              'ec2_to_445.patch': ('ec2d962dc471abaea24cb1eba8371018ac17c952', '445028bce6f4d5c48f982eb5e5ef7c62d47de301'),
+          }
+          diff_dir = root / 'diffs'
+          diff_dir.mkdir(exist_ok=True)
+          for name, (base, head) in client_diffs.items():
+              with (diff_dir / name).open('wb') as stream:
+                  subprocess.run(['git', 'diff', '--binary', base, head, '--', *client_paths], stdout=stream, check=True)
+
+          core_diffs = {
+              '7bb_to_fea5.patch': ('7bb48dc41d8cd21cd8d9d574d3ef5ec40841b792', 'fea5c56a9ecb8b2f04171af041746e5153d51ad2'),
+              'fea5_commit.patch': ('61252a80446c49bde8f375d7b5dbbb19030aa210', 'fea5c56a9ecb8b2f04171af041746e5153d51ad2'),
+              'ce63_commit.patch': ('fea5c56a9ecb8b2f04171af041746e5153d51ad2', 'ce63fe01fd20629718b48585dfb5323db6984076'),
+              '97ab_commit.patch': ('ce63fe01fd20629718b48585dfb5323db6984076', '97ab43e00959d77573e74110212dd0d1e221b988'),
+              'ff812_commit.patch': ('97ab43e00959d77573e74110212dd0d1e221b988', 'ff812d7383a9fd882281869f482d2d88dc21c648'),
+              '7bb_to_ff812.patch': ('7bb48dc41d8cd21cd8d9d574d3ef5ec40841b792', 'ff812d7383a9fd882281869f482d2d88dc21c648'),
+          }
+          for name, (base, head) in core_diffs.items():
+              with (diff_dir / name).open('wb') as stream:
+                  subprocess.run(['git', '-C', 'core-src', 'diff', '--binary', base, head, '--', *core_paths], stdout=stream, check=True)
+          PY
+          tar -czf replay-targeting-audit.tar.gz audit
+
+      - name: Upload audit bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-targeting-audit
+          path: replay-targeting-audit.tar.gz
+          if-no-files-found: error
