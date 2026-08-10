@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/multiplayer-foundation
+      - candidate/3v1-replay-targeting-minimal-20260811
   workflow_dispatch:
 
 permissions:
@@ -19,7 +20,7 @@ env:
 
 jobs:
   core-tests:
-    name: Stable 3v1 and Battle Royale tests
+    name: Stable 3v1 replay, targeting and Battle Royale tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C ocgcore rev-parse HEAD)" = "88fa233215478688b4549b55edcf550fe2993518"
+          test "$(git -C ocgcore rev-parse HEAD)" = "4f21cd92c0956e46f51fbaf8386e0fd4bce87bbf"
           sh ./ocgcore/tests/run_multiplayer_state_tests.sh
           sh ./ocgcore/tests/run_multiplayer_field_tests.sh
       - name: Verify the ec2d962 visual and script baseline
@@ -42,6 +43,12 @@ jobs:
           grep -Fq 'void DrawPendScale(ClientCard* pcard, uint8_t display_side);' gframe/game.h
           grep -Fq 'Duel.SelectEffectPlayers(tp,true,true)' multiplayer-effect-examples/c25880422.lua
           grep -Fq 'Duel.GetPlayerFieldGroup(logical,LOCATION_MZONE)' multiplayer-effect-examples/c25880422.lua
+          grep -Fq 'SetThreeVsOneView' gframe/duelclient.cpp
+          grep -Fq 'IsThreeVsOneReplayPrivatePileDisplayed' gframe/client_field.cpp
+          grep -Fq 'final arrow attached to the authoritative fields' gframe/duelclient.cpp
+          grep -Fq 'std::atan2(xd - xa, ya - yd)' gframe/duelclient.cpp
+          grep -Fq 'publish_multiplayer_effect_view' ocgcore/field.cpp
+          grep -Fq 'authoritative attacker/target pair immediately before' ocgcore/processor.cpp
           test -f multiplayer-deck-master/c153999999.lua
           test -f multiplayer-deck-master/c153000000.lua
           test -f textures/field-3v1.png
@@ -91,7 +98,9 @@ jobs:
   linux-bundled:
     name: Linux bundled client
     runs-on: ubuntu-24.04
-    needs: windbot-compat
+    needs:
+      - core-tests
+      - windbot-compat
     env:
       TRAVIS_OS_NAME: linux
       BUILD_CONFIG: release
@@ -138,14 +147,16 @@ jobs:
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-3v1-ec2d962-stable-linux-x64
+          name: edopro-3v1-replay-targeting-fixed-linux-x64
           path: deploy/
           if-no-files-found: error
 
   windows-bundled:
     name: Windows bundled client
     runs-on: windows-2022
-    needs: windbot-compat
+    needs:
+      - core-tests
+      - windbot-compat
     env:
       TRAVIS_OS_NAME: windows
       BUILD_CONFIG: release
@@ -204,6 +215,6 @@ jobs:
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-3v1-ec2d962-stable-windows-x86
+          name: edopro-3v1-replay-targeting-fixed-windows-x86
           path: deploy/
           if-no-files-found: error
