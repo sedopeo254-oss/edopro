@@ -1,4 +1,4 @@
-name: Publish 3v1 client portability hotfix
+name: Publish 3v1 LP animation state hotfix
 
 on:
   push:
@@ -20,13 +20,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Decode reviewed hotfix
-        shell: bash
-        run: |
-          base64 --decode .github/publish/client-hotfix.patch.gz.b64 | gzip -dc > /tmp/client-hotfix.patch
-          test "$(sha256sum /tmp/client-hotfix.patch | cut -d' ' -f1)" = "f86641dac4e25ed59e180a3fef702e122abefb279d11d6931ab7b47b40772bb9"
-
-      - name: Apply, verify, commit, and publish
+      - name: Restore the missing logical LP animation state
         shell: bash
         env:
           TARGET_BRANCH: agent/multiplayer-foundation
@@ -35,31 +29,28 @@ jobs:
           git fetch origin "$TARGET_BRANCH"
           git checkout -B publish-target "origin/$TARGET_BRANCH"
 
-          # The drawing hunks are stable. Apply only that file from the
-          # reviewed patch; duelclient had equivalent one-line wrapping on CI.
-          git apply --check --include=gframe/drawing.cpp /tmp/client-hotfix.patch
-          git apply --include=gframe/drawing.cpp /tmp/client-hotfix.patch
-
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('gframe/duelclient.cpp')
+
+          path = Path('gframe/game.h')
           text = path.read_text()
-          old = 'const auto val = NormalizeSerializedLP(BufferIO::Read<uint32_t>(pbuf));'
-          new = ('const auto val = multiplayer_ui::NormalizeSerializedLifePoints(\n'
-                 '\t\t\tBufferIO::Read<uint32_t>(pbuf));')
+          old = '\tint lpplayer;\n\tint lpccolor;'
+          new = '\tint lpplayer;\n\tint lp_logical_player = -1;\n\tint lpccolor;'
           if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one legacy LP helper, found {text.count(old)}')
+              raise SystemExit(
+                  f'expected exactly one LP animation field insertion point, found {text.count(old)}')
+          if 'int lp_logical_player = -1;' in text:
+              raise SystemExit('logical LP animation state is already present')
           path.write_text(text.replace(old, new, 1))
           PY
 
           git diff --check
-          grep -q 'static_cast<int>(std::max(0.0f' gframe/drawing.cpp
-          grep -q 'multiplayer_ui::NormalizeSerializedLifePoints' gframe/duelclient.cpp
-          ! grep -q 'NormalizeSerializedLP' gframe/duelclient.cpp
+          grep -q '^\s*int lp_logical_player = -1;' gframe/game.h
+          test "$(git diff --name-only | tr -d '\r')" = "gframe/game.h"
 
           git config user.name "sedopeo254-oss"
           git config user.email "sedopeo254@gmail.com"
-          git add -- gframe/drawing.cpp gframe/duelclient.cpp
+          git add -- gframe/game.h
           git diff --cached --check
-          git commit -m "Fix LP animation build portability"
+          git commit -m "Restore logical LP animation state"
           git push origin HEAD:"$TARGET_BRANCH"
