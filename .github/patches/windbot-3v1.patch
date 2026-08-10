@@ -1,45 +1,57 @@
 diff --git a/ExecutorBase/Game/ClientField.cs b/ExecutorBase/Game/ClientField.cs
-index 3c1acd0..9784827 100644
+index 3c1acd0..d4c77ea 100644
 --- a/ExecutorBase/Game/ClientField.cs
 +++ b/ExecutorBase/Game/ClientField.cs
-@@ -9,0 +10,5 @@ namespace WindBot.Game
+@@ -0,0 +1 @@
++using System;
+@@ -9,0 +11,3 @@ namespace WindBot.Game
 +        public const int StandardMonsterZoneCount = 7;
 +        public const int StandardSpellZoneCount = 8;
-+        public const int ThreeVsOneMonsterZoneCount = StandardMonsterZoneCount * 3;
-+        public const int ThreeVsOneSpellZoneCount = StandardSpellZoneCount * 3;
 +
-@@ -27 +32 @@ namespace WindBot.Game
+@@ -27 +31,2 @@ namespace WindBot.Game
 -        public void Init(int deck, int extra)
-+        public void Init(int deck, int extra, bool threeVsOne = false)
++        public void Init(int deck, int extra, int monsterZoneCount = StandardMonsterZoneCount,
++            int spellZoneCount = StandardSpellZoneCount)
 @@ -30,2 +35,2 @@ namespace WindBot.Game
 -            MonsterZone = new ClientCard[7];
 -            SpellZone = new ClientCard[8];
-+            MonsterZone = new ClientCard[threeVsOne ? ThreeVsOneMonsterZoneCount : StandardMonsterZoneCount];
-+            SpellZone = new ClientCard[threeVsOne ? ThreeVsOneSpellZoneCount : StandardSpellZoneCount];
++            MonsterZone = new ClientCard[Math.Max(StandardMonsterZoneCount, monsterZoneCount)];
++            SpellZone = new ClientCard[Math.Max(StandardSpellZoneCount, spellZoneCount)];
 @@ -52,2 +57,2 @@ namespace WindBot.Game
 -            MonsterZone = new ClientCard[7];
 -            SpellZone = new ClientCard[8];
 +            MonsterZone = new ClientCard[MonsterZone.Length];
 +            SpellZone = new ClientCard[SpellZone.Length];
 diff --git a/ExecutorBase/Game/Duel.cs b/ExecutorBase/Game/Duel.cs
-index f6bed49..091df21 100644
+index f6bed49..875fe51 100644
 --- a/ExecutorBase/Game/Duel.cs
 +++ b/ExecutorBase/Game/Duel.cs
-@@ -10,0 +11 @@ namespace WindBot.Game
-+        public bool IsThreeVsOne { get; set; }
-@@ -115 +116 @@ namespace WindBot.Game
+@@ -0,0 +1 @@
++using System;
+@@ -10,0 +12,10 @@ namespace WindBot.Game
++        public bool IsIndependentMultiplayer { get; set; }
++        public int Team1 { get; set; } = 1;
++        public int Team2 { get; set; } = 1;
++
++        public int GetFieldDuelistCount(int corePlayer)
++        {
++            if (!IsIndependentMultiplayer)
++                return 1;
++            return corePlayer == 0 ? Math.Max(1, Team1) : Math.Max(1, Team2);
++        }
+@@ -115 +126 @@ namespace WindBot.Game
 -            if (seq >= cards.Count)
 +            if (seq < 0 || seq >= cards.Count)
-@@ -130,0 +132,2 @@ namespace WindBot.Game
+@@ -130,0 +142,2 @@ namespace WindBot.Game
 +            if (!IsValidFieldSequence(loc, player, seq))
 +                return;
-@@ -158,0 +162,2 @@ namespace WindBot.Game
+@@ -158,0 +172,2 @@ namespace WindBot.Game
 +            if (!IsValidFieldSequence(loc, player, seq))
 +                return;
-@@ -191,0 +197,2 @@ namespace WindBot.Game
+@@ -191,0 +207,2 @@ namespace WindBot.Game
 +            if (!IsValidFieldSequence(loc, player, seq))
 +                return;
-@@ -217,0 +225,11 @@ namespace WindBot.Game
+@@ -217,0 +235,11 @@ namespace WindBot.Game
 +        private bool IsValidFieldSequence(CardLocation loc, int player, int seq)
 +        {
 +            if (player < 0 || player >= Fields.Length)
@@ -51,29 +63,502 @@ index f6bed49..091df21 100644
 +            return true;
 +        }
 +
+diff --git a/Game/AI/Decks/KingOfAnimeExecutor.cs b/Game/AI/Decks/KingOfAnimeExecutor.cs
+new file mode 100644
+index 0000000..afa36b3
+--- /dev/null
++++ b/Game/AI/Decks/KingOfAnimeExecutor.cs
+@@ -0,0 +1,160 @@
++﻿using System;
++using System.Collections.Generic;
++using System.Linq;
++using YGOSharp.OCGWrapper.Enums;
++using WindBot;
++using WindBot.Game;
++using WindBot.Game.AI;
++
++namespace WindBot.Game.AI.Decks
++{
++    /// <summary>
++    /// Deterministic fallback used by the King of Anime engine when the selected
++    /// deck does not match one of WindBot's dedicated anime strategy profiles.
++    /// Dedicated profiles are selected in DecksManager before this class is used.
++    /// </summary>
++    [Deck("KingOfAnime", "AI_Test", "Test")]
++    public class KingOfAnimeExecutor : DefaultExecutor
++    {
++        private static readonly HashSet<int> ForbiddenOnePieces = new HashSet<int>
++        {
++            _CardId.ExodiaTheForbiddenOne,
++            _CardId.LeftArmofTheForbiddenOne,
++            _CardId.RightArmofTheForbiddenOne,
++            _CardId.LeftLegofTheForbiddenOne,
++            _CardId.RightLegofTheForbiddenOne
++        };
++
++        public KingOfAnimeExecutor(GameAI ai, Duel duel)
++            : base(ai, duel)
++        {
++            // High-value generic interaction is evaluated before the fallback.
++            AddExecutor(ExecutorType.Activate, _CardId.MysticalSpaceTyphoon, DefaultMysticalSpaceTyphoon);
++            AddExecutor(ExecutorType.Activate, _CardId.CosmicCyclone, DefaultCosmicCyclone);
++            AddExecutor(ExecutorType.Activate, _CardId.GalaxyCyclone, DefaultGalaxyCyclone);
++            AddExecutor(ExecutorType.Activate, _CardId.BookOfMoon, DefaultBookOfMoon);
++            AddExecutor(ExecutorType.Activate, _CardId.CompulsoryEvacuationDevice, DefaultCompulsoryEvacuationDevice);
++            AddExecutor(ExecutorType.Activate, _CardId.CallOfTheHaunted, DefaultCallOfTheHaunted);
++            AddExecutor(ExecutorType.Activate, _CardId.MaxxC, DefaultMaxxC);
++            AddExecutor(ExecutorType.Activate, _CardId.AshBlossom, DefaultAshBlossomAndJoyousSpring);
++            AddExecutor(ExecutorType.Activate, _CardId.GhostOgreAndSnowRabbit, DefaultGhostOgreAndSnowRabbit);
++            AddExecutor(ExecutorType.Activate, _CardId.GhostBelle, DefaultGhostBelleAndHauntedMansion);
++            AddExecutor(ExecutorType.Activate, _CardId.EffectVeiler, DefaultEffectVeiler);
++            AddExecutor(ExecutorType.Activate, _CardId.CalledByTheGrave, DefaultCalledByTheGrave);
++            AddExecutor(ExecutorType.Activate, _CardId.InfiniteImpermanence, DefaultInfiniteImpermanence);
++            AddExecutor(ExecutorType.Activate, _CardId.SolemnJudgment, DefaultSolemnJudgment);
++            AddExecutor(ExecutorType.Activate, _CardId.SolemnWarning, DefaultSolemnWarning);
++            AddExecutor(ExecutorType.Activate, _CardId.SolemnStrike, DefaultSolemnStrike);
++            AddExecutor(ExecutorType.Activate, _CardId.TorrentialTribute, DefaultTorrentialTribute);
++            AddExecutor(ExecutorType.Activate, _CardId.HeavyStorm, DefaultHeavyStorm);
++            AddExecutor(ExecutorType.Activate, _CardId.HarpiesFeatherDuster, DefaultHarpiesFeatherDusterFirst);
++            AddExecutor(ExecutorType.Activate, _CardId.DarkHole, DefaultDarkHole);
++            AddExecutor(ExecutorType.Activate, _CardId.Raigeki, DefaultRaigeki);
++            AddExecutor(ExecutorType.Activate, _CardId.SmashingGround, DefaultSmashingGround);
++            AddExecutor(ExecutorType.Activate, _CardId.PotOfDesires, DefaultPotOfDesires);
++            AddExecutor(ExecutorType.Activate, _CardId.AllureofDarkness, DefaultAllureofDarkness);
++
++            AddExecutor(ExecutorType.SpSummon, _CardId.JizukirutheStarDestroyingKaiju, DefaultKaijuSpsummon);
++            AddExecutor(ExecutorType.SpSummon, _CardId.GadarlatheMysteryDustKaiju, DefaultKaijuSpsummon);
++            AddExecutor(ExecutorType.SpSummon, _CardId.GamecieltheSeaTurtleKaiju, DefaultKaijuSpsummon);
++            AddExecutor(ExecutorType.SpSummon, _CardId.RadiantheMultidimensionalKaiju, DefaultKaijuSpsummon);
++            AddExecutor(ExecutorType.SpSummon, _CardId.KumongoustheStickyStringKaiju, DefaultKaijuSpsummon);
++            AddExecutor(ExecutorType.SpSummon, _CardId.ThunderKingtheLightningstrikeKaiju, DefaultKaijuSpsummon);
++            AddExecutor(ExecutorType.SpSummon, _CardId.DogorantheMadFlameKaiju, DefaultKaijuSpsummon);
++
++            AddExecutor(ExecutorType.Activate, GenericActivate);
++            AddExecutor(ExecutorType.SpSummon, GenericSpecialSummon);
++            AddExecutor(ExecutorType.SummonOrSet, SmartNormalSummon);
++            AddExecutor(ExecutorType.Summon, SmartNormalSummon);
++            AddExecutor(ExecutorType.MonsterSet, GenericMonsterSet);
++            AddExecutor(ExecutorType.SpellSet, DefaultSpellSet);
++            AddExecutor(ExecutorType.Repos, DefaultMonsterRepos);
++        }
++
++        private bool GenericActivate()
++        {
++            return !DefaultCheckWhetherCardIsNegated(Card) && DefaultDontChainMyself();
++        }
++
++        private bool GenericSpecialSummon()
++        {
++            return !ForbiddenOnePieces.Contains(Card.Id);
++        }
++
++        private bool SmartNormalSummon()
++        {
++            return !ForbiddenOnePieces.Contains(Card.Id) && DefaultMonsterSummon();
++        }
++
++        private bool GenericMonsterSet()
++        {
++            return !ForbiddenOnePieces.Contains(Card.Id) && Card.Level <= 4;
++        }
++
++        public override bool OnSelectHand()
++        {
++            // The generic strategy develops its board first; dedicated profiles can override this.
++            return true;
++        }
++
++        public override IList<ClientCard> OnSelectCard(IList<ClientCard> cards, int min, int max, long hint, bool cancelable)
++        {
++            IList<ClientCard> inherited = base.OnSelectCard(cards, min, max, hint, cancelable);
++            if (inherited != null)
++                return inherited;
++            if (cards == null || cards.Count == 0 || min != 1 || max != 1)
++                return null;
++
++            if (hint == HintMsg.Destroy || hint == HintMsg.Remove || hint == HintMsg.ReturnToHand
++                || hint == HintMsg.Control || hint == HintMsg.AttackTarget || hint == HintMsg.Target
++                || hint == HintMsg.Disable || hint == HintMsg.Negate)
++            {
++                ClientCard threat = cards
++                    .Where(card => card != null && card.Controller == 1)
++                    .OrderByDescending(GetThreatValue)
++                    .FirstOrDefault();
++                if (threat != null)
++                    return new List<ClientCard> { threat };
++            }
++
++            if (hint == HintMsg.Release || hint == HintMsg.Discard || hint == HintMsg.Tribute)
++            {
++                ClientCard expendable = cards
++                    .Where(card => card != null && card.Controller == 0 && !ForbiddenOnePieces.Contains(card.Id))
++                    .OrderBy(GetThreatValue)
++                    .FirstOrDefault();
++                if (expendable != null)
++                    return new List<ClientCard> { expendable };
++            }
++
++            if (hint == HintMsg.SpSummon || hint == HintMsg.ToField)
++            {
++                ClientCard strongest = cards
++                    .Where(card => card != null)
++                    .OrderByDescending(GetThreatValue)
++                    .FirstOrDefault();
++                if (strongest != null)
++                    return new List<ClientCard> { strongest };
++            }
++            return null;
++        }
++
++        private static int GetThreatValue(ClientCard card)
++        {
++            if (card == null)
++                return Int32.MinValue;
++            int power = Math.Max(card.Attack, card.GetDefensePower());
++            if (card.IsFaceup())
++                power += 250;
++            if (card.IsExtraCard())
++                power += 500;
++            return power;
++        }
++
++        public override int OnSelectOption(IList<long> options)
++        {
++            // Stable decisions make replays reproducible and avoid Lucky's random choices.
++            return options.Count == 0 ? -1 : 0;
++        }
++    }
++}
+diff --git a/Game/DecksManager.cs b/Game/DecksManager.cs
+index b79750e..5659f2d 100644
+--- a/Game/DecksManager.cs
++++ b/Game/DecksManager.cs
+@@ -3,0 +4 @@ using System.IO;
++using System.Linq;
+@@ -27,0 +29,9 @@ namespace WindBot.Game
++        private static readonly object _kingProfileLock = new object();
++        private static Dictionary<string, HashSet<int>> _kingProfiles;
++        private static Dictionary<int, int> _kingCardFrequency;
++        private static readonly HashSet<string> _kingExcludedProfiles = new HashSet<string>(StringComparer.Ordinal)
++        {
++            "KingOfAnime",
++            "Lucky",
++            "Test"
++        };
+@@ -32,0 +43,2 @@ namespace WindBot.Game
++            _kingProfiles = null;
++            _kingCardFrequency = null;
+@@ -111,0 +124,145 @@ namespace WindBot.Game
++
++        public static Executor InstantiateKingOfAnime(GameAI ai, Duel duel, Deck deck)
++        {
++            string profile = FindAnimeProfile(deck);
++            if (profile != null)
++            {
++                Logger.WriteLine("King of Anime selected the " + profile + " strategy profile.");
++                return Instantiate(ai, duel, profile);
++            }
++            Logger.WriteLine("King of Anime is using its deterministic general anime strategy.");
++            return Instantiate(ai, duel, "KingOfAnime");
++        }
++
++        private static string FindAnimeProfile(Deck deck)
++        {
++            if (deck == null)
++                return null;
++            HashSet<int> cards = new HashSet<int>(deck.Cards.Concat(deck.ExtraCards));
++            string closestProfile = FindClosestKingProfile(cards);
++            if (closestProfile != null)
++                return closestProfile;
++            if (cards.Contains(55410871))
++                return "BlueEyesMaxDragon";
++            if (HasAny(cards, 89631139, 38517737, 59822133))
++                return "Blue-Eyes";
++            if (HasAny(cards, 37818794, 6172122))
++                return "Dragun";
++            if (HasAny(cards, 46986414, 47222536, 48680970))
++                return "DarkMagician";
++            if (HasAny(cards, 70095154, 74157028, 1546123))
++                return "CyberDragon";
++            if (HasAny(cards, 78371393, 90829280, 80453041))
++                return "Yubel";
++            if (HasAny(cards, 50251045, 96345184, 23856331))
++                return "SacredBeast";
++            if (HasAny(cards, 84013237, 81471108, 45082499))
++                return "Zexal Weapons";
++            if (HasAny(cards, 91351370, 2009101, 69031175))
++                return "Blackwing";
++            if (HasAny(cards, 1861629, 62706865, 35595518))
++                return "ST1732";
++            if (HasAny(cards, 26889158, 87871125, 41463181))
++                return "Salamangreat";
++            if (HasAny(cards, 61283655, 35371948, 35199656))
++                return "Trickstar";
++            if (HasAny(cards, 42790071, 53143898, 25533642))
++                return "Altergeist";
++            if (HasAny(cards, 47355498, 17393207, 24317029))
++                return "Gravekeeper";
++            if (HasAny(cards, 65247798, 92246806, 28630501))
++                return "Yosenju";
++            if (HasAny(cards, 19510093, 90361010, 33918636))
++                return "SuperheavySamurai";
++            if (HasAny(cards, 73580471, 12213463, 26118970, 33698022))
++                return "Level VIII";
++            if (HasAny(cards, 28649820, 95561146, 85888377, 97800311))
++                return "Apophis";
++            if (HasAny(cards, 31786629, 15291624, 41685633))
++                return "ThunderDragon";
++            if (HasAny(cards, 30012506, 77411244, 3405259, 1561110))
++                return "ABC";
++            if (HasAny(cards, 9126351, 12538374, 63948258, 84451804))
++                return "Frog";
++            return null;
++        }
++
++        private static string FindClosestKingProfile(HashSet<int> cards)
++        {
++            if (cards == null || cards.Count == 0)
++                return null;
++            EnsureKingProfileCache();
++            if (_kingProfiles == null || _kingProfiles.Count == 0)
++                return null;
++
++            int frequencyLimit = Math.Max(3, _kingProfiles.Count / 8);
++            string bestProfile = null;
++            int bestOverlap = 0;
++            double bestCoverage = 0;
++            foreach (KeyValuePair<string, HashSet<int>> entry in _kingProfiles.OrderBy(item => item.Key, StringComparer.Ordinal))
++            {
++                List<int> fingerprint = entry.Value
++                    .Where(id => _kingCardFrequency[id] <= frequencyLimit)
++                    .ToList();
++                if (fingerprint.Count == 0)
++                    continue;
++                int overlap = fingerprint.Count(cards.Contains);
++                double coverage = (double)overlap / fingerprint.Count;
++                if (overlap < 4 || (overlap < 6 && coverage < 0.18))
++                    continue;
++                if (overlap > bestOverlap || overlap == bestOverlap && coverage > bestCoverage)
++                {
++                    bestProfile = entry.Key;
++                    bestOverlap = overlap;
++                    bestCoverage = coverage;
++                }
++            }
++            if (bestProfile != null)
++            {
++                Logger.WriteLine("King of Anime matched " + bestProfile + " with " + bestOverlap
++                    + " archetype cards (" + Math.Round(bestCoverage * 100) + "% profile coverage).");
++            }
++            return bestProfile;
++        }
++
++        private static void EnsureKingProfileCache()
++        {
++            if (_kingProfiles != null)
++                return;
++            lock (_kingProfileLock)
++            {
++                if (_kingProfiles != null)
++                    return;
++                Dictionary<string, HashSet<int>> profiles = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
++                Dictionary<int, int> frequencies = new Dictionary<int, int>();
++                foreach (string profileName in _decks.Keys.OrderBy(name => name, StringComparer.Ordinal))
++                {
++                    if (_kingExcludedProfiles.Contains(profileName))
++                        continue;
++                    DeckInstance profileInfo = _decks[profileName];
++                    string deckPath = Path.GetFullPath(Path.Combine(Program.AssetPath, "Decks", profileInfo.Deck + ".ydk"));
++                    if (!File.Exists(deckPath))
++                        continue;
++                    Deck profileDeck = Deck.Load(deckPath);
++                    if (profileDeck == null)
++                        continue;
++                    HashSet<int> profileCards = new HashSet<int>(profileDeck.Cards.Concat(profileDeck.ExtraCards));
++                    if (profileCards.Count < 5)
++                        continue;
++                    profiles[profileName] = profileCards;
++                    foreach (int cardId in profileCards)
++                    {
++                        int count;
++                        frequencies.TryGetValue(cardId, out count);
++                        frequencies[cardId] = count + 1;
++                    }
++                }
++                _kingCardFrequency = frequencies;
++                _kingProfiles = profiles;
++            }
++        }
++
++        private static bool HasAny(HashSet<int> cards, params int[] signatures)
++        {
++            return signatures.Any(cards.Contains);
++        }
 diff --git a/Game/GameBehavior.cs b/Game/GameBehavior.cs
-index 3a1b4b6..2ba6400 100644
+index 3a1b4b6..076957b 100644
 --- a/Game/GameBehavior.cs
 +++ b/Game/GameBehavior.cs
-@@ -195 +195 @@ namespace WindBot.Game
+@@ -72 +71,0 @@ namespace WindBot.Game
+-            _ai.Executor = DecksManager.Instantiate(_ai, _duel, Game.Deck);
+@@ -75 +74,10 @@ namespace WindBot.Game
+-            Deck = Deck.Load(Game.DeckFile ?? _ai.Executor.Deck);
++            if (Game.Deck == "KingOfAnime")
++            {
++                Deck = Deck.Load(Game.DeckFile ?? "AI_Test");
++                _ai.Executor = DecksManager.InstantiateKingOfAnime(_ai, _duel, Deck);
++            }
++            else
++            {
++                _ai.Executor = DecksManager.Instantiate(_ai, _duel, Game.Deck);
++                Deck = Deck.Load(Game.DeckFile ?? _ai.Executor.Deck);
++            }
+@@ -103,0 +112 @@ namespace WindBot.Game
++            _packets.Add(StocMessage.TypeChangeExtended, OnTypeChangeExtended);
+@@ -105,0 +115 @@ namespace WindBot.Game
++            _packets.Add(StocMessage.HsPlayerChangeExtended, OnPlayerChangeExtended);
+@@ -195 +205 @@ namespace WindBot.Game
 -            /*align =*/ packet.ReadBytes(4);
 +            uint duel_flag_high = packet.ReadUInt32();
-@@ -212,0 +213 @@ namespace WindBot.Game
+@@ -212,0 +223,3 @@ namespace WindBot.Game
++            const uint DUEL_BATTLE_ROYALE_HIGH = 0x20;
 +            const uint DUEL_3_V_1_HIGH = 0x40;
-@@ -214,0 +216 @@ namespace WindBot.Game
-+            _duel.IsThreeVsOne = (duel_flag_high & DUEL_3_V_1_HIGH) != 0;
-@@ -442 +444 @@ namespace WindBot.Game
++            const uint DUEL_UNIVERSAL_MULTIPLAYER_HIGH = 0x80;
+@@ -214,0 +228,5 @@ namespace WindBot.Game
++            _duel.Team1 = Math.Max(1, team1);
++            _duel.Team2 = Math.Max(1, team2);
++            _duel.IsIndependentMultiplayer = (duel_flag_high
++                & (DUEL_BATTLE_ROYALE_HIGH | DUEL_3_V_1_HIGH
++                    | DUEL_UNIVERSAL_MULTIPLAYER_HIGH)) != 0;
+@@ -251,2 +269,13 @@ namespace WindBot.Game
+-            int pos = type & 0xF;
+-            if (pos < 0 || pos >= _room.Players)
++            ApplyTypeChange(type & 0xF, ((type >> 4) & 0xF) != 0);
++        }
++
++        private void OnTypeChangeExtended(BinaryReader packet)
++        {
++            int pos = packet.ReadByte();
++            bool isHost = packet.ReadByte() != 0;
++            ApplyTypeChange(pos, isHost);
++        }
++
++        private void ApplyTypeChange(int pos, bool isHost)
++        {
++            if (pos < 0 || pos >= _room.Players || pos >= Room.MaxPlayers)
+@@ -258 +287 @@ namespace WindBot.Game
+-            _room.IsHost = ((type >> 4) & 0xF) != 0;
++            _room.IsHost = isHost;
+@@ -267 +296 @@ namespace WindBot.Game
+-            if (pos < 8)
++            if (pos >= 0 && pos < _room.Players && pos < Room.MaxPlayers)
+@@ -276 +305,18 @@ namespace WindBot.Game
+-            if (pos >= _room.Players)
++            ApplyPlayerChange(pos, state, state < (int)PlayerChange.Observe);
++        }
++
++        private void OnPlayerChangeExtended(BinaryReader packet)
++        {
++            int pos = packet.ReadByte();
++            int action = packet.ReadByte();
++            int value = packet.ReadByte();
++            const int PlayerChangeExtendedMove = 0;
++            const int PlayerChangeExtendedState = 1;
++            if (action != PlayerChangeExtendedMove && action != PlayerChangeExtendedState)
++                return;
++            ApplyPlayerChange(pos, value, action == PlayerChangeExtendedMove);
++        }
++
++        private void ApplyPlayerChange(int pos, int value, bool isMove)
++        {
++            if (pos < 0 || pos >= _room.Players || pos >= Room.MaxPlayers)
+@@ -278 +324 @@ namespace WindBot.Game
+-            if (state < 8)
++            if (isMove)
+@@ -279,0 +326,2 @@ namespace WindBot.Game
++                if (value < 0 || value >= _room.Players || value >= Room.MaxPlayers)
++                    return;
+@@ -282 +330 @@ namespace WindBot.Game
+-                _room.Names[state] = oldname;
++                _room.Names[value] = oldname;
+@@ -284 +332 @@ namespace WindBot.Game
+-                _room.IsReady[state] = false;
++                _room.IsReady[value] = false;
+@@ -286 +334 @@ namespace WindBot.Game
+-            else if (state == (int)PlayerChange.Ready)
++            else if (value == (int)PlayerChange.Ready)
+@@ -288 +336 @@ namespace WindBot.Game
+-            else if (state == (int)PlayerChange.NotReady)
++            else if (value == (int)PlayerChange.NotReady)
+@@ -290 +338 @@ namespace WindBot.Game
+-            else if (state == (int)PlayerChange.Leave || state == (int)PlayerChange.Observe)
++            else if (value == (int)PlayerChange.Leave || value == (int)PlayerChange.Observe)
+@@ -296 +344 @@ namespace WindBot.Game
+-            if (_room.IsHost && _room.IsReady[0] && _room.IsReady[1])
++            if (_room.IsHost && AreAllDuelistsReady())
+@@ -299,0 +348,12 @@ namespace WindBot.Game
++        private bool AreAllDuelistsReady()
++        {
++            if (_room.Players < 2 || _room.Players > Room.MaxPlayers)
++                return false;
++            for (int player = 0; player < _room.Players; ++player)
++            {
++                if (_room.Names[player] == null || !_room.IsReady[player])
++                    return false;
++            }
++            return true;
++        }
++
+@@ -442 +502,4 @@ namespace WindBot.Game
 -            _duel.Fields[GetLocalPlayer(0)].Init(deck, extra);
-+            _duel.Fields[GetLocalPlayer(0)].Init(deck, extra, _duel.IsThreeVsOne);
-@@ -578 +580,7 @@ namespace WindBot.Game
++            int fieldDuelists = _duel.GetFieldDuelistCount(0);
++            _duel.Fields[GetLocalPlayer(0)].Init(deck, extra,
++                ClientField.StandardMonsterZoneCount * fieldDuelists,
++                ClientField.StandardSpellZoneCount * fieldDuelists);
+@@ -445 +508,4 @@ namespace WindBot.Game
+-            _duel.Fields[GetLocalPlayer(1)].Init(deck, extra);
++            fieldDuelists = _duel.GetFieldDuelistCount(1);
++            _duel.Fields[GetLocalPlayer(1)].Init(deck, extra,
++                ClientField.StandardMonsterZoneCount * fieldDuelists,
++                ClientField.StandardSpellZoneCount * fieldDuelists);
+@@ -578 +644,4 @@ namespace WindBot.Game
 -                for (int seq = 0; seq < 7; ++seq)
-+                int monsterZoneCount = _duel.IsThreeVsOne && player == 0
-+                    ? ClientField.ThreeVsOneMonsterZoneCount
-+                    : ClientField.StandardMonsterZoneCount;
-+                int spellZoneCount = _duel.IsThreeVsOne && player == 0
-+                    ? ClientField.ThreeVsOneSpellZoneCount
-+                    : ClientField.StandardSpellZoneCount;
++                int fieldDuelists = _duel.GetFieldDuelistCount(player);
++                int monsterZoneCount = ClientField.StandardMonsterZoneCount * fieldDuelists;
++                int spellZoneCount = ClientField.StandardSpellZoneCount * fieldDuelists;
 +                for (int seq = 0; seq < monsterZoneCount; ++seq)
-@@ -591 +599 @@ namespace WindBot.Game
+@@ -591 +660 @@ namespace WindBot.Game
 -                for (int seq = 0; seq < 8; ++seq)
 +                for (int seq = 0; seq < spellZoneCount; ++seq)
+diff --git a/Game/Room.cs b/Game/Room.cs
+index b2304f8..032170f 100644
+--- a/Game/Room.cs
++++ b/Game/Room.cs
+@@ -4,0 +5 @@
++        public const int MaxPlayers = 26;
+@@ -13,2 +14,2 @@
+-            Names = new string[8];
+-            IsReady = new bool[8];
++            Names = new string[MaxPlayers];
++            IsReady = new bool[MaxPlayers];
+@@ -19 +20 @@
+-}
+\ No newline at end of file
++}
+diff --git a/YGOSharp.Network/Enums/StocMessage.cs b/YGOSharp.Network/Enums/StocMessage.cs
+index 92d6a5c..bf8f7ba 100644
+--- a/YGOSharp.Network/Enums/StocMessage.cs
++++ b/YGOSharp.Network/Enums/StocMessage.cs
+@@ -24,0 +25,2 @@
++        TypeChangeExtended = 0x31,
++        HsPlayerChangeExtended = 0x32,
+diff --git a/bots.json b/bots.json
+index c5403f7..876b8f7 100644
+--- a/bots.json
++++ b/bots.json
+@@ -108,0 +109,6 @@
++    },
++    {
++        "name": "King of Anime",
++        "deck": "KingOfAnime",
++        "difficulty": 4,
++        "masterRules": [ 3, 4, 5 ]

@@ -1,5 +1,5 @@
 --Deck Master System
---Independent logical-player implementation for normal duels and 3v1
+--Independent logical-player implementation for normal and multiplayer Duels
 local s,id=GetID()
 
 function s.initial_effect(c)
@@ -108,7 +108,7 @@ if not DeckMaster then
 			if not DeckMaster.Abilities[logical][card_id] then
 				DeckMaster.Abilities[logical][card_id]=true
 				for _,eff in ipairs(deck_master_effects) do
-					--The handler remains c, so the 3v1 client routes every prompt
+					--The handler remains c, so the multiplayer client routes every prompt
 					--and chain opportunity to this Deck Master's logical owner.
 					Duel.RegisterEffect(eff:Clone(),c:GetOwner())
 				end
@@ -119,7 +119,7 @@ if not DeckMaster then
 	end
 
 	function DeckMaster.RegisterRules(c)
-		for p=0,3 do
+		for p=0,25 do
 			if is_active_player(p) then
 				local dmc=Duel.SelectCardsFromCodesPlayer(
 					p,1,1,false,false,table.unpack(DeckMasterTableSelect))
@@ -147,7 +147,7 @@ if not DeckMaster then
 			end
 		end
 
-		--Losing a Deck Master eliminates only that logical player in 3v1.
+		--Losing a Deck Master eliminates only that logical player.
 		for _,phase in ipairs({
 			PHASE_DRAW,PHASE_STANDBY,PHASE_MAIN1,
 			PHASE_BATTLE_START,PHASE_MAIN2,PHASE_END
@@ -189,7 +189,7 @@ if not DeckMaster then
 	end
 	function DeckMaster.spop(e,tp,eg,ep,ev,re,r,rp)
 		local p=e:GetLabel()
-		if not Duel.SelectYesNo(player_side(p),aux.Stringid(FLAG_DECK_MASTER,5)) then return end
+		if not Duel.SelectYesNoPlayer(p,aux.Stringid(FLAG_DECK_MASTER,5)) then return end
 		Duel.SummonDeckMasterPlayer(p)
 	end
 
@@ -216,7 +216,7 @@ if not DeckMaster then
 	end
 	function DeckMaster.inheritop2(e,tp,eg,ep,ev,re,r,rp)
 		local g=eg:Filter(DeckMaster.inheritFilter,nil)
-		for p=0,3 do
+		for p=0,25 do
 			if is_active_player(p) then
 				local dg=g:Filter(function(c,lp)
 					return c:GetLogicalControler()==lp
@@ -234,40 +234,23 @@ if not DeckMaster then
 	function DeckMaster.loss(e,tp,eg,ep,ev,re,r,rp)
 		if Duel.GetActiveLogicalPlayerMask()~=0 then
 			local lost={}
-			local active_allies,active_solo=0,0
-			local surviving_allies,surviving_solo=0,0
-			for p=0,3 do
+			local active=0
+			for p=0,25 do
 				if Duel.IsLogicalPlayerActive(p) then
+					active=active+1
 					local has_dm=Duel.GetDeckMasterPlayer(p)~=nil
-					if p<3 then
-						active_allies=active_allies+1
-						if has_dm then surviving_allies=surviving_allies+1 end
-					else
-						active_solo=active_solo+1
-						if has_dm then surviving_solo=surviving_solo+1 end
-					end
 					if not has_dm then lost[#lost+1]=p end
 				end
 			end
 			if #lost==0 then return end
-			--If a single resolving event removes the last Deck Master from both
-			--teams, preserve the original simultaneous-loss draw.
-			if active_allies>0 and active_solo>0
-				and surviving_allies==0 and surviving_solo==0 then
+			--If one resolving event removes every remaining Deck Master, preserve
+			--the simultaneous-loss draw regardless of the multiplayer format.
+			if #lost==active then
 				Duel.Win(PLAYER_NONE,WIN_REASON_DECK_MASTER)
 				return
 			end
-			--Resolve the solo player's loss first. If an ally still owns a Deck
-			--Master this ends the duel immediately in the allied team's favor.
 			for _,p in ipairs(lost) do
-				if p==3 then
-					Duel.EliminatePlayer(p,4,WIN_REASON_DECK_MASTER)
-				end
-			end
-			for _,p in ipairs(lost) do
-				if p<3 then
-					Duel.EliminatePlayer(p,4,WIN_REASON_DECK_MASTER)
-				end
+				Duel.EliminatePlayer(p,4,WIN_REASON_DECK_MASTER)
 			end
 			return
 		end

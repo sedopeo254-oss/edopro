@@ -28,6 +28,8 @@
 #include "address.h"
 #include "fmt.h"
 #include "localtime.h"
+#include <algorithm>
+#include <cwchar>
 
 namespace ygo {
 
@@ -302,7 +304,8 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 			case BUTTON_HP_KICK: {
 				CTOS_Kick csk;
 				csk.pos = 0;
-				while (csk.pos < 6 && mainGame->btnHostPrepKick[csk.pos] != caller)
+				while (csk.pos < OCG_MULTIPLAYER_MAX_PLAYERS
+						&& mainGame->btnHostPrepKick[csk.pos] != caller)
 					csk.pos++;
 				DuelClient::SendPacketToServer(CTOS_HS_KICK, csk);
 				break;
@@ -876,21 +879,29 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 					caller->setText(text);
 				break;
 			}
-			case EDITBOX_TEAM_COUNT: {
-				auto elem = static_cast<irr::gui::IGUIEditBox*>(event.GUIEvent.Caller);
-				auto min = (elem == mainGame->ebOnlineTeam1 || elem == mainGame->ebOnlineTeam2) ? L"0" : L"1";
-				auto text = elem->getText();
-				auto len = wcslen(text);
-				if(len < 1)
-					break;
-				if(text[len - 1] < min[0] || text[len - 1] > L'3') {
-					elem->setText(min);
+				case EDITBOX_TEAM_COUNT: {
+					auto elem = static_cast<irr::gui::IGUIEditBox*>(event.GUIEvent.Caller);
+					const bool online_filter = elem == mainGame->ebOnlineTeam1
+						|| elem == mainGame->ebOnlineTeam2;
+					const bool universal = mainGame->cbMultiplayerMode
+						&& mainGame->cbMultiplayerMode->getSelected() >= 3;
+					const int minimum = online_filter ? 0 : 1;
+					const int maximum = (online_filter || universal)
+						? OCG_MULTIPLAYER_MAX_SIDE_PLAYERS : 3;
+					const auto* text = elem->getText();
+					if(!text[0])
+						break;
+					wchar_t* end = nullptr;
+					const auto value = std::wcstol(text, &end, 10);
+					if(end == text || *end != L'\0') {
+						elem->setText(epro::to_wstring(minimum).data());
+						break;
+					}
+					const auto clamped = std::clamp<int>(static_cast<int>(value), minimum, maximum);
+					if(clamped != value)
+						elem->setText(epro::to_wstring(clamped).data());
 					break;
 				}
-				wchar_t string[] = { text[len - 1], 0 };
-				elem->setText(string);
-				break;
-			}
 			case EDITBOX_NICKNAME: {
 				auto elem = static_cast<irr::gui::IGUIEditBox*>(event.GUIEvent.Caller);
 				auto target = (elem == mainGame->ebNickNameOnline) ? mainGame->ebNickName : mainGame->ebNickNameOnline;
@@ -911,7 +922,8 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 					mainGame->UpdateDuelParam();
 				} else {
 					const auto retained_flags = mainGame->duel_param
-						& (DUEL_TCG_SEGOC_NONPUBLIC | DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+						& (DUEL_TCG_SEGOC_NONPUBLIC | DUEL_BATTLE_ROYALE | DUEL_3_V_1
+							| DUEL_UNIVERSAL_MULTIPLAYER);
 	#define CHECK(MR) case (MR - 1):{ mainGame->duel_param = DUEL_MODE_MR##MR; mainGame->forbiddentypes = DUEL_MODE_MR##MR##_FORB; break; }
 					switch (mainGame->cbDuelRule->getSelected()) {
 					CHECK(1)
@@ -969,7 +981,8 @@ bool MenuHandler::OnEvent(const irr::SEvent& event) {
 				break;
 			}
 			case COMBOBOX_DUEL_RULE: {
-				const auto multiplayer_mode = mainGame->duel_param & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+				const auto multiplayer_mode = mainGame->duel_param
+					& (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_UNIVERSAL_MULTIPLAYER);
 				auto setDeckSizes = [&](const DeckSizes& size) {
 					mainGame->ebMainMin->setText(epro::to_wstring<int>(size.main.min).data());
 					mainGame->ebMainMax->setText(epro::to_wstring<int>(size.main.max).data());

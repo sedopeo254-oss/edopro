@@ -1,5 +1,6 @@
 #include <algorithm>
 #include "generic_duel.h"
+#include "multiplayer_packets.h"
 #include "netserver.h"
 #include "game.h"
 #include "core_utils.h"
@@ -9,11 +10,12 @@ namespace ygo {
 ReplayStream GenericDuel::replay_stream;
 
 GenericDuel::GenericDuel(int team1, int team2, bool relay, int best_of) :
-	last_response(2), relay(relay), best_of(best_of), match_kill(0), swapped(false), turn_count(0), grace_period(0) {
+	last_response(2), last_timer_player(0xff), relay(relay), best_of(best_of), match_kill(0), swapped(false), turn_count(0), grace_period(0) {
 	players.home.resize(team1);
 	players.opposing.resize(team2);
 	players.home_size = team1;
 	players.opposing_size = team2;
+	std::fill_n(time_limit, MAX_DUELISTS, 0);
 	seeking_rematch = false;
 }
 GenericDuel::~GenericDuel() {
@@ -35,10 +37,26 @@ void GenericDuel::Chat(DuelPlayer* dp, void* pdata, int len) {
 	memcpy(scc.client_name, dp->name, 40);
 	uint16_t* msg = (uint16_t*)pdata;
 	int msglen = BufferIO::CopyStr(msg, scc.msg, std::min(256, len));
-	if(dp->type >= NETPLAYER_TYPE_OBSERVER) {
+	if(dp->type >= players.home_size + players.opposing_size) {
 		scc.type = STOC_Chat2::PTYPE_OBS;
 		NetServer::SendBufferToPlayer(nullptr, STOC_CHAT_2, &scc, 4 + 40 + (msglen * 2));
 		ResendToAll();
+		return;
+	}
+	if(IsUniversalMode()) {
+		const auto sender = GetPos(dp);
+		scc.type = STOC_Chat2::PTYPE_DUELIST;
+		IteratePlayers([&](DuelPlayer* receiver) {
+			const auto recipient = GetPos(receiver);
+			scc.is_team = sender == recipient
+				|| AreLogicalTeammates(sender, recipient);
+			NetServer::SendBufferToPlayer(receiver, STOC_CHAT_2, &scc,
+				4 + 40 + (msglen * 2));
+		});
+		scc.is_team = false;
+		for(auto* observer : observers)
+			NetServer::SendBufferToPlayer(observer, STOC_CHAT_2, &scc,
+				4 + 40 + (msglen * 2));
 		return;
 	}
 	const auto is_first_team = GetPos(dp) < players.home_size;
@@ -78,7 +96,82 @@ bool GenericDuel::CheckReady() {
 bool GenericDuel::IsMultiplayerMode() const {
 	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
 		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-	return duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+	return duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_UNIVERSAL_MULTIPLAYER);
+}
+bool GenericDuel::IsUniversalMode() const {
+	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+	return (duel_flags & DUEL_UNIVERSAL_MULTIPLAYER) != 0;
+}
+uint8_t GenericDuel::GetLogicalTeam(uint8_t logical_player) const {
+	const auto total_players = static_cast<uint8_t>(players.home_size
+		+ players.opposing_size);
+	if(logical_player >= total_players)
+		return 0xff;
+	if(IsUniversalMode()) {
+		if(host_info.mode != MODE_UNIVERSAL_TEAMS)
+			return logical_player;
+		const auto requested_teams = static_cast<uint8_t>(
+			(host_info.no_check_deck_content & HOST_UNIVERSAL_TEAM_COUNT_MASK)
+			>> HOST_UNIVERSAL_TEAM_COUNT_SHIFT);
+		const auto team_count = std::clamp<uint8_t>(requested_teams, 2,
+			total_players);
+		return static_cast<uint8_t>(logical_player % team_count);
+	}
+	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+	if(duel_flags & DUEL_BATTLE_ROYALE)
+		return logical_player;
+	if(duel_flags & DUEL_3_V_1)
+		return logical_player < 3 ? 0 : 1;
+	return logical_player < players.home_size ? 0 : 1;
+}
+bool GenericDuel::AreLogicalTeammates(uint8_t first, uint8_t second) const {
+	return first != second && GetLogicalTeam(first) != 0xff
+		&& GetLogicalTeam(first) == GetLogicalTeam(second);
+}
+void GenericDuel::AbortMultiplayerDuel(uint8_t reason) {
+	if(!pduel)
+		return;
+	uint8_t result[] = { MSG_WIN, PLAYER_NONE, reason };
+	NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, result, sizeof(result));
+	ResendToAll();
+	replay_stream.emplace_back(result, sizeof(result) - 1);
+	match_result.push_back(PLAYER_NONE);
+	EndDuel();
+	packets_cache.clear();
+	duel_stage = DUEL_STAGE_END;
+	NetServer::SendPacketToPlayer(nullptr, STOC_DUEL_END);
+	ResendToAll();
+	event_del(etimer);
+	NetServer::StopServer();
+}
+uint8_t GenericDuel::ObserverType() const {
+	return IsUniversalMode() ? 0xff : NETPLAYER_TYPE_OBSERVER;
+}
+void GenericDuel::SendTypeChange(DuelPlayer* player, uint8_t type) {
+	if(IsUniversalMode()) {
+		const STOC_TypeChangeExtended packet{ type,
+			static_cast<uint8_t>(player == host_player) };
+		NetServer::SendPacketToPlayer(player, STOC_TYPE_CHANGE_EXTENDED, packet);
+	} else {
+		const STOC_TypeChange packet{
+			static_cast<uint8_t>((player == host_player ? 0x10 : 0) | type) };
+		NetServer::SendPacketToPlayer(player, STOC_TYPE_CHANGE, packet);
+	}
+}
+void GenericDuel::SendPlayerChange(DuelPlayer* player, uint8_t pos, uint8_t state,
+		bool is_move) {
+	if(IsUniversalMode()) {
+		const STOC_HS_PlayerChangeExtended packet{ pos,
+			static_cast<uint8_t>(is_move ? PLAYERCHANGE_EXTENDED_MOVE
+				: PLAYERCHANGE_EXTENDED_STATE), state };
+		NetServer::SendPacketToPlayer(player, STOC_HS_PLAYER_CHANGE_EXTENDED, packet);
+	} else {
+		const STOC_HS_PlayerChange packet{
+			static_cast<uint8_t>((pos << 4) | (state & 0x0f)) };
+		NetServer::SendPacketToPlayer(player, STOC_HS_PLAYER_CHANGE, packet);
+	}
 }
 void GenericDuel::StartMultiplayerDuel() {
 	IteratePlayers([](DuelPlayer* dueler) {
@@ -122,13 +215,10 @@ void GenericDuel::OrderPlayers(std::vector<duelist>& duelists, size_t offset) {
 	}
 	for(size_t i = 0; i < duelists.size(); i++) {
 		if(duelists[i].player->type != (i + offset)) {
-			STOC_HS_PlayerChange scpc;
-			scpc.status = static_cast<uint8_t>((duelists[i].player->type << 4) | (i + offset));
-			NetServer::SendPacketToPlayer(nullptr, STOC_HS_PLAYER_CHANGE, scpc);
+			SendPlayerChange(nullptr, duelists[i].player->type,
+				static_cast<uint8_t>(i + offset), true);
 			ResendToAll();
-			STOC_TypeChange sctc;
-			sctc.type = static_cast<uint8_t>((duelists[i] == host_player ? 0x10 : 0) | (i + offset));
-			NetServer::SendPacketToPlayer(duelists[i], STOC_TYPE_CHANGE, sctc);
+			SendTypeChange(duelists[i], static_cast<uint8_t>(i + offset));
 			duelists[i].player->type = static_cast<uint8_t>(i + offset);
 		}
 	}
@@ -185,11 +275,9 @@ void GenericDuel::JoinGame(DuelPlayer* dp, CTOS_JoinGame* pkt, bool is_creator) 
 	if(duel_stage == DUEL_STAGE_FINGER || duel_stage == DUEL_STAGE_FIRSTGO || duel_stage == DUEL_STAGE_DUELING || duel_stage == DUEL_STAGE_SIDING || seeking_rematch) {
 		STOC_JoinGame scjg;
 		scjg.info = host_info;
-		STOC_TypeChange sctc;
-		sctc.type = NETPLAYER_TYPE_OBSERVER;
 		NetServer::SendPacketToPlayer(dp, STOC_JOIN_GAME, scjg);
-		NetServer::SendPacketToPlayer(dp, STOC_TYPE_CHANGE, sctc);
-		dp->type = NETPLAYER_TYPE_OBSERVER;
+		dp->type = ObserverType();
+		SendTypeChange(dp, dp->type);
 		dp->state = CTOS_LEAVE_GAME;
 		if(swapped)
 			std::swap(players.home, players.opposing);
@@ -215,8 +303,6 @@ void GenericDuel::JoinGame(DuelPlayer* dp, CTOS_JoinGame* pkt, bool is_creator) 
 		host_player = dp;
 	STOC_JoinGame scjg;
 	scjg.info = host_info;
-	STOC_TypeChange sctc;
-	sctc.type = (host_player == dp) ? 0x10 : 0;
 	int8_t free_pos = GetFirstFree();
 	if(free_pos != -1) {
 		STOC_HS_PlayerEnter scpe;
@@ -226,28 +312,23 @@ void GenericDuel::JoinGame(DuelPlayer* dp, CTOS_JoinGame* pkt, bool is_creator) 
 		ResendToAll();
 		SetAtPos(dp, scpe.pos);
 		dp->type = scpe.pos;
-		sctc.type |= scpe.pos;
 	} else {
 		observers.insert(dp);
-		dp->type = NETPLAYER_TYPE_OBSERVER;
-		sctc.type |= NETPLAYER_TYPE_OBSERVER;
+		dp->type = ObserverType();
 		STOC_HS_WatchChange scwc;
 		scwc.watch_count = (uint16_t)observers.size();
 		NetServer::SendPacketToPlayer(nullptr, STOC_HS_WATCH_CHANGE, scwc);
 		ResendToAll();
 	}
 	NetServer::SendPacketToPlayer(dp, STOC_JOIN_GAME, scjg);
-	NetServer::SendPacketToPlayer(dp, STOC_TYPE_CHANGE, sctc);
+	SendTypeChange(dp, dp->type);
 	IteratePlayers([this,&dp](duelist& dueler) {
 		STOC_HS_PlayerEnter scpe;
 		BufferIO::CopyStr(dueler.player->name, scpe.name, 20);
 		scpe.pos = GetPos(dueler);
 		NetServer::SendPacketToPlayer(dp, STOC_HS_PLAYER_ENTER, scpe);
-		if(dueler.ready) {
-			STOC_HS_PlayerChange scpc;
-			scpc.status = (scpe.pos << 4) | PLAYERCHANGE_READY;
-			NetServer::SendPacketToPlayer(dp, STOC_HS_PLAYER_CHANGE, scpc);
-		}
+		if(dueler.ready)
+			SendPlayerChange(dp, scpe.pos, PLAYERCHANGE_READY);
 	});
 	if(observers.size()) {
 		STOC_HS_WatchChange scwc;
@@ -281,6 +362,40 @@ void GenericDuel::LeaveGame(DuelPlayer* dp) {
 		}
 	} else {
 		auto type = dp->type;
+		if(dp != host_player && duel_stage == DUEL_STAGE_DUELING
+				&& IsMultiplayerMode() && pduel) {
+			// A disconnected Universal/independent-field duelist is eliminated
+			// instead of incorrectly awarding the entire physical side a win.
+			// Surrender also safely transfers an outstanding response whenever a
+			// surviving player on that transport side can take it over.
+			Surrender(dp);
+			const auto logical_mask = static_cast<uint32_t>(1u) << type;
+			if(!pduel) {
+				// The elimination ended the Duel. Do not fall through to the
+				// legacy two-side disconnect winner path and announce a second,
+				// contradictory winner.
+				NetServer::DisconnectPlayer(dp);
+				GetAtPos(type).player = nullptr;
+				NetServer::SendPacketToPlayer(nullptr, STOC_DUEL_END);
+				ResendToAll();
+				event_del(etimer);
+				NetServer::StopServer();
+				return;
+			}
+			if(pduel && !(multiplayer_active_mask & logical_mask)) {
+				NetServer::DisconnectPlayer(dp);
+				GetAtPos(type).player = nullptr;
+				return;
+			}
+			// A mandatory, non-cancelable selection cannot safely be handed
+			// to another independent player. End this match as no-contest
+			// instead of treating every player sharing the transport side as
+			// disconnected or awarding the opposite transport side a win.
+			NetServer::DisconnectPlayer(dp);
+			GetAtPos(type).player = nullptr;
+			AbortMultiplayerDuel(0x4);
+			return;
+		}
 		NetServer::DisconnectPlayer(dp);
 		IteratePlayers([dp](duelist& dueler) {
 			if(dueler == dp)
@@ -289,10 +404,8 @@ void GenericDuel::LeaveGame(DuelPlayer* dp) {
 		if(duel_stage == DUEL_STAGE_BEGIN && !seeking_rematch) {
 			if(HostLeft())
 				return;
-			STOC_HS_PlayerChange scpc;
 			GetAtPos(type).Clear();
-			scpc.status = (type << 4) | PLAYERCHANGE_LEAVE;
-			NetServer::SendPacketToPlayer(nullptr, STOC_HS_PLAYER_CHANGE, scpc);
+			SendPlayerChange(nullptr, type, PLAYERCHANGE_LEAVE);
 			ResendToAll();
 		} else {
 			if(duel_stage == DUEL_STAGE_SIDING) {
@@ -326,7 +439,7 @@ void GenericDuel::ToDuelist(DuelPlayer* dp) {
 	int pos = GetFirstFree();
 	if(pos == -1)
 		return;
-	if(dp->type == NETPLAYER_TYPE_OBSERVER) {
+	if(dp->type == ObserverType()) {
 		observers.erase(dp);
 		STOC_HS_PlayerEnter scpe;
 		BufferIO::CopyStr(dp->name, scpe.name, 20);
@@ -339,9 +452,7 @@ void GenericDuel::ToDuelist(DuelPlayer* dp) {
 		ResendToAll();
 		NetServer::SendPacketToPlayer(nullptr, STOC_HS_WATCH_CHANGE, scwc);
 		ResendToAll();
-		STOC_TypeChange sctc;
-		sctc.type = (dp == host_player ? 0x10 : 0) | dp->type;
-		NetServer::SendPacketToPlayer(dp, STOC_TYPE_CHANGE, sctc);
+		SendTypeChange(dp, dp->type);
 	} else {
 		if(dp->type >= (players.home_size + players.opposing_size))
 			return;
@@ -350,13 +461,9 @@ void GenericDuel::ToDuelist(DuelPlayer* dp) {
 		pos = GetFirstFree(dp->type);
 		if(pos == -1)
 			return;
-		STOC_HS_PlayerChange scpc;
-		scpc.status = (dp->type << 4) | pos;
-		NetServer::SendPacketToPlayer(nullptr, STOC_HS_PLAYER_CHANGE, scpc);
+		SendPlayerChange(nullptr, dp->type, static_cast<uint8_t>(pos), true);
 		ResendToAll();
-		STOC_TypeChange sctc;
-		sctc.type = (dp == host_player ? 0x10 : 0) | pos;
-		NetServer::SendPacketToPlayer(dp, STOC_TYPE_CHANGE, sctc);
+		SendTypeChange(dp, static_cast<uint8_t>(pos));
 		SetAtPos(dp, pos);
 		GetAtPos(dp->type) = nullptr;
 		dp->type = pos;
@@ -365,16 +472,12 @@ void GenericDuel::ToDuelist(DuelPlayer* dp) {
 void GenericDuel::ToObserver(DuelPlayer* dp) {
 	if(dp->type >= (players.home_size + players.opposing_size))
 		return;
-	STOC_HS_PlayerChange scpc;
-	scpc.status = (dp->type << 4) | PLAYERCHANGE_OBSERVE;
-	NetServer::SendPacketToPlayer(nullptr, STOC_HS_PLAYER_CHANGE, scpc);
+	SendPlayerChange(nullptr, dp->type, PLAYERCHANGE_OBSERVE);
 	ResendToAll();
 	GetAtPos(dp->type) = nullptr;
-	dp->type = NETPLAYER_TYPE_OBSERVER;
+	dp->type = ObserverType();
 	observers.insert(dp);
-	STOC_TypeChange sctc;
-	sctc.type = (dp == host_player ? 0x10 : 0) | dp->type;
-	NetServer::SendPacketToPlayer(dp, STOC_TYPE_CHANGE, sctc);
+	SendTypeChange(dp, dp->type);
 }
 void GenericDuel::PlayerReady(DuelPlayer* dp, bool is_ready) {
 	if(dp->type >= (players.home_size + players.opposing_size))
@@ -384,7 +487,8 @@ void GenericDuel::PlayerReady(DuelPlayer* dp, bool is_ready) {
 		return;
 	if(is_ready) {
 		DeckError deck_error = DeckManager::CheckDeckSize(dueler.pdeck, host_info.sizes);
-		if(deck_error.type == DeckError::NONE && !host_info.no_check_deck_content) {
+		if(deck_error.type == DeckError::NONE
+				&& !(host_info.no_check_deck_content & HOST_NO_CHECK_DECK_CONTENT)) {
 			if(dueler.deck_error) {
 				deck_error.type = DeckError::UNKNOWNCARD;
 				deck_error.code = dueler.deck_error;
@@ -395,17 +499,14 @@ void GenericDuel::PlayerReady(DuelPlayer* dp, bool is_ready) {
 			}
 		}
 		if(deck_error.type != DeckError::NONE) {
-			STOC_HS_PlayerChange scpc;
-			scpc.status = (dp->type << 4) | PLAYERCHANGE_NOTREADY;
-			NetServer::SendPacketToPlayer(dp, STOC_HS_PLAYER_CHANGE, scpc);
+			SendPlayerChange(dp, dp->type, PLAYERCHANGE_NOTREADY);
 			NetServer::SendPacketToPlayer(dp, STOC_ERROR_MSG, deck_error);
 			return;
 		}
 	}
 	dueler.ready = is_ready;
-	STOC_HS_PlayerChange scpc;
-	scpc.status = (dp->type << 4) | (is_ready ? PLAYERCHANGE_READY : PLAYERCHANGE_NOTREADY);
-	NetServer::SendPacketToPlayer(nullptr, STOC_HS_PLAYER_CHANGE, scpc);
+	SendPlayerChange(nullptr, dp->type,
+		is_ready ? PLAYERCHANGE_READY : PLAYERCHANGE_NOTREADY);
 	ResendToAll();
 }
 void GenericDuel::PlayerKick(DuelPlayer* dp, uint8_t pos) {
@@ -541,7 +642,7 @@ void GenericDuel::RematchResult(DuelPlayer* dp, uint8_t rematch) {
 		if(dp->type >= (players.home_size + players.opposing_size))
 			return;
 		if(!rematch) {
-			dp->type = NETPLAYER_TYPE_OBSERVER;
+			dp->type = ObserverType();
 			NetServer::SendPacketToPlayer(nullptr, STOC_DUEL_END);
 			ResendToAll();
 			duel_stage = DUEL_STAGE_END;
@@ -624,12 +725,36 @@ void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 		new_replay.WriteData(dueler.player->name, 40, false);
 	}
 	replay_stream.clear();
-	time_limit[0] = time_limit[1] = host_info.time_limit ? (host_info.time_limit + 5) : 0;
+	std::fill_n(time_limit, MAX_DUELISTS,
+		host_info.time_limit ? static_cast<uint16_t>(host_info.time_limit + 5) : 0);
 	uint64_t opt = duel_flags;
 	if(host_info.no_shuffle_deck)
 		opt |= ((uint64_t)DUEL_PSEUDO_SHUFFLE);
 	OCG_Player team = { host_info.start_lp, host_info.start_hand, host_info.draw_count };
-	pduel = mainGame->SetupDuel({ { seed[0], seed[1], seed[2], seed[3] }, opt, team, team });
+	OCG_DuelOptions duel_options{ { seed[0], seed[1], seed[2], seed[3] }, opt, team, team };
+	if(duel_flags & DUEL_UNIVERSAL_MULTIPLAYER) {
+		auto& multiplayer = duel_options.multiplayer;
+		multiplayer.side1_players = static_cast<uint8_t>(players.home.size());
+		multiplayer.side2_players = static_cast<uint8_t>(players.opposing.size());
+		multiplayer.format = host_info.mode == MODE_UNIVERSAL_TEAMS
+			? OCG_MULTIPLAYER_FORMAT_TEAMS
+			: host_info.mode == MODE_UNIVERSAL_BATTLE_ROYALE
+				? OCG_MULTIPLAYER_FORMAT_BATTLE_ROYALE
+				: OCG_MULTIPLAYER_FORMAT_SOLO;
+		if(host_info.no_check_deck_content & HOST_UNIVERSAL_ARC_V_RULES)
+			multiplayer.flags |= OCG_MULTIPLAYER_ARC_V_FIRST_TURN;
+		if(host_info.no_check_deck_content & HOST_UNIVERSAL_ALLOW_INTRUSION)
+			multiplayer.flags |= OCG_MULTIPLAYER_ALLOW_INTRUSION;
+		const auto total_players = static_cast<uint8_t>(players.home.size() + players.opposing.size());
+		const auto requested_teams = static_cast<uint8_t>(host_info.no_check_deck_content
+			>> HOST_UNIVERSAL_TEAM_COUNT_SHIFT);
+		const auto team_count = multiplayer.format == OCG_MULTIPLAYER_FORMAT_TEAMS
+			? std::clamp<uint8_t>(requested_teams, 2, total_players) : total_players;
+		for(uint8_t player = 0; player < total_players; ++player)
+			multiplayer.teams[player] = multiplayer.format == OCG_MULTIPLAYER_FORMAT_TEAMS
+				? static_cast<uint8_t>(player % team_count) : player;
+	}
+	pduel = mainGame->SetupDuel(duel_options);
 	if(!host_info.no_shuffle_deck) {
 		auto rnd = Utils::GetRandomNumberGenerator();
 		IteratePlayers([&rnd](duelist& dueler) {
@@ -812,27 +937,35 @@ void GenericDuel::Surrender(DuelPlayer* dp) {
 	if(pduel) {
 		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
 			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-		if(duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1)) {
+		if(duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_UNIVERSAL_MULTIPLAYER)) {
 			const auto logical_player = GetPos(dp);
-			if(logical_player >= 4)
+			if(logical_player >= players.home_size + players.opposing_size)
 				return;
 			const uint8_t side = logical_player < players.home_size ? 0 : 1;
-			const auto side_begin = side == 0 ? 0u : players.home_size;
-			const auto side_end = side == 0 ? players.home_size : players.home_size + players.opposing_size;
-			bool has_replacement = false;
-			for(auto player = side_begin; player < side_end; ++player) {
-				if(player != logical_player && (multiplayer_active_mask & (1u << player))) {
-					has_replacement = true;
-					break;
+			const auto total_players = players.home_size + players.opposing_size;
+			DuelPlayer* replacement = nullptr;
+			// The 3-vs-1 mode deliberately lets the allied trio continue a
+			// pending choice. Universal fields are private per logical player,
+			// so handing that choice to any other seat would leak private cards
+			// (and in Solo/Battle Royal it would hand control to an opponent).
+			if(duel_flags & DUEL_3_V_1) {
+				for(uint8_t player = 0; player < total_players; ++player) {
+					if((multiplayer_active_mask & (1u << player))
+							&& AreLogicalTeammates(logical_player, player)) {
+						replacement = GetAtPos(player).player;
+						if(replacement)
+							break;
+					}
 				}
 			}
-			const auto remaining_mask = static_cast<uint8_t>(multiplayer_active_mask & ~(1u << logical_player));
-			if((duel_flags & DUEL_BATTLE_ROYALE) && !has_replacement
-					&& (remaining_mask & static_cast<uint8_t>(remaining_mask - 1)))
-				return;
-			const bool owns_pending_response = cur_player[side] == dp && pending_response[side].message;
-			const bool can_end_turn_directly = pending_response[side].message == MSG_SELECT_IDLECMD
-				|| pending_response[side].message == MSG_SELECT_BATTLECMD;
+			const bool has_replacement = replacement != nullptr;
+			const bool was_current_player = cur_player[side] == dp;
+			const bool was_response_player = response_player == dp;
+			const bool owns_pending_response = was_response_player
+				&& pending_response[side].message;
+			const bool can_end_turn_directly = owns_pending_response
+				&& (pending_response[side].message == MSG_SELECT_IDLECMD
+					|| pending_response[side].message == MSG_SELECT_BATTLECMD);
 			if(owns_pending_response && !has_replacement && !can_end_turn_directly)
 				return;
 
@@ -853,25 +986,25 @@ void GenericDuel::Surrender(DuelPlayer* dp) {
 				return;
 			}
 
-			if(cur_player[side] != dp)
+			if(!was_current_player && !was_response_player)
 				return;
-			DuelPlayer* replacement = nullptr;
-			for(auto player = side_begin; player < side_end; ++player) {
-				if(!(multiplayer_active_mask & (1u << player)))
-					continue;
-				replacement = GetAtPos(static_cast<uint8_t>(player)).player;
-				if(replacement)
-					break;
+			if(was_current_player)
+				cur_player[side] = replacement;
+			if(was_response_player) {
+				response_player = replacement;
+				if(response_override[side] == dp)
+					response_override[side] = replacement;
 			}
-			cur_player[side] = replacement;
 			if((status & OCG_MULTIPLAYER_ELIMINATION_CURRENT_PLAYER) && can_end_turn_directly) {
 				const int32_t end_phase_response = pending_response[side].message == MSG_SELECT_IDLECMD ? 7 : 3;
 				pending_response[side] = CoreUtils::Packet{};
+				response_player = nullptr;
+				response_logical_selector = false;
 				OCG_DuelSetResponse(pduel, &end_phase_response, sizeof(end_phase_response));
 				Process();
 				return;
 			}
-			if(replacement && pending_response[side].message) {
+			if(owns_pending_response && replacement && pending_response[side].message) {
 				NetServer::SendCoreUtilsPacketToPlayer(replacement, STOC_GAME_MSG, pending_response[side]);
 				static constexpr uint8_t waiting_message = MSG_WAITING;
 				NetServer::SendPacketToPlayer(nullptr, STOC_GAME_MSG, waiting_message);
@@ -1289,15 +1422,43 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		break;
 	}
 	case MSG_TAG_SWAP: {
+		const auto* payload_end = packet.data() + packet.buff_size();
 		player = BufferIO::Read<uint8_t>(pbuf);
 		/*uint32_t mcount = */BufferIO::Read<uint32_t>(pbuf);
 		uint32_t ecount = BufferIO::Read<uint32_t>(pbuf);
 		/*uint32_t pcount = */BufferIO::Read<uint32_t>(pbuf);
 		uint32_t hcount = BufferIO::Read<uint32_t>(pbuf);
 		pbufw = pbuf + 4;
+		DuelPlayer* logical_owner = IsMultiplayerMode() ? cur_player[player] : nullptr;
+		if(IsMultiplayerMode()) {
+			// Multiplayer TAG_SWAP carries the exact logical owner as its final
+			// byte. The physical side's current player may already have advanced,
+			// so using cur_player[player] here can reveal P2's private piles to P3
+			// and then make the client relabel that snapshot as another player.
+			const auto* scan = pbufw;
+			const auto private_count = static_cast<size_t>(hcount) + ecount;
+			const auto private_bytes = private_count * 2u * sizeof(uint32_t);
+			if(private_bytes <= static_cast<size_t>(payload_end - scan)) {
+				scan += private_bytes;
+				if(static_cast<size_t>(payload_end - scan) >= 2u * sizeof(uint32_t)) {
+					const auto gcount = BufferIO::Read<uint32_t>(scan);
+					const auto rcount = BufferIO::Read<uint32_t>(scan);
+					const auto public_bytes = (static_cast<size_t>(gcount) + rcount)
+						* 2u * sizeof(uint32_t);
+					if(public_bytes <= static_cast<size_t>(payload_end - scan)) {
+						scan += public_bytes;
+						if(scan + 1 == payload_end) {
+							const auto logical = *scan;
+							if(logical < players.home_size + players.opposing_size)
+								logical_owner = GetAtPos(logical).player;
+						}
+					}
+				}
+			}
+		}
 		SEND(nullptr);
 		if(IsMultiplayerMode()) {
-			NetServer::ReSendToPlayer(cur_player[player]);
+			NetServer::ReSendToPlayer(logical_owner);
 		} else {
 			for(auto& dueler : (player == 0) ? players.home : players.opposing)
 				NetServer::ReSendToPlayer(dueler);
@@ -1326,7 +1487,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		}
 		SEND(nullptr);
 		if(IsMultiplayerMode()) {
-			ResendToAll(cur_player[player]);
+			ResendToAll(logical_owner);
 		} else {
 			for(auto& dueler : (player == 1) ? players.home : players.opposing)
 				NetServer::ReSendToPlayer(dueler);
@@ -1339,7 +1500,10 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	case MSG_MULTIPLAYER_NEW_TURN: {
 		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
 		response_override[0] = response_override[1] = nullptr;
-		/*active_mask = */BufferIO::Read<uint8_t>(pbuf);
+		if(IsUniversalMode())
+			multiplayer_active_mask = BufferIO::Read<uint32_t>(pbuf);
+		else
+			multiplayer_active_mask = BufferIO::Read<uint8_t>(pbuf);
 		if(logical_player < players.home_size) {
 			players.home_iterator = players.home.begin() + logical_player;
 			cur_player[0] = players.home_iterator->player;
@@ -1350,6 +1514,18 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 				cur_player[1] = players.opposing_iterator->player;
 			}
 		}
+		SEND(nullptr);
+		ResendToAll();
+		packets_cache.push_back(packet);
+		break;
+	}
+	case MSG_MULTIPLAYER_CONFIG: {
+		/*player_count = */BufferIO::Read<uint8_t>(pbuf);
+		/*format = */BufferIO::Read<uint8_t>(pbuf);
+		/*flags = */BufferIO::Read<uint8_t>(pbuf);
+		/*side_one = */BufferIO::Read<uint8_t>(pbuf);
+		/*side_two = */BufferIO::Read<uint8_t>(pbuf);
+		multiplayer_active_mask = BufferIO::Read<uint32_t>(pbuf);
 		SEND(nullptr);
 		ResendToAll();
 		packets_cache.push_back(packet);
@@ -1366,14 +1542,29 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_MULTIPLAYER_PRIVATE_PILES: {
 		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
-		if(logical_player < players.home_size + players.opposing_size)
-			SEND(GetAtPos(logical_player).player);
+		auto* owner = logical_player < players.home_size + players.opposing_size
+			? GetAtPos(logical_player).player : nullptr;
+		// The exact owner receives the complete snapshot. Replays retain this
+		// original packet as well, which makes every 3-vs-1 camera seek exact.
+		if(owner)
+			SEND(owner);
+
+		// Everyone else needs the public Graveyard/Banish projection when the
+		// displayed teammate changes, but must never receive Hand, Deck top,
+		// face-down Extra Deck or face-down banished identities.
+		if(multiplayer_packets::SanitizePrivatePiles(
+				packet.data(), packet.buff_size(), POS_FACEUP)) {
+			SEND(nullptr);
+			ResendToAll(owner);
+			packets_cache.push_back(packet);
+		}
 		break;
 	}
 	case MSG_PLAYER_ELIMINATED: {
 		/*logical_player = */BufferIO::Read<uint8_t>(pbuf);
 		/*reason = */BufferIO::Read<uint8_t>(pbuf);
-		multiplayer_active_mask = BufferIO::Read<uint8_t>(pbuf) & 0x0f;
+		multiplayer_active_mask = IsUniversalMode()
+			? BufferIO::Read<uint32_t>(pbuf) : BufferIO::Read<uint8_t>(pbuf);
 		SEND(nullptr);
 		ResendToAll();
 		packets_cache.push_back(packet);
@@ -1429,7 +1620,8 @@ void GenericDuel::AfterParsing(const CoreUtils::Packet& packet, [[maybe_unused]]
 		break;
 	}
 	case MSG_NEW_TURN: {
-		time_limit[0] = time_limit[1] = host_info.time_limit ? (host_info.time_limit + 5) : 0;
+		std::fill_n(time_limit, MAX_DUELISTS,
+			host_info.time_limit ? static_cast<uint16_t>(host_info.time_limit + 5) : 0);
 		turn_count++;
 		break;
 	}
@@ -1607,7 +1799,8 @@ DuelPlayer* GenericDuel::WaitforResponse(uint8_t playerid, const CoreUtils::Pack
 	const uint8_t logical_player = playerid >= 2 ? static_cast<uint8_t>(playerid - 2) : 0xff;
 	const bool logical_selector = playerid >= 2 && logical_player < players.home_size + players.opposing_size
 		&& (((duel_flags & DUEL_3_V_1) && playerid < 5)
-			|| ((duel_flags & DUEL_BATTLE_ROYALE) && playerid < 6));
+			|| ((duel_flags & DUEL_BATTLE_ROYALE) && playerid < 6)
+			|| (duel_flags & DUEL_UNIVERSAL_MULTIPLAYER));
 	const uint8_t response_side = logical_selector
 		? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : playerid;
 	DuelPlayer* responder = logical_selector ? GetAtPos(logical_player).player
@@ -1616,6 +1809,8 @@ DuelPlayer* GenericDuel::WaitforResponse(uint8_t playerid, const CoreUtils::Pack
 		responder = cur_player[response_side];
 	last_response = response_side;
 	response_player = responder;
+	last_timer_player = IsUniversalMode() && responder
+		? GetPos(responder) : response_side;
 	response_logical_selector = logical_selector;
 	pending_response[response_side] = packet;
 	static constexpr uint8_t msg = MSG_WAITING;
@@ -1627,7 +1822,9 @@ DuelPlayer* GenericDuel::WaitforResponse(uint8_t playerid, const CoreUtils::Pack
 	if(host_info.time_limit) {
 		STOC_TimeLimit sctl;
 		sctl.player = response_side;
-		sctl.left_time = std::max<int32_t>(time_limit[response_side] - 5, 0);
+		const auto remaining = last_timer_player < MAX_DUELISTS
+			? time_limit[last_timer_player] : 0;
+		sctl.left_time = std::max<int32_t>(remaining - 5, 0);
 		NetServer::SendPacketToPlayer(nullptr, STOC_TIME_LIMIT, sctl);
 		IteratePlayers(NetServer::ReSendToPlayer);
 		grace_period = 0;
@@ -1784,13 +1981,29 @@ void GenericDuel::PseudoRefreshDeck(uint8_t player, uint32_t flag) {
 }
 void GenericDuel::GenericTimer([[maybe_unused]] evutil_socket_t fd, [[maybe_unused]] short events, void* arg) {
 	GenericDuel* sd = static_cast<GenericDuel*>(arg);
-	if(sd->last_response < 2 && sd->response_player && sd->response_player->state == CTOS_RESPONSE) {
+	if(sd->host_info.time_limit && sd->last_response < 2
+			&& sd->last_timer_player < MAX_DUELISTS
+			&& sd->response_player && sd->response_player->state == CTOS_RESPONSE) {
 		if(sd->grace_period >= 0) {
 			sd->grace_period--;
 			return;
 		}
-		sd->time_limit[sd->last_response]--;
-		if(sd->time_limit[sd->last_response] <= 0) {
+		sd->time_limit[sd->last_timer_player]--;
+		if(sd->time_limit[sd->last_timer_player] <= 0) {
+			if(sd->IsUniversalMode()) {
+				auto* timed_out = sd->response_player;
+				const auto logical_player = sd->GetPos(timed_out);
+				sd->Surrender(timed_out);
+				if(!sd->pduel)
+					return;
+				if(logical_player < MAX_DUELISTS
+						&& !(sd->multiplayer_active_mask & (1u << logical_player)))
+					return;
+				// The timed-out player owns a mandatory selection that cannot be
+				// answered by an opponent without leaking or changing game state.
+				sd->AbortMultiplayerDuel(0x3);
+				return;
+			}
 			uint8_t wbuf[3];
 			uint8_t player = sd->last_response;
 			wbuf[0] = MSG_WIN;

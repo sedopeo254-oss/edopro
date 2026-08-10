@@ -1,0 +1,757 @@
+diff --git a/ExecutorBase/ExecutorBase.csproj b/ExecutorBase/ExecutorBase.csproj
+index 03209f6..2ce4e25 100644
+--- a/ExecutorBase/ExecutorBase.csproj
++++ b/ExecutorBase/ExecutorBase.csproj
+@@ -58,0 +59 @@
++    <Compile Include="Game\AI\KingOfAnimeLearning.cs" />
+diff --git a/ExecutorBase/Game/AI/KingOfAnimeLearning.cs b/ExecutorBase/Game/AI/KingOfAnimeLearning.cs
+new file mode 100644
+index 0000000..532005c
+--- /dev/null
++++ b/ExecutorBase/Game/AI/KingOfAnimeLearning.cs
+@@ -0,0 +1,548 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Runtime.Serialization;
++using System.Runtime.Serialization.Json;
++using System.Threading;
++
++namespace WindBot.Game.AI
++{
++    /// <summary>
++    /// Persistent, deterministic opponent model used only when the user selects
++    /// the King of Anime engine. It learns revealed threats, activation chains,
++    /// successful answers, option outcomes, and first/second preference without
++    /// changing any legal card/deck randomness in the duel engine.
++    /// </summary>
++    internal sealed class KingOfAnimeLearning
++    {
++        [DataContract]
++        private sealed class CardStats
++        {
++            [DataMember(Order = 1)] public int SeenDuels;
++            [DataMember(Order = 2)] public int Activations;
++            [DataMember(Order = 3)] public int Summons;
++            [DataMember(Order = 4)] public int DirectAttacks;
++            [DataMember(Order = 5)] public int WinsPresent;
++            [DataMember(Order = 6)] public int LossesPresent;
++            [DataMember(Order = 7)] public int DrawsPresent;
++
++            public void Add(CardStats other)
++            {
++                if (other == null) return;
++                SeenDuels += other.SeenDuels;
++                Activations += other.Activations;
++                Summons += other.Summons;
++                DirectAttacks += other.DirectAttacks;
++                WinsPresent += other.WinsPresent;
++                LossesPresent += other.LossesPresent;
++                DrawsPresent += other.DrawsPresent;
++            }
++
++            public int Relevance
++            {
++                get { return SeenDuels * 8 + Activations * 3 + Summons + DirectAttacks * 4 + LossesPresent * 8; }
++            }
++        }
++
++        [DataContract]
++        private sealed class TacticStats
++        {
++            [DataMember(Order = 1)] public int Occurrences;
++            [DataMember(Order = 2)] public int WinsPresent;
++            [DataMember(Order = 3)] public int LossesPresent;
++            [DataMember(Order = 4)] public int DrawsPresent;
++
++            public void Add(TacticStats other)
++            {
++                if (other == null) return;
++                Occurrences += other.Occurrences;
++                WinsPresent += other.WinsPresent;
++                LossesPresent += other.LossesPresent;
++                DrawsPresent += other.DrawsPresent;
++            }
++
++            public int Relevance
++            {
++                get { return Occurrences + LossesPresent * 6 + WinsPresent * 2; }
++            }
++        }
++
++        [DataContract]
++        private sealed class ChoiceStats
++        {
++            [DataMember(Order = 1)] public int Attempts;
++            [DataMember(Order = 2)] public int Wins;
++            [DataMember(Order = 3)] public int Losses;
++            [DataMember(Order = 4)] public int Draws;
++
++            public void Add(ChoiceStats other)
++            {
++                if (other == null) return;
++                Attempts += other.Attempts;
++                Wins += other.Wins;
++                Losses += other.Losses;
++                Draws += other.Draws;
++            }
++        }
++
++        [DataContract]
++        private sealed class OptionStats
++        {
++            [DataMember(Order = 1)] public Dictionary<string, ChoiceStats> Choices = new Dictionary<string, ChoiceStats>();
++
++            public void Normalize()
++            {
++                if (Choices == null) Choices = new Dictionary<string, ChoiceStats>();
++            }
++
++            public void Add(OptionStats other)
++            {
++                if (other == null) return;
++                Normalize();
++                other.Normalize();
++                foreach (KeyValuePair<string, ChoiceStats> item in other.Choices)
++                {
++                    ChoiceStats stats;
++                    if (!Choices.TryGetValue(item.Key, out stats))
++                    {
++                        stats = new ChoiceStats();
++                        Choices[item.Key] = stats;
++                    }
++                    stats.Add(item.Value);
++                }
++            }
++
++            public int Relevance
++            {
++                get { Normalize(); return Choices.Values.Sum(item => item.Attempts); }
++            }
++        }
++
++        [DataContract]
++        private sealed class MemoryData
++        {
++            [DataMember(Order = 1)] public int Version = 1;
++            [DataMember(Order = 2)] public int FirstGames;
++            [DataMember(Order = 3)] public int FirstWins;
++            [DataMember(Order = 4)] public int SecondGames;
++            [DataMember(Order = 5)] public int SecondWins;
++            [DataMember(Order = 6)] public Dictionary<string, CardStats> Cards = new Dictionary<string, CardStats>();
++            [DataMember(Order = 7)] public Dictionary<string, TacticStats> Tactics = new Dictionary<string, TacticStats>();
++            [DataMember(Order = 8)] public Dictionary<string, TacticStats> Answers = new Dictionary<string, TacticStats>();
++            [DataMember(Order = 9)] public Dictionary<string, OptionStats> Options = new Dictionary<string, OptionStats>();
++
++            public void Normalize()
++            {
++                if (Version <= 0) Version = 1;
++                if (Cards == null) Cards = new Dictionary<string, CardStats>();
++                if (Tactics == null) Tactics = new Dictionary<string, TacticStats>();
++                if (Answers == null) Answers = new Dictionary<string, TacticStats>();
++                if (Options == null) Options = new Dictionary<string, OptionStats>();
++                foreach (OptionStats option in Options.Values)
++                    if (option != null) option.Normalize();
++            }
++        }
++
++        private sealed class OptionDecision
++        {
++            public string Key;
++            public int Index;
++        }
++
++        private static readonly object ProcessFileLock = new object();
++        private readonly string _filePath;
++        private readonly string _lockPath;
++        private readonly Action<string> _log;
++        private readonly HashSet<int> _observedCards = new HashSet<int>();
++        private readonly Dictionary<int, int> _activations = new Dictionary<int, int>();
++        private readonly Dictionary<int, int> _summons = new Dictionary<int, int>();
++        private readonly Dictionary<int, int> _directAttacks = new Dictionary<int, int>();
++        private readonly Dictionary<string, int> _tactics = new Dictionary<string, int>();
++        private readonly Dictionary<string, int> _answers = new Dictionary<string, int>();
++        private readonly List<OptionDecision> _optionDecisions = new List<OptionDecision>();
++        private readonly List<int> _recentActivations = new List<int>();
++        private MemoryData _memory;
++        private bool _wentFirst;
++        private bool _saved;
++        private int? _result;
++
++        public KingOfAnimeLearning(string assetPath, Action<string> log)
++        {
++            string root = String.IsNullOrEmpty(assetPath) ? "." : assetPath;
++            string directory = Path.Combine(root, "KingOfAnimeMemory");
++            _filePath = Path.Combine(directory, "opponent-memory.json");
++            _lockPath = Path.Combine(directory, "opponent-memory.lock");
++            _log = log;
++            _memory = Load(_filePath);
++            _log("King of Anime loaded " + _memory.Cards.Count + " learned opponent cards and "
++                + _memory.Tactics.Count + " tactical sequences.");
++        }
++
++        public void BeginDuel(bool wentFirst)
++        {
++            _wentFirst = wentFirst;
++        }
++
++        public void ObserveMove(int cardId, int previousController, int previousLocation,
++            int currentController, int currentLocation)
++        {
++            if (cardId <= 0 || currentController != 1)
++                return;
++            Observe(cardId);
++            const int LocationMonster = 0x04;
++            if ((currentLocation & LocationMonster) != 0 && (previousLocation & LocationMonster) == 0)
++                Increment(_summons, cardId);
++        }
++
++        public void ObserveActivation(int cardId)
++        {
++            if (cardId <= 0)
++                return;
++            Observe(cardId);
++            Increment(_activations, cardId);
++            _recentActivations.Add(cardId);
++            if (_recentActivations.Count > 3)
++                _recentActivations.RemoveAt(0);
++            if (_recentActivations.Count >= 2)
++                Increment(_tactics, String.Join(">", _recentActivations.Select(id => id.ToString()).ToArray()));
++        }
++
++        public void ObserveDirectAttack(int cardId)
++        {
++            if (cardId <= 0)
++                return;
++            Observe(cardId);
++            Increment(_directAttacks, cardId);
++        }
++
++        public void RecordAnswer(int answerCardId, int threatCardId)
++        {
++            if (answerCardId <= 0 || threatCardId <= 0)
++                return;
++            Increment(_answers, answerCardId + ">" + threatCardId);
++        }
++
++        public int GetThreatScore(int cardId)
++        {
++            if (cardId <= 0)
++                return 0;
++            CardStats stats;
++            if (!_memory.Cards.TryGetValue(cardId.ToString(), out stats) || stats == null)
++                return 0;
++            int outcomeGames = stats.WinsPresent + stats.LossesPresent + stats.DrawsPresent;
++            if (outcomeGames < 2)
++                return Math.Min(250, stats.Activations * 12 + stats.DirectAttacks * 25);
++
++            double dangerRate = (stats.LossesPresent + 1.0) / (outcomeGames + 2.0);
++            int score = (int)Math.Round(Math.Max(0.0, dangerRate - 0.35) * 1400.0);
++            score += Math.Min(450, stats.Activations * 10 + stats.Summons * 3 + stats.DirectAttacks * 25);
++
++            string suffix = ">" + cardId;
++            foreach (KeyValuePair<string, TacticStats> tactic in _memory.Tactics)
++            {
++                if (tactic.Value == null || (!tactic.Key.EndsWith(suffix, StringComparison.Ordinal)
++                    && tactic.Key != cardId.ToString()))
++                    continue;
++                int tacticGames = tactic.Value.WinsPresent + tactic.Value.LossesPresent + tactic.Value.DrawsPresent;
++                if (tacticGames < 2)
++                    continue;
++                double tacticDanger = (tactic.Value.LossesPresent + 1.0) / (tacticGames + 2.0);
++                score += (int)Math.Round(Math.Max(0.0, tacticDanger - 0.45) * 500.0);
++            }
++            return Math.Min(2200, Math.Max(0, score));
++        }
++
++        public int GetSolutionScore(int candidateCardId)
++        {
++            if (candidateCardId <= 0 || _observedCards.Count == 0)
++                return 0;
++            int score = 0;
++            foreach (int threat in _observedCards)
++            {
++                TacticStats answer;
++                if (!_memory.Answers.TryGetValue(candidateCardId + ">" + threat, out answer) || answer == null)
++                    continue;
++                int games = answer.WinsPresent + answer.LossesPresent + answer.DrawsPresent;
++                if (games < 2)
++                    continue;
++                double successRate = (answer.WinsPresent + 1.0) / (games + 2.0);
++                score += (int)Math.Round((successRate - 0.5) * 900.0);
++            }
++            return Math.Max(-1200, Math.Min(1800, score));
++        }
++
++        public bool ChooseStartingPlayer(bool executorChoice)
++        {
++            if (_memory.FirstGames < 3 || _memory.SecondGames < 3)
++                return executorChoice;
++            double firstRate = (_memory.FirstWins + 1.0) / (_memory.FirstGames + 2.0);
++            double secondRate = (_memory.SecondWins + 1.0) / (_memory.SecondGames + 2.0);
++            if (Math.Abs(firstRate - secondRate) < 0.12)
++                return executorChoice;
++            return firstRate > secondRate;
++        }
++
++        public int SelectOption(IList<long> options, int cardId)
++        {
++            if (options == null || options.Count == 0)
++                return -1;
++            string key = cardId + "|" + String.Join(",", options.Select(value => value.ToString()).ToArray());
++            OptionStats history;
++            _memory.Options.TryGetValue(key, out history);
++            if (history != null) history.Normalize();
++
++            int bestIndex = 0;
++            double bestRate = Double.MinValue;
++            int bestAttempts = Int32.MaxValue;
++            for (int index = 0; index < options.Count; ++index)
++            {
++                ChoiceStats choice = null;
++                if (history != null) history.Choices.TryGetValue(index.ToString(), out choice);
++                int attempts = choice == null ? 0 : choice.Attempts;
++                int wins = choice == null ? 0 : choice.Wins;
++                double rate = (wins + 1.0) / (attempts + 2.0);
++                if (rate > bestRate || Math.Abs(rate - bestRate) < 0.000001 && attempts < bestAttempts)
++                {
++                    bestRate = rate;
++                    bestAttempts = attempts;
++                    bestIndex = index;
++                }
++            }
++            _optionDecisions.Add(new OptionDecision { Key = key, Index = bestIndex });
++            return bestIndex;
++        }
++
++        public void CompleteDuel(int result)
++        {
++            if (_result.HasValue)
++                return;
++            _result = result;
++            Save();
++        }
++
++        public void Flush()
++        {
++            Save();
++        }
++
++        private void Observe(int cardId)
++        {
++            if (_observedCards.Count < 160)
++                _observedCards.Add(cardId);
++        }
++
++        private static void Increment<TKey>(Dictionary<TKey, int> values, TKey key)
++        {
++            int count;
++            values.TryGetValue(key, out count);
++            values[key] = count + 1;
++        }
++
++        private void Save()
++        {
++            if (_saved)
++                return;
++            _saved = true;
++            MemoryData delta = BuildDelta();
++            try
++            {
++                lock (ProcessFileLock)
++                {
++                    string directory = Path.GetDirectoryName(_filePath);
++                    Directory.CreateDirectory(directory);
++                    FileStream lockStream = null;
++                    for (int attempt = 0; attempt < 8 && lockStream == null; ++attempt)
++                    {
++                        try
++                        {
++                            lockStream = new FileStream(_lockPath, FileMode.OpenOrCreate,
++                                FileAccess.ReadWrite, FileShare.None);
++                        }
++                        catch (IOException)
++                        {
++                            Thread.Sleep(25);
++                        }
++                    }
++                    if (lockStream == null)
++                    {
++                        _log("King of Anime could not acquire the opponent-memory lock; this duel was not saved.");
++                        return;
++                    }
++                    using (lockStream)
++                    {
++                        MemoryData latest = Load(_filePath);
++                        Merge(latest, delta);
++                        Prune(latest);
++                        Write(_filePath, latest);
++                        _memory = latest;
++                    }
++                }
++            }
++            catch (Exception ex)
++            {
++                _log("King of Anime opponent memory could not be saved: " + ex.Message);
++            }
++        }
++
++        private MemoryData BuildDelta()
++        {
++            MemoryData delta = new MemoryData();
++            bool hasOutcome = _result.HasValue && _result.Value >= 0 && _result.Value <= 2;
++            foreach (int cardId in _observedCards)
++            {
++                CardStats stats = new CardStats { SeenDuels = 1 };
++                _activations.TryGetValue(cardId, out stats.Activations);
++                _summons.TryGetValue(cardId, out stats.Summons);
++                _directAttacks.TryGetValue(cardId, out stats.DirectAttacks);
++                ApplyOutcome(stats, hasOutcome ? _result.Value : -1);
++                delta.Cards[cardId.ToString()] = stats;
++            }
++            foreach (KeyValuePair<string, int> tactic in _tactics)
++            {
++                TacticStats stats = new TacticStats { Occurrences = tactic.Value };
++                ApplyOutcome(stats, hasOutcome ? _result.Value : -1);
++                delta.Tactics[tactic.Key] = stats;
++            }
++            foreach (KeyValuePair<string, int> answer in _answers)
++            {
++                TacticStats stats = new TacticStats { Occurrences = answer.Value };
++                ApplyOutcome(stats, hasOutcome ? _result.Value : -1);
++                delta.Answers[answer.Key] = stats;
++            }
++            foreach (OptionDecision decision in _optionDecisions)
++            {
++                OptionStats option;
++                if (!delta.Options.TryGetValue(decision.Key, out option))
++                {
++                    option = new OptionStats();
++                    delta.Options[decision.Key] = option;
++                }
++                ChoiceStats choice;
++                string index = decision.Index.ToString();
++                if (!option.Choices.TryGetValue(index, out choice))
++                {
++                    choice = new ChoiceStats();
++                    option.Choices[index] = choice;
++                }
++                choice.Attempts++;
++                if (_result == 0) choice.Wins++;
++                else if (_result == 1) choice.Losses++;
++                else if (_result == 2) choice.Draws++;
++            }
++            if (hasOutcome)
++            {
++                if (_wentFirst)
++                {
++                    delta.FirstGames++;
++                    if (_result == 0) delta.FirstWins++;
++                }
++                else
++                {
++                    delta.SecondGames++;
++                    if (_result == 0) delta.SecondWins++;
++                }
++            }
++            return delta;
++        }
++
++        private static void ApplyOutcome(CardStats stats, int result)
++        {
++            if (result == 0) stats.WinsPresent++;
++            else if (result == 1) stats.LossesPresent++;
++            else if (result == 2) stats.DrawsPresent++;
++        }
++
++        private static void ApplyOutcome(TacticStats stats, int result)
++        {
++            if (result == 0) stats.WinsPresent++;
++            else if (result == 1) stats.LossesPresent++;
++            else if (result == 2) stats.DrawsPresent++;
++        }
++
++        private static MemoryData Load(string path)
++        {
++            if (!File.Exists(path))
++                return new MemoryData();
++            try
++            {
++                using (FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
++                {
++                    DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(MemoryData));
++                    MemoryData data = serializer.ReadObject(stream) as MemoryData;
++                    if (data == null) data = new MemoryData();
++                    data.Normalize();
++                    return data;
++                }
++            }
++            catch
++            {
++                return new MemoryData();
++            }
++        }
++
++        private static void Write(string path, MemoryData data)
++        {
++            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
++            try
++            {
++                using (FileStream stream = File.Create(temporary))
++                {
++                    DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(MemoryData));
++                    serializer.WriteObject(stream, data);
++                    stream.Flush();
++                }
++                File.Copy(temporary, path, true);
++            }
++            finally
++            {
++                if (File.Exists(temporary)) File.Delete(temporary);
++            }
++        }
++
++        private static void Merge(MemoryData target, MemoryData delta)
++        {
++            target.Normalize();
++            delta.Normalize();
++            target.FirstGames += delta.FirstGames;
++            target.FirstWins += delta.FirstWins;
++            target.SecondGames += delta.SecondGames;
++            target.SecondWins += delta.SecondWins;
++            MergeStats(target.Cards, delta.Cards, () => new CardStats(), (left, right) => left.Add(right));
++            MergeStats(target.Tactics, delta.Tactics, () => new TacticStats(), (left, right) => left.Add(right));
++            MergeStats(target.Answers, delta.Answers, () => new TacticStats(), (left, right) => left.Add(right));
++            MergeStats(target.Options, delta.Options, () => new OptionStats(), (left, right) => left.Add(right));
++        }
++
++        private static void MergeStats<T>(Dictionary<string, T> target, Dictionary<string, T> delta,
++            Func<T> create, Action<T, T> add)
++        {
++            foreach (KeyValuePair<string, T> item in delta)
++            {
++                T current;
++                if (!target.TryGetValue(item.Key, out current) || current == null)
++                {
++                    current = create();
++                    target[item.Key] = current;
++                }
++                add(current, item.Value);
++            }
++        }
++
++        private static void Prune(MemoryData data)
++        {
++            data.Cards = data.Cards.OrderByDescending(item => item.Value == null ? 0 : item.Value.Relevance)
++                .ThenBy(item => item.Key, StringComparer.Ordinal).Take(512)
++                .ToDictionary(item => item.Key, item => item.Value);
++            data.Tactics = data.Tactics.OrderByDescending(item => item.Value == null ? 0 : item.Value.Relevance)
++                .ThenBy(item => item.Key, StringComparer.Ordinal).Take(1024)
++                .ToDictionary(item => item.Key, item => item.Value);
++            data.Answers = data.Answers.OrderByDescending(item => item.Value == null ? 0 : item.Value.Relevance)
++                .ThenBy(item => item.Key, StringComparer.Ordinal).Take(1024)
++                .ToDictionary(item => item.Key, item => item.Value);
++            data.Options = data.Options.OrderByDescending(item => item.Value == null ? 0 : item.Value.Relevance)
++                .ThenBy(item => item.Key, StringComparer.Ordinal).Take(384)
++                .ToDictionary(item => item.Key, item => item.Value);
++        }
++    }
++}
+diff --git a/ExecutorBase/Game/GameAI.cs b/ExecutorBase/Game/GameAI.cs
+index b181b35..a3845b9 100644
+--- a/ExecutorBase/Game/GameAI.cs
++++ b/ExecutorBase/Game/GameAI.cs
+@@ -24,0 +25 @@ namespace WindBot.Game
++        private KingOfAnimeLearning _kingLearning;
+@@ -30,0 +32,41 @@ namespace WindBot.Game
++        public void EnableKingOfAnimeLearning(string assetPath)
++        {
++            if (_kingLearning == null)
++                _kingLearning = new KingOfAnimeLearning(assetPath,
++                    message => Log(LogLevel.Info, message));
++        }
++
++        public int GetKingThreatScore(int cardId)
++        {
++            return _kingLearning == null ? 0 : _kingLearning.GetThreatScore(cardId);
++        }
++
++        public int GetKingSolutionScore(int cardId)
++        {
++            return _kingLearning == null ? 0 : _kingLearning.GetSolutionScore(cardId);
++        }
++
++        public void RecordKingAnswer(int answerCardId, int threatCardId)
++        {
++            if (_kingLearning != null)
++                _kingLearning.RecordAnswer(answerCardId, threatCardId);
++        }
++
++        public int SelectKingOption(IList<long> options, int cardId)
++        {
++            return _kingLearning == null ? (options.Count == 0 ? -1 : 0)
++                : _kingLearning.SelectOption(options, cardId);
++        }
++
++        public void OnDuelResult(int result)
++        {
++            if (_kingLearning != null)
++                _kingLearning.CompleteDuel(result);
++        }
++
++        public void OnDuelEnd()
++        {
++            if (_kingLearning != null)
++                _kingLearning.Flush();
++        }
++
+@@ -77,0 +120,2 @@ namespace WindBot.Game
++            if (_kingLearning != null)
++                _kingLearning.BeginDuel(Duel.IsFirst);
+@@ -101 +145,3 @@ namespace WindBot.Game
+-            return Executor.OnSelectHand();
++            bool executorChoice = Executor.OnSelectHand();
++            return _kingLearning == null ? executorChoice
++                : _kingLearning.ChooseStartingPlayer(executorChoice);
+@@ -143 +189,2 @@ namespace WindBot.Game
+-        public void OnMove(ClientCard card, int previousControler, int previousLocation, int currentControler, int currentLocation)
++        public void OnMove(ClientCard card, int previousControler, int previousLocation,
++            int currentControler, int currentLocation, int revealedCardId = 0)
+@@ -144,0 +192,3 @@ namespace WindBot.Game
++            if (_kingLearning != null)
++                _kingLearning.ObserveMove(card == null || card.Id == 0 ? revealedCardId : card.Id,
++                    previousControler, previousLocation, currentControler, currentLocation);
+@@ -152,0 +203,2 @@ namespace WindBot.Game
++            if (_kingLearning != null && card != null)
++                _kingLearning.ObserveDirectAttack(card.Id);
+@@ -163,0 +216,2 @@ namespace WindBot.Game
++            if (_kingLearning != null && player == 1 && card != null)
++                _kingLearning.ObserveActivation(card.Id);
+@@ -1146,0 +1201,2 @@ namespace WindBot.Game
++            if (_kingLearning != null)
++                return numbers.Count == 0 ? -1 : 0;
+diff --git a/Game/AI/Decks/KingOfAnimeExecutor.cs b/Game/AI/Decks/KingOfAnimeExecutor.cs
+index afa36b3..32d0dfc 100644
+--- a/Game/AI/Decks/KingOfAnimeExecutor.cs
++++ b/Game/AI/Decks/KingOfAnimeExecutor.cs
+@@ -102,4 +102 @@ namespace WindBot.Game.AI.Decks
+-            IList<ClientCard> inherited = base.OnSelectCard(cards, min, max, hint, cancelable);
+-            if (inherited != null)
+-                return inherited;
+-            if (cards == null || cards.Count == 0 || min != 1 || max != 1)
++            if (cards == null || cards.Count == 0 || min < 0 || max < min)
+@@ -110 +107 @@ namespace WindBot.Game.AI.Decks
+-                || hint == HintMsg.Disable || hint == HintMsg.Negate)
++                || hint == HintMsg.Disable || hint == HintMsg.Negate || hint == HintMsg.ToDeck)
+@@ -112 +109 @@ namespace WindBot.Game.AI.Decks
+-                ClientCard threat = cards
++                List<ClientCard> threats = cards
+@@ -115,3 +112,10 @@ namespace WindBot.Game.AI.Decks
+-                    .FirstOrDefault();
+-                if (threat != null)
+-                    return new List<ClientCard> { threat };
++                    .ThenBy(card => card.Id)
++                    .ThenBy(card => card.Sequence)
++                    .Take(Math.Min(max, cards.Count))
++                    .ToList();
++                if (threats.Count >= min)
++                {
++                    foreach (ClientCard threat in threats)
++                        AI.RecordKingAnswer(Card == null ? 0 : Card.Id, threat.Id);
++                    return threats;
++                }
+@@ -122,6 +126,10 @@ namespace WindBot.Game.AI.Decks
+-                ClientCard expendable = cards
+-                    .Where(card => card != null && card.Controller == 0 && !ForbiddenOnePieces.Contains(card.Id))
+-                    .OrderBy(GetThreatValue)
+-                    .FirstOrDefault();
+-                if (expendable != null)
+-                    return new List<ClientCard> { expendable };
++                List<ClientCard> expendable = cards
++                    .Where(card => card != null && card.Controller == 0)
++                    .OrderBy(card => ForbiddenOnePieces.Contains(card.Id) ? 1 : 0)
++                    .ThenBy(GetSpendValue)
++                    .ThenBy(card => card.Id)
++                    .ThenBy(card => card.Sequence)
++                    .Take(min)
++                    .ToList();
++                if (expendable.Count == min)
++                    return expendable;
+@@ -130 +138,4 @@ namespace WindBot.Game.AI.Decks
+-            if (hint == HintMsg.SpSummon || hint == HintMsg.ToField)
++            // A multi-card special summon is usually a Pendulum/material selection;
++            // leave that to WindBot's dedicated selector instead of truncating it.
++            if ((hint == HintMsg.SpSummon && max == min) || hint == HintMsg.ToField
++                || hint == HintMsg.AddToHand)
+@@ -132 +143 @@ namespace WindBot.Game.AI.Decks
+-                ClientCard strongest = cards
++                List<ClientCard> solutions = cards
+@@ -134,4 +145,8 @@ namespace WindBot.Game.AI.Decks
+-                    .OrderByDescending(GetThreatValue)
+-                    .FirstOrDefault();
+-                if (strongest != null)
+-                    return new List<ClientCard> { strongest };
++                    .OrderByDescending(card => AI.GetKingSolutionScore(card.Id))
++                    .ThenByDescending(GetThreatValue)
++                    .ThenBy(card => card.Id)
++                    .ThenBy(card => card.Sequence)
++                    .Take(min)
++                    .ToList();
++                if (solutions.Count == min)
++                    return solutions;
+@@ -142 +157,26 @@ namespace WindBot.Game.AI.Decks
+-        private static int GetThreatValue(ClientCard card)
++        public override BattlePhaseAction OnSelectAttackTarget(ClientCard attacker, IList<ClientCard> defenders)
++        {
++            IEnumerable<ClientCard> ordered = defenders
++                .Where(card => card != null)
++                .OrderByDescending(GetThreatValue)
++                .ThenBy(card => card.Id)
++                .ThenBy(card => card.Sequence);
++            foreach (ClientCard defender in ordered)
++            {
++                attacker.RealPower = attacker.Attack;
++                defender.RealPower = defender.GetDefensePower();
++                if (!OnPreBattleBetween(attacker, defender))
++                    continue;
++                if (attacker.RealPower > defender.RealPower
++                    || attacker.RealPower >= defender.RealPower && attacker.IsLastAttacker && defender.IsAttack())
++                    return AI.Attack(attacker, defender);
++            }
++            return attacker.CanDirectAttack ? AI.Attack(attacker, null) : null;
++        }
++
++        private int GetSpendValue(ClientCard card)
++        {
++            return GetThreatValue(card) + AI.GetKingSolutionScore(card.Id);
++        }
++
++        private int GetThreatValue(ClientCard card)
+@@ -151 +191 @@ namespace WindBot.Game.AI.Decks
+-            return power;
++            return power + AI.GetKingThreatScore(card.Id);
+@@ -156,2 +196,3 @@ namespace WindBot.Game.AI.Decks
+-            // Stable decisions make replays reproducible and avoid Lucky's random choices.
+-            return options.Count == 0 ? -1 : 0;
++            // Choices are deterministic and outcome-ranked; after a failed option,
++            // the next duel tries the strongest untested alternative without RNG.
++            return AI.SelectKingOption(options, Card == null ? 0 : Card.Id);
+diff --git a/Game/GameBehavior.cs b/Game/GameBehavior.cs
+index 076957b..e77090e 100644
+--- a/Game/GameBehavior.cs
++++ b/Game/GameBehavior.cs
+@@ -75,0 +76 @@ namespace WindBot.Game
++                _ai.EnableKingOfAnimeLearning(Program.AssetPath);
+@@ -404,0 +406 @@ namespace WindBot.Game
++            _ai.OnDuelEnd();
+@@ -527 +529,2 @@ namespace WindBot.Game
+-            int result = GetLocalPlayer(packet.ReadByte());
++            int rawResult = packet.ReadByte();
++            int result = rawResult == 2 ? 2 : GetLocalPlayer(rawResult);
+@@ -531,0 +535 @@ namespace WindBot.Game
++            _ai.OnDuelResult(result);
+@@ -836 +840,2 @@ namespace WindBot.Game
+-            _ai.OnMove(card, previous.controler, previous.location, current.controler, current.location);
++            _ai.OnMove(card, previous.controler, previous.location, current.controler,
++                current.location, cardId);
