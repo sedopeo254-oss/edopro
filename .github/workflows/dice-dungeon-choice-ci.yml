@@ -1,0 +1,50 @@
+name: Dice Dungeon Choice CI
+
+on:
+  push:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dice-dungeon-choice-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-dice-dungeon:
+    name: Validate logical-player dice choices
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Lua parser
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+
+      - name: Validate script and multiplayer routing
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCRIPT=multiplayer-deck-master/c511001152.lua
+          luac5.4 -p "$SCRIPT"
+
+          grep -Fq 'Duel.AnnounceNumberPlayer(s.getlogicalplayer(c),1,2,3,4,5,6)' "$SCRIPT"
+          grep -Fq 'c:GetLogicalControler()' "$SCRIPT"
+          grep -Fq 'e1:SetValue(-1000)' "$SCRIPT"
+          grep -Fq 'e1:SetValue(1000)' "$SCRIPT"
+          grep -Fq 'e1:SetValue(0)' "$SCRIPT"
+          grep -Fq 'e1:SetValue(2000)' "$SCRIPT"
+          grep -Fq 'math.floor(math.max(0,c:GetAttack())/2)' "$SCRIPT"
+          grep -Fq 'math.max(0,c:GetAttack())*2' "$SCRIPT"
+          ! grep -Fq 'Duel.TossDice' "$SCRIPT"
+
+          grep -Fq 'LUA_STATIC_FUNCTION(AnnounceNumberPlayer)' ocgcore/libduel.cpp
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
