@@ -1,30 +1,27 @@
-# Virtual World Deck Masters in 3v1
+# Independent Deck Master system for Multiplayer
 
-Replace the matching card scripts with:
+This folder contains the Virtual World rule and Deck Master support used by the
+stable 3v1 client.
 
-- `c153999999.lua` — Virtual World rule.
-- `c153000000.lua` — Deck Master system.
+## Runtime scripts
 
-The multiplayer core adds these Lua helpers:
+Copy all `c*.lua` files from this directory into `expansions/script/`.
+The bundled CI packages them automatically.
 
-- `Duel.GetLogicalPlayer(tp)`
-- `Duel.GetLogicalPlayerSide(logical_player)`
-- `Duel.GetActiveLogicalPlayerMask()`
-- `Duel.IsLogicalPlayerActive(logical_player)`
-- `Duel.SelectCardsFromCodesPlayer(logical_player, ...)`
-- `Duel.SelectYesNoPlayer(logical_player, description)`
-- `Duel.CreateTokenPlayer(logical_player, code)`
-- `Duel.SetDeckMasterPlayerState(logical_player, code, visible)`
-- `Duel.GetPlayerFieldGroup(logical_player, locations)`
-- `Duel.EliminatePlayer(logical_player, reason, win_reason)`
-- `Card.GetLogicalOwner()`
-- `Card.GetLogicalControler()`
+## Updated Deck Masters
 
-In 3v1 each of Serenity, Tristan, Duke, and Nezbitt chooses and owns an
-independent Deck Master. Effects registered through
-`DeckMaster.RegisterAbilities` retain the Deck Master token as their handler, so
-chain prompts and selections are routed to the correct logical owner even when
-it is another teammate's turn.
+- `c153000009.lua` — **Robotic Knight**: every discarded Machine assigns exactly
+  500 damage to one opponent. Three discarded Machines against three opponents
+  deal 500 to each opponent, not 1500 to every opponent.
+- `c153000012.lua` — **Super Roboyarou**: when an opponent declares an attack,
+  it can be Special Summoned from the Deck Master zone in Attack Position and
+  redirect that attack to itself. Afterward, its controller Sets one Spell/Trap
+  from their hand if possible.
 
-Outside multiplayer, the scripts keep the original two-player agreement and
-Deck Master behavior.
+The multiplayer-aware **Block Attack** script remains in
+`multiplayer-effect-examples/c25880422.lua`; in anime 3v1 its expanded target
+selection can include eligible monsters controlled by allied duelists as well
+as the opponent.
+
+Setting a Spell/Trap through Super Roboyarou does not override that card's
+normal activation timing or activation conditions.
