@@ -1,4 +1,4 @@
-name: Deck Master Robotic Fix CI
+name: Anime Multiplayer Script CI
 
 on:
   push:
@@ -19,7 +19,7 @@ env:
 
 jobs:
   validate:
-    name: Validate Deck Master scripts and multiplayer core
+    name: Validate anime scripts and multiplayer core
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -30,11 +30,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C ocgcore rev-parse HEAD)" = "4f21cd92c0956e46f51fbaf8386e0fd4bce87bbf"
+          test "$(git -C ocgcore rev-parse HEAD)" = "a0bd861c521689e3e2f08a421845351a1274dc7f"
           sh ./ocgcore/tests/run_multiplayer_state_tests.sh
           sh ./ocgcore/tests/run_multiplayer_field_tests.sh
 
-      - name: Validate Robotic Knight, Super Roboyarou and Block Attack
+      - name: Validate Robotic Knight, Super Roboyarou, Block Attack and Dice Dungeon
         shell: bash
         run: |
           set -euo pipefail
@@ -43,6 +43,7 @@ jobs:
           luac5.4 -p multiplayer-deck-master/c153000000.lua
           luac5.4 -p multiplayer-deck-master/c153000009.lua
           luac5.4 -p multiplayer-deck-master/c153000012.lua
+          luac5.4 -p multiplayer-deck-master/c511001152.lua
           luac5.4 -p multiplayer-effect-examples/c25880422.lua
 
           grep -Fq 'Duel.DamagePlayer(player,500' multiplayer-deck-master/c153000009.lua
@@ -53,6 +54,17 @@ jobs:
           grep -Fq 'Duel.SSet(tp,tc,tp,false)' multiplayer-deck-master/c153000012.lua
           grep -Fq 'Duel.SelectEffectPlayers(tp,true,true)' multiplayer-effect-examples/c25880422.lua
           grep -Fq 'Duel.GetPlayerFieldGroup(logical,LOCATION_MZONE)' multiplayer-effect-examples/c25880422.lua
+
+          grep -Fq 'Duel.AnnounceNumberPlayer(s.getlogicalplayer(c),1,2,3,4,5,6)' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'c:GetLogicalControler()' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'e1:SetValue(-1000)' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'e1:SetValue(1000)' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'e1:SetValue(0)' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'e1:SetValue(2000)' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'math.floor(math.max(0,c:GetAttack())/2)' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'math.max(0,c:GetAttack())*2' multiplayer-deck-master/c511001152.lua
+          ! grep -Fq 'Duel.TossDice' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'LUA_STATIC_FUNCTION(AnnounceNumberPlayer)' ocgcore/libduel.cpp
 
   windbot-compat:
     name: WindBot 3-vs-1 compatibility
@@ -92,7 +104,7 @@ jobs:
           test -f windbot-package/WindBot/ExecutorBase.dll
       - uses: actions/upload-artifact@v4
         with:
-          name: windbot-deck-master-robotic-fix
+          name: windbot-anime-multiplayer-scripts
           path: windbot-package/
           if-no-files-found: error
 
@@ -127,7 +139,7 @@ jobs:
       - name: Build client with custom core
         shell: bash
         run: ./travis/build.sh
-      - name: Package binary and Deck Master scripts
+      - name: Package binary and anime scripts
         shell: bash
         run: |
           set -euo pipefail
@@ -143,13 +155,14 @@ jobs:
           test -f deploy/expansions/script/c153000009.lua
           test -f deploy/expansions/script/c153000012.lua
           test -f deploy/expansions/script/c25880422.lua
+          test -f deploy/expansions/script/c511001152.lua
       - uses: actions/download-artifact@v4
         with:
-          name: windbot-deck-master-robotic-fix
+          name: windbot-anime-multiplayer-scripts
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-3v1-deck-master-robotic-fix-linux-x64-no-upx
+          name: edopro-3v1-dice-dungeon-choice-linux-x64-no-upx
           path: deploy/
           if-no-files-found: error
 
@@ -196,7 +209,7 @@ jobs:
       - name: Build client with custom core
         shell: bash
         run: ./travis/build.sh
-      - name: Package binary and Deck Master scripts
+      - name: Package binary and anime scripts
         shell: bash
         run: |
           set -euo pipefail
@@ -213,12 +226,13 @@ jobs:
           test -f deploy/expansions/script/c153000009.lua
           test -f deploy/expansions/script/c153000012.lua
           test -f deploy/expansions/script/c25880422.lua
+          test -f deploy/expansions/script/c511001152.lua
       - uses: actions/download-artifact@v4
         with:
-          name: windbot-deck-master-robotic-fix
+          name: windbot-anime-multiplayer-scripts
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-3v1-deck-master-robotic-fix-windows-x86-no-upx
+          name: edopro-3v1-dice-dungeon-choice-windows-x86-no-upx
           path: deploy/
           if-no-files-found: error
