@@ -102,6 +102,27 @@ function s.haslogicalzone(logical,side)
 	end
 	return Duel.GetLocationCount(side,LOCATION_MZONE)>0
 end
+--Force the physical side to the exact logical owner before any summon or
+--battle redirect. The patched Core implements FocusLogicalPlayer with
+--field::tag_swap_to(), so P2 cannot inherit P3's currently displayed field.
+function s.focuslogical(logical)
+	if Duel.GetActiveLogicalPlayerMask()==0 then return true end
+	if Duel.FocusLogicalPlayer then
+		return Duel.FocusLogicalPlayer(logical)
+	end
+	--Compatibility fallback for older clients: identify the currently swapped
+	--private pile and cycle TagSwap until the requested logical player is active.
+	local side=Duel.GetLogicalPlayerSide(logical)
+	if side==nil then return false end
+	for _=1,4 do
+		local g=Duel.GetFieldGroup(side,
+			LOCATION_DECK|LOCATION_HAND|LOCATION_EXTRA|LOCATION_GRAVE|LOCATION_REMOVED,0)
+		local tc=g:GetFirst()
+		if tc and tc:GetLogicalControler()==logical then return true end
+		Duel.TagSwap(side)
+	end
+	return false
+end
 function s.dmcon(e,tp,eg,ep,ev,re,r,rp)
 	local dm,logical=s.getzonemaster(e,tp)
 	if not dm or not s.isopponentattack(e,tp) then return false end
@@ -119,12 +140,10 @@ end
 function s.summonfromdeckmaster(e,tp)
 	local c,logical=s.getzonemaster(e,tp)
 	if not c then return nil end
+	if not s.focuslogical(logical) then return nil end
 	local side=Duel.GetLogicalPlayerSide(logical) or tp
 	if not s.haslogicalzone(logical,side) then return nil end
 	Duel.ClearDeckMasterZonePlayer(logical)
-	--The patched multiplayer core preserves c's logical private-pile duelist
-	--when it enters the field, so P2's Deck Master goes to P2 even if P3 is
-	--currently displayed. No TagSwap/view mutation is needed here.
 	local res=Duel.SpecialSummon(c,0,side,side,false,false,POS_FACEUP_ATTACK)
 	if res==0 then
 		s.restoredeckmaster(c,logical)
@@ -157,18 +176,29 @@ function s.setfromhand(logical,side)
 	if tc then Duel.SSet(side,tc,side,false) end
 end
 function s.dmop(e,tp,eg,ep,ev,re,r,rp)
-	if not Duel.SelectYesNo(tp,aux.Stringid(id,1)) then return end
+	local dm,logical=s.getzonemaster(e,tp)
+	if not dm then return end
+	local yes
+	if Duel.GetActiveLogicalPlayerMask()~=0 then
+		yes=Duel.SelectYesNoPlayer(logical,aux.Stringid(id,1))
+	else
+		yes=Duel.SelectYesNo(tp,aux.Stringid(id,1))
+	end
+	if not yes then return end
 	local attacker=Duel.GetAttacker()
 	if not attacker then return end
 	Duel.Hint(HINT_CARD,tp,id)
 	Duel.Hint(HINT_CARD,1-tp,id)
-	local c,logical,side=s.summonfromdeckmaster(e,tp)
+	local c,owner,side=s.summonfromdeckmaster(e,tp)
 	if not c then return end
 	if Duel.GetAttacker()==attacker and c:IsFaceup()
 		and c:IsLocation(LOCATION_MZONE) then
+		--ChangeAttackTarget records c:GetLogicalControler(), so after the owner
+		--focus above battle damage is charged to P2 rather than the previously
+		--displayed teammate (for example P3).
 		Duel.ChangeAttackTarget(c,true)
 	end
 	--Set any 1 S/T from the same logical owner's hand. The summon/redirect
 	--still succeeds if no S/T is available.
-	s.setfromhand(logical,side)
+	s.setfromhand(owner,side)
 end
