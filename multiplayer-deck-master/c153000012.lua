@@ -114,12 +114,13 @@ function s.focuslogical(logical)
 	--private pile and cycle TagSwap until the requested logical player is active.
 	local side=Duel.GetLogicalPlayerSide(logical)
 	if side==nil then return false end
+	local swap=Duel.TagSwap
 	for _=1,4 do
 		local g=Duel.GetFieldGroup(side,
 			LOCATION_DECK|LOCATION_HAND|LOCATION_EXTRA|LOCATION_GRAVE|LOCATION_REMOVED,0)
 		local tc=g:GetFirst()
 		if tc and tc:GetLogicalControler()==logical then return true end
-		Duel.TagSwap(side)
+		swap(side)
 	end
 	return false
 end
