@@ -1,0 +1,60 @@
+name: Clockwork StJoan SuperRoboyarou CI
+
+on:
+  push:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: anime-card-fixes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate anime card fixes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Lua parser
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+
+      - name: Validate scripts and stable multiplayer core
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "a0bd861c521689e3e2f08a421845351a1274dc7f"
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+
+          luac5.4 -p multiplayer-deck-master/c511000405.lua
+          luac5.4 -p multiplayer-deck-master/c21175632.lua
+          luac5.4 -p multiplayer-deck-master/c153000012.lua
+
+          # Clockwork Night: no defense-position exclusion; own +500, opponents -500/Machine.
+          grep -Fq 'e2:SetTarget(s.isopponent)' multiplayer-deck-master/c511000405.lua
+          grep -Fq 'e3:SetTarget(s.atktg)' multiplayer-deck-master/c511000405.lua
+          grep -Fq 'return s.ismine(e,c) and 500 or -500' multiplayer-deck-master/c511000405.lua
+          ! grep -Fq 'EVENT_SUMMON_SUCCESS' multiplayer-deck-master/c511000405.lua
+          ! grep -Fq 'Card.IsDefensePos' multiplayer-deck-master/c511000405.lua
+
+          # St. Joan: uses the same Quick Attack exemption consumed by Battle City/Virtual World rules.
+          grep -Fq 'e1:SetCode(511004016)' multiplayer-deck-master/c21175632.lua
+          grep -Fq 'not c:IsHasEffect(511004016)' multiplayer-deck-master/c153999999.lua
+
+          # Super Roboyarou: resolve its logical owner, focus that field, Summon in ATK, redirect, then Set there.
+          grep -Fq 'h:GetLogicalOwner()' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'Duel.TagSwap(side)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'Duel.IsDeckMasterPlayer(logical,id)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'POS_FACEUP_ATTACK' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'Duel.SSet(side,tc,side,false)' multiplayer-deck-master/c153000012.lua

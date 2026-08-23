@@ -70,59 +70,123 @@ function s.spop(e,tp,eg,ep,ev,re,r,rp)
 end
 
 --Deck Master battle ability
-function s.getlogicalplayer(tp)
-	return Duel.GetLogicalPlayer(tp) or tp
+function s.getlogicalowner(e,tp)
+	local h=e:GetHandler()
+	local p=h and h:GetLogicalOwner()
+	return p~=nil and p or (Duel.GetLogicalPlayer(tp) or tp)
 end
-function s.getzonemaster(tp)
-	local logical=s.getlogicalplayer(tp)
+function s.getzonemaster(e,tp)
+	local logical=s.getlogicalowner(e,tp)
 	local dm=DeckMasterZone and DeckMasterZone[logical]
 	if dm and dm:IsOriginalCode(id) then
 		return dm,logical
 	end
 	return nil,logical
 end
-function s.isopponentattack(tp)
+function s.is3v1()
+	if Duel.GetActiveLogicalPlayerMask()==0 then return false end
+	return Duel.GetLogicalPlayerSide(0)==0
+		and Duel.GetLogicalPlayerSide(1)==0
+		and Duel.GetLogicalPlayerSide(2)==0
+		and Duel.GetLogicalPlayerSide(3)==1
+end
+function s.isopponentattack(e,tp)
 	local a=Duel.GetAttacker()
 	if not a then return false end
-	local owner=s.getlogicalplayer(tp)
+	local owner=s.getlogicalowner(e,tp)
 	local attacker=a:GetLogicalControler()
-	local owner_side=Duel.GetLogicalPlayerSide(owner)
-	local attacker_side=Duel.GetLogicalPlayerSide(attacker)
-	if owner_side==nil or attacker_side==nil then
-		return a:IsControler(1-tp)
+	if attacker==nil then attacker=a:GetControler() end
+	if owner==attacker then return false end
+	if s.is3v1() then
+		return (owner<3 and attacker==3) or (owner==3 and attacker<3)
 	end
-	return owner_side~=attacker_side
+	return owner~=attacker
+end
+
+--Duel.SpecialSummon uses the currently focused teammate field on a shared
+--physical side. Identify that field from any card physically visible in its
+--local zones, then rotate TagSwap until the Deck Master's logical owner is the
+--focused duelist. This prevents P2's Deck Master from appearing on P3's field.
+local scan_locations={LOCATION_MZONE,LOCATION_SZONE,LOCATION_HAND,LOCATION_DECK,LOCATION_EXTRA,LOCATION_GRAVE,LOCATION_REMOVED}
+local scan_limits={7,8,100,100,100,100,100}
+function s.currentlogical(side)
+	for i,loc in ipairs(scan_locations) do
+		for seq=0,scan_limits[i]-1 do
+			local tc=Duel.GetFieldCard(side,loc,seq)
+			if tc then
+				local p=tc:GetLogicalControler()
+				if p~=nil then return p end
+			end
+		end
+	end
+	return nil
+end
+function s.players_on_side(side)
+	local mask=Duel.GetActiveLogicalPlayerMask()
+	local ct=0
+	for p=0,3 do
+		if mask&(1<<p)~=0 and Duel.GetLogicalPlayerSide(p)==side then
+			ct=ct+1
+		end
+	end
+	return ct
+end
+function s.focuslogical(logical)
+	local side=Duel.GetLogicalPlayerSide(logical)
+	if side==nil or Duel.GetActiveLogicalPlayerMask()==0 then
+		return side or logical
+	end
+	local peers=s.players_on_side(side)
+	if peers<=1 then return side end
+	for _=1,peers do
+		if s.currentlogical(side)==logical then
+			return side
+		end
+		Duel.TagSwap(side)
+	end
+	--One final check after a complete cycle. If every zone of a duelist is
+	--empty, the identity cannot be inferred from a card; keep the last valid
+	--shared side rather than touching another player's field data directly.
+	return side
 end
 function s.dmcon(e,tp,eg,ep,ev,re,r,rp)
-	local dm=s.getzonemaster(tp)
-	return dm and s.isopponentattack(tp)
-		and Duel.GetLocationCount(tp,LOCATION_MZONE)>0
-		and dm:IsCanBeSpecialSummoned(e,0,tp,false,false)
-		and Duel.IsDeckMaster(tp,id)
+	local dm,logical=s.getzonemaster(e,tp)
+	if not dm or not s.isopponentattack(e,tp) then return false end
+	local side=Duel.GetLogicalPlayerSide(logical) or tp
+	return dm:IsCanBeSpecialSummoned(e,0,side,false,false)
+		and Duel.IsDeckMasterPlayer(logical,id)
 end
 function s.summonfromdeckmaster(e,tp)
-	local c,logical=s.getzonemaster(tp)
+	local c,logical=s.getzonemaster(e,tp)
 	if not c then return nil end
-	local side=Duel.GetLogicalPlayerSide(logical) or tp
+	local side=s.focuslogical(logical)
+	if side==nil or Duel.GetLocationCount(side,LOCATION_MZONE)<=0 then return nil end
 	Duel.ClearDeckMasterZonePlayer(logical)
 	local res=Duel.SpecialSummon(c,0,side,side,false,false,POS_FACEUP_ATTACK)
-	if res==0 then return nil end
+	if res==0 then
+		--Restore the Deck Master zone state if the Summon unexpectedly fails.
+		DeckMasterZone[logical]=c
+		if Duel.GetActiveLogicalPlayerMask()~=0 then
+			Duel.SetDeckMasterPlayerState(logical,c:GetOriginalCode(),true)
+		end
+		return nil
+	end
 	c:RegisterFlagEffect(FLAG_DECK_MASTER,
 		RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 		EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
-	return c
+	return c,logical,side
 end
 function s.setfilter(c)
 	return c:IsSpellTrap() and c:IsSSetable()
 end
-function s.setfromhand(tp)
-	if not Duel.IsExistingMatchingCard(s.setfilter,tp,LOCATION_HAND,0,1,nil) then
+function s.setfromhand(side)
+	if not Duel.IsExistingMatchingCard(s.setfilter,side,LOCATION_HAND,0,1,nil) then
 		return
 	end
-	Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_SET)
-	local tc=Duel.SelectMatchingCard(tp,s.setfilter,tp,LOCATION_HAND,0,1,1,nil):GetFirst()
+	Duel.Hint(HINT_SELECTMSG,side,HINTMSG_SET)
+	local tc=Duel.SelectMatchingCard(side,s.setfilter,side,LOCATION_HAND,0,1,1,nil):GetFirst()
 	if tc then
-		Duel.SSet(tp,tc,tp,false)
+		Duel.SSet(side,tc,side,false)
 	end
 end
 function s.dmop(e,tp,eg,ep,ev,re,r,rp)
@@ -131,7 +195,7 @@ function s.dmop(e,tp,eg,ep,ev,re,r,rp)
 	if not attacker then return end
 	Duel.Hint(HINT_CARD,tp,id)
 	Duel.Hint(HINT_CARD,1-tp,id)
-	local c=s.summonfromdeckmaster(e,tp)
+	local c,logical,side=s.summonfromdeckmaster(e,tp)
 	if not c then return end
 	--The second argument deliberately allows an attack aimed at another
 	--logical teammate to be transferred to this newly Summoned Deck Master.
@@ -139,6 +203,7 @@ function s.dmop(e,tp,eg,ep,ev,re,r,rp)
 		and c:IsLocation(LOCATION_MZONE) then
 		Duel.ChangeAttackTarget(c,true)
 	end
-	--After this Deck Master ability resolves, Set any 1 Spell/Trap from hand.
-	s.setfromhand(tp)
+	--After this Deck Master ability resolves, Set any 1 Spell/Trap from the
+	--same logical owner's hand. No S/T is required for the Summon/redirect.
+	s.setfromhand(side)
 end
