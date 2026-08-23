@@ -37,21 +37,31 @@ jobs:
           sh ./ocgcore/tests/run_multiplayer_field_tests.sh
 
           luac5.4 -p multiplayer-deck-master/c511000405.lua
+          luac5.4 -p multiplayer-deck-master/c22959079.lua
           luac5.4 -p multiplayer-deck-master/c21175632.lua
           luac5.4 -p multiplayer-deck-master/c153000012.lua
 
-          # Clockwork Night: no defense-position exclusion; own +500, opponents -500/Machine.
-          grep -Fq 'e2:SetTarget(s.isopponent)' multiplayer-deck-master/c511000405.lua
-          grep -Fq 'e3:SetTarget(s.atktg)' multiplayer-deck-master/c511000405.lua
-          grep -Fq 'return s.ismine(e,c) and 500 or -500' multiplayer-deck-master/c511000405.lua
+          # Clockwork Night: snapshot only; current monsters only, no Defense exclusion.
+          grep -Fq 'e1:SetOperation(s.activate)' multiplayer-deck-master/c511000405.lua
+          grep -Fq 'Duel.GetPlayerFieldGroup(p,LOCATION_MZONE)' multiplayer-deck-master/c511000405.lua
+          grep -Fq 's.apply(sc,tc,500,false)' multiplayer-deck-master/c511000405.lua
+          grep -Fq 's.apply(sc,tc,-500,true)' multiplayer-deck-master/c511000405.lua
+          grep -Fq 'e1:SetValue(RACE_MACHINE)' multiplayer-deck-master/c511000405.lua
+          ! grep -Fq 'SetTargetRange' multiplayer-deck-master/c511000405.lua
           ! grep -Fq 'EVENT_SUMMON_SUCCESS' multiplayer-deck-master/c511000405.lua
           ! grep -Fq 'Card.IsDefensePos' multiplayer-deck-master/c511000405.lua
+
+          # Dimensionhole: permanent banish; no temporary return and no reserved field zone.
+          grep -Fq 'Duel.Remove(tc,POS_FACEUP,REASON_EFFECT)' multiplayer-deck-master/c22959079.lua
+          ! grep -Fq 'REASON_TEMPORARY' multiplayer-deck-master/c22959079.lua
+          ! grep -Fq 'ReturnToField' multiplayer-deck-master/c22959079.lua
+          ! grep -Fq 'EFFECT_DISABLE_FIELD' multiplayer-deck-master/c22959079.lua
 
           # St. Joan: uses the same Quick Attack exemption consumed by Battle City/Virtual World rules.
           grep -Fq 'e1:SetCode(511004016)' multiplayer-deck-master/c21175632.lua
           grep -Fq 'not c:IsHasEffect(511004016)' multiplayer-deck-master/c153999999.lua
 
-          # Super Roboyarou: resolve its logical owner, focus that field, Summon in ATK, redirect, then Set there.
+          # Super Roboyarou ownership/redirect fix must remain present.
           grep -Fq 'h:GetLogicalOwner()' multiplayer-deck-master/c153000012.lua
           grep -Fq 'Duel.TagSwap(side)' multiplayer-deck-master/c153000012.lua
           grep -Fq 'Duel.IsDeckMasterPlayer(logical,id)' multiplayer-deck-master/c153000012.lua
