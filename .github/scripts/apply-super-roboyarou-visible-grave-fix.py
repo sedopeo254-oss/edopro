@@ -40,6 +40,21 @@ new_field = '''\tuint8_t preplayer = pcard->current.controler;
 '''
 replace_once(field, old_field, new_field)
 
+old_add_card = '''\tadd_card(playerid, pcard, location, sequence, pzone);
+\treturn true;
+}
+void field::swap_card(card* pcard1, card* pcard2, uint8_t new_sequence1, uint8_t new_sequence2) {
+'''
+new_add_card = '''\t// target_duelist is authoritative for both the encoded field slot and the
+\t// card state. Passing it here prevents add_card() from replacing P2 with the
+\t// currently focused P3 after the correct P2 slot was already selected.
+\tadd_card(playerid, pcard, location, sequence, pzone, target_duelist);
+\treturn true;
+}
+void field::swap_card(card* pcard1, card* pcard2, uint8_t new_sequence1, uint8_t new_sequence2) {
+'''
+replace_once(field, old_add_card, new_add_card)
+
 client = ROOT / "gframe" / "duelclient.cpp"
 old_client = '''\tcase MSG_SPSUMMONING: {
 \t\tconst auto code = BufferIO::Read<uint32_t>(pbuf);
