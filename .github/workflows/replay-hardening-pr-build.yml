@@ -1,0 +1,115 @@
+name: 3v1 Replay Hardening PR Build
+
+on:
+  pull_request:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate replay hardening against multiplayer regressions
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply replay-safe P2 Deck Master ownership
+        run: python3 .github/scripts/apply-3v1-core-owner-no-view-swap.py
+      - name: Apply replay hardening
+        run: python3 .github/scripts/apply-3v1-replay-hardening.py
+      - name: Install Lua parser
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+      - name: Run regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          luac5.4 -p multiplayer-deck-master/c153000012.lua
+          luac5.4 -p multiplayer-deck-master/c511001152.lua
+          luac5.4 -p multiplayer-deck-master/c511000405.lua
+          grep -Fq 'const bool same_snapshot' gframe/client_field.cpp
+          grep -Fq 'Authoritative replay snapshots beat visual recapture' gframe/client_field.cpp
+          grep -Fq 'Replay view changes are visual only' gframe/client_field.cpp
+          grep -Fq 'Identical view hints are common in attack/target sequences' gframe/duelclient.cpp
+          grep -Fq 'Never replay TAG_SWAP' gframe/duelclient.cpp
+          grep -Fq 'SetThreeVsOneView(target_logical)' gframe/duelclient.cpp
+          grep -Fq 'A face-up Special Summon is public information' gframe/duelclient.cpp
+          grep -Fq 'preserve_private_duelist' ocgcore/field.cpp
+          grep -Fq 'moving P2'"'"'s Deck Master must not change the P3 replay/view focus' ocgcore/tests/multiplayer_field_tests.cpp
+          ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'e1:SetValue(-1350)' multiplayer-deck-master/c511001152.lua
+          git -C ocgcore diff --check
+          git diff --check
+
+  windows:
+    name: Windows hardened replay client
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+      DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+      DEPLOY_DIR: deploy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply replay-safe P2 Deck Master ownership
+        shell: bash
+        run: python .github/scripts/apply-3v1-core-owner-no-view-swap.py
+      - name: Apply replay hardening
+        shell: bash
+        run: python .github/scripts/apply-3v1-replay-hardening.py
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @("Microsoft.VisualStudio.Component.VC.v141.x86.x64","Microsoft.VisualStudio.Component.WinXP")
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Install Premake
+        shell: bash
+        run: ./travis/install-premake5.sh
+      - name: Install dependencies
+        shell: bash
+        run: ./travis/dependencies.sh
+      - name: Build
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package patched client
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/expansions/script deploy/textures
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-deck-master deploy/
+          cp -r multiplayer-effect-examples deploy/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/expansions/script/c511001152.lua
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-3v1-replay-hardening-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
