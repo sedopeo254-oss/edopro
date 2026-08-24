@@ -1,0 +1,1 @@
+Replay v3 keeps 3v1 Deck/Hand/Extra pinned to logical_active during opponent turns, routes Card of Sanctity and other draws by logical owner, follows public Grave/Banish with temporary field focus, deduplicates snapshots, speeds Summon presentation, and focuses Super Roboyarou's logical field on Special Summon.
