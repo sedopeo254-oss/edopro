@@ -1,0 +1,111 @@
+name: 3v1 Replay Smooth V3
+
+on:
+  pull_request:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate pinned hands, Sanctity and Deck Master replay
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply deterministic replay v2
+        shell: bash
+        run: python3 .github/scripts/apply-3v1-replay-smooth-v2.py
+      - name: Apply pinned-hand replay v3
+        shell: bash
+        run: python3 .github/scripts/apply-3v1-replay-smooth-v3.py
+      - name: Install Lua parser
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+      - name: Run regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          luac5.4 -p multiplayer-deck-master/c153000012.lua
+          luac5.4 -p multiplayer-deck-master/c511001152.lua
+          grep -Fq 'logical_player != mainGame->dInfo.GetLogicalPlayer' gframe/duelclient.cpp
+          grep -Fq 'Card of Sanctity corruption fix' gframe/duelclient.cpp
+          grep -Fq 'Deck/Hand/Extra stay pinned' gframe/client_field.cpp
+          grep -Fq 'composed.grave = multiplayer_private_piles[field_logical].grave' gframe/client_field.cpp
+          grep -Fq 'summon_logical' gframe/duelclient.cpp
+          grep -Fq 'smooth_three_vs_one_replay ? 4 : 30' gframe/duelclient.cpp
+          grep -Fq 'preserve_private_duelist' ocgcore/field.cpp
+          ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+          git -C ocgcore diff --check
+          git diff --check
+
+  windows:
+    name: Windows smooth replay v3 client
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+      DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+      DEPLOY_DIR: deploy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply deterministic replay v2
+        shell: bash
+        run: python .github/scripts/apply-3v1-replay-smooth-v2.py
+      - name: Apply pinned-hand replay v3
+        shell: bash
+        run: python .github/scripts/apply-3v1-replay-smooth-v3.py
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @("Microsoft.VisualStudio.Component.VC.v141.x86.x64","Microsoft.VisualStudio.Component.WinXP")
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Install Premake
+        shell: bash
+        run: ./travis/install-premake5.sh
+      - name: Install dependencies
+        shell: bash
+        run: ./travis/dependencies.sh
+      - name: Build
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/expansions/script deploy/textures
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/expansions/script/c511001152.lua
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-3v1-replay-smooth-v3-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
