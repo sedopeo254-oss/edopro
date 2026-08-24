@@ -1,0 +1,25 @@
+{
+  "name": "ai-duel",
+  "version": "0.1.0",
+  "description": "Ai Duel - Yu-Gi-Oh duel intelligence collector and tactical knowledge engine",
+  "main": "src/main.js",
+  "author": "Ai Duel Project",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "37.3.1",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.aiduel.desktop",
+    "productName": "Ai Duel",
+    "asar": true,
+    "artifactName": "Ai-Duel-${version}-Windows-x64.${ext}",
+    "directories": {"output": "dist"},
+    "files": ["src/**/*", "sample-data/**/*", "package.json"],
+    "win": {"target": [{"target": "portable", "arch": ["x64"]}]}
+  }
+}
