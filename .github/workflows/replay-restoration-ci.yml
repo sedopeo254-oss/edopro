@@ -1,0 +1,187 @@
+name: 3v1 Replay Restoration CI
+
+on:
+  push:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: replay-restoration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+
+jobs:
+  validate:
+    name: Validate full 3v1 replay baseline
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify replay client stayed on best baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code 42102739e2af74f816fcdbd9835730f7542f280c -- \
+            gframe/client_field.cpp gframe/client_field.h gframe/duelclient.cpp
+          git -C ocgcore diff --exit-code 4f21cd92c0956e46f51fbaf8386e0fd4bce87bbf..HEAD -- \
+            field.cpp processor.cpp playerop.cpp operations.cpp
+          test "$(git -C ocgcore rev-parse HEAD)" = "a0bd861c521689e3e2f08a421845351a1274dc7f"
+
+      - name: Apply replay-safe Deck Master owner lock
+        shell: bash
+        run: python3 .github/scripts/apply-super-roboyarou-visible-grave-fix.py
+
+      - name: Install Lua parser
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+
+      - name: Run all multiplayer regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          luac5.4 -p multiplayer-deck-master/c153000012.lua
+          luac5.4 -p multiplayer-deck-master/c511001152.lua
+          luac5.4 -p multiplayer-deck-master/c511000405.lua
+          luac5.4 -p multiplayer-deck-master/c22959079.lua
+          luac5.4 -p multiplayer-deck-master/c21175632.lua
+
+          # Replay/view and arrow fixes from the best 4210273 build.
+          grep -Fq 'SetThreeVsOneView' gframe/duelclient.cpp
+          grep -Fq 'IsThreeVsOneReplayPrivatePileDisplayed' gframe/client_field.cpp
+          grep -Fq 'final arrow attached to the authoritative fields' gframe/duelclient.cpp
+          grep -Fq 'std::atan2(xd - xa, ya - yd)' gframe/duelclient.cpp
+          grep -Fq 'publish_multiplayer_effect_view' ocgcore/field.cpp
+          grep -Fq 'authoritative attacker/target pair immediately before' ocgcore/processor.cpp
+
+          # Replay-safe Super Roboyarou owner lock: no view-changing TagSwap.
+          grep -Fq 'preserve_private_duelist' ocgcore/field.cpp
+          grep -Fq 'must not emit TAG_SWAP and mutate replay perspective' ocgcore/tests/multiplayer_field_tests.cpp
+          ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
+
+          # Keep the latest requested anime-card behavior.
+          grep -Fq 'e1:SetValue(-1350)' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'code==15744417 or code==140000073' multiplayer-deck-master/c511001152.lua
+          grep -Fq 's.apply(sc,tc,-500,true)' multiplayer-deck-master/c511000405.lua
+          git -C ocgcore diff --check
+          git diff --check
+
+  windbot:
+    name: WindBot 3v1 compatibility
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ProjectIgnis/windbot
+          ref: fa0ae767967afc6a820784837f11cd3fabb9c47c
+          path: windbot
+          submodules: recursive
+      - name: Apply multiplayer patch
+        shell: bash
+        run: git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
+      - name: Build WindBot
+        shell: bash
+        working-directory: windbot
+        run: |
+          docker pull ghcr.io/projectignis/mono_xamarin_builder_monodroid:master
+          docker image tag ghcr.io/projectignis/mono_xamarin_builder_monodroid:master monodroid
+          docker run --rm --volume "$PWD:/project" monodroid -t:restore -p:RestorePackagesPath=./.nuget WindBot.sln
+          ./ci/install-patched-mono-runtime.sh
+          docker run --rm --volume "$PWD:/project" monodroid -m -p:Configuration=Release WindBot.sln -p:Posix=true
+      - name: Package WindBot
+        shell: bash
+        run: |
+          mkdir -p windbot-package/WindBot
+          cp -r windbot/bin/Release/. windbot-package/WindBot/
+          rm -f windbot-package/WindBot/mscorlib* windbot-package/WindBot/libWindbot*
+          cp windbot/COPYING windbot/LICENSE windbot/bots.json windbot-package/WindBot/
+          cp -r windbot/Decks windbot/Dialogs windbot-package/WindBot/
+          test -f windbot-package/WindBot/WindBot.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windbot-replay-restoration
+          path: windbot-package/
+          if-no-files-found: error
+
+  windows:
+    name: Windows replay-restored client
+    runs-on: windows-2022
+    needs:
+      - validate
+      - windbot
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply replay-safe Deck Master owner lock
+        shell: bash
+        run: python .github/scripts/apply-super-roboyarou-visible-grave-fix.py
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @("Microsoft.VisualStudio.Component.VC.v141.x86.x64","Microsoft.VisualStudio.Component.WinXP")
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Install Premake
+        shell: bash
+        run: ./travis/install-premake5.sh
+      - name: Install dependencies
+        shell: bash
+        run: ./travis/dependencies.sh
+      - name: Build replay-restored client
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package full Windows client
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures deploy/expansions/script
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/expansions/script/c511001152.lua
+      - uses: actions/download-artifact@v4
+        with:
+          name: windbot-replay-restoration
+          path: deploy/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-3v1-replay-restored-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
