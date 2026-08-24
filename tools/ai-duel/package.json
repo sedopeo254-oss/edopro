@@ -1,0 +1,36 @@
+{
+  "name": "ai-duel",
+  "version": "0.3.0",
+  "description": "Ai Duel - Master Duel capture bridge, semantic duel memory, and WindBot training export",
+  "main": "src/main.js",
+  "author": "Ai Duel Project",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/bridge-smoke.js",
+    "build:win": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "37.3.1",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.aiduel.desktop",
+    "productName": "Ai Duel",
+    "asar": true,
+    "artifactName": "Ai-Duel-${version}-Windows-x64.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [{"target":"portable","arch":["x64"]}]
+    }
+  }
+}

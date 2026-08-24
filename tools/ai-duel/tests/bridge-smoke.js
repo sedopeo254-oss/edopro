@@ -1,0 +1,15 @@
+'use strict';
+const fs=require('fs');
+const os=require('os');
+const path=require('path');
+const assert=require('assert');
+const{BridgeReceiver}=require('../src/core/bridge-receiver');
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'aiduel-'));
+const b=new BridgeReceiver(root,17399);
+const ev=b.normalize({type:'COMMAND',session:'t1',commandId:4,player:0,card:{id:123,name:'Test Monster'},state:{turn:2,phase:2,lp:[8000,7600],hand:[4,5]}},'COMMAND');
+assert.equal(ev.action,'SUMMON_INTENT');
+assert.equal(ev.role,'INTENT');
+assert.equal(ev.phase,'MAIN1');
+b.writer.begin({session:'t1'});b.writer.raw({type:'COMMAND',commandId:4});b.writer.event(ev);b.writer.end({result:'WIN'});
+for(const name of ['AiDuel.BridgeRaw.jsonl','AiDuel.Experience.jsonl','AiDuel.Knowledge.json','AiDuel.ActionMemory.tsv','AiDuel.Decisions.tsv','AiDuel.Sequences.jsonl'])assert.ok(fs.existsSync(path.join(b.writer.dir,name)),name);
+console.log('Ai Duel direct bridge smoke tests: PASS');

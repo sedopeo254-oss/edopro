@@ -1,0 +1,33 @@
+name: Build Ai Duel Windows
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'tools/ai-duel/**'
+      - '.github/workflows/ai-duel-build.yml'
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: tools/ai-duel
+        run: npm install
+      - name: Run bridge and WindBot smoke tests
+        working-directory: tools/ai-duel
+        run: npm test
+      - name: Build portable Windows x64 EXE
+        working-directory: tools/ai-duel
+        run: npm run build:win
+      - name: Upload Ai Duel EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ai-Duel-v0.3.0-Windows-x64
+          path: tools/ai-duel/dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
