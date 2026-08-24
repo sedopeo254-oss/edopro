@@ -153,6 +153,14 @@ function s.summonfromdeckmaster(e,tp)
 	c:RegisterFlagEffect(FLAG_DECK_MASTER,
 		RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 		EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+	--If Super Roboyarou is Summoned specifically by this Deck Master battle
+	--ability, it gains 1000 ATK while it remains face-up on the field.
+	local eboost=Effect.CreateEffect(c)
+	eboost:SetType(EFFECT_TYPE_SINGLE)
+	eboost:SetCode(EFFECT_UPDATE_ATTACK)
+	eboost:SetValue(1000)
+	eboost:SetReset(RESET_EVENT+RESETS_STANDARD)
+	c:RegisterEffect(eboost)
 	--A Deck Master is public after being Summoned. Explicit confirmation also
 	--repairs clients that first knew this card only as a hidden private-pile card.
 	Duel.ConfirmCards(0,c)
