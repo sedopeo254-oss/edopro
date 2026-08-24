@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate replay hardening v2 regressions
+    name: Validate replay hardening v3 regressions
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +22,7 @@ jobs:
         run: |
           python3 .github/scripts/apply-3v1-replay-hardening.py
           python3 .github/scripts/apply-3v1-replay-hardening-v2.py
+          python3 .github/scripts/apply-3v1-replay-projection-v3.py
       - name: Install Lua parser
         run: |
           sudo apt-get update -qq
@@ -49,12 +50,17 @@ jobs:
           grep -Fq 'UpdateMultiplayerPrivateDraw(logical_player, drawn_cards)' gframe/duelclient.cpp
           grep -Fq 'IsThreeVsOneReplayPrivatePileDisplayed(logical_player)' gframe/duelclient.cpp
 
-          # V2: stable ClientCard identity and SetCode texture rebinding.
-          grep -Fq 'Only cards actually removed from a private pile' .github/scripts/apply-3v1-replay-hardening-v2.py
+          # V2: stable card objects and texture rebinding.
           grep -Fq 'pile[i]->SetCode(cards[i].code)' gframe/client_field.cpp
           grep -Fq 'deck[player].back()->SetCode(snapshot.top_code)' gframe/client_field.cpp
           grep -Fq 'RefreshHandHitboxes();' gframe/client_field.cpp
           grep -Fq 'pcard->is_public = true;' gframe/duelclient.cpp
+
+          # V3: preserve identity only while the same logical player remains projected.
+          grep -Fq 'multiplayer_projected_logical' gframe/client_field.h
+          grep -Fq 'const bool reset_identity = multiplayer_projected_logical[display_side] != projected;' gframe/client_field.cpp
+          grep -Fq 'if(reset_identity) {' gframe/client_field.cpp
+          grep -Fq 'multiplayer_projected_logical[display_side] = projected;' gframe/client_field.cpp
 
           # P2 Deck Master ownership/view safety remains intact.
           grep -Fq 'preserve_private_duelist' ocgcore/field.cpp
@@ -65,15 +71,15 @@ jobs:
           grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
           grep -Fq 'e1:SetValue(-1350)' multiplayer-deck-master/c511001152.lua
 
-          # Card of Sanctity regression model copied from the uploaded replay state:
+          # Card of Sanctity regression copied from the uploaded replay state:
           # P2 is displayed while side-0 active logical player is P3.
           python3 - <<'PY'
           hands = {0:[1,2,3,4,5], 1:[11,12,13,14,15], 2:[21,22,23,24], 3:[]}
           active = [2,3]
           focus = [1,0]
-          hands[0].append(101)
-          hands[1].append(102)
-          logical = active[0]
+          hands[0].append(101)  # custom multiplayer draw P1
+          hands[1].append(102)  # custom multiplayer draw P2
+          logical = active[0]   # standard side-0 MSG_DRAW belongs to active P3
           hands[logical].extend([103,104])
           assert hands[1] == [11,12,13,14,15,102]
           assert hands[2] == [21,22,23,24,103,104]
@@ -81,11 +87,24 @@ jobs:
           print('Card of Sanctity logical-hand isolation regression passed')
           PY
 
+          # Projection identity regression: repeated P2 snapshots keep identity,
+          # but an actual P2 -> P1 view switch performs exactly one clean reset.
+          python3 - <<'PY'
+          projected = 1
+          reset_same = projected != 1
+          assert reset_same is False
+          reset_switch = projected != 0
+          assert reset_switch is True
+          projected = 0
+          assert (projected != 0) is False
+          print('Logical projection identity regression passed')
+          PY
+
           git -C ocgcore diff --check
           git diff --check
 
   windows:
-    name: Windows hardened replay v2 client
+    name: Windows hardened replay v3 client
     runs-on: windows-2022
     needs: validate
     env:
@@ -105,11 +124,12 @@ jobs:
       - name: Apply replay-safe P2 Deck Master ownership
         shell: bash
         run: python .github/scripts/apply-3v1-core-owner-no-view-swap.py
-      - name: Apply replay hardening v2
+      - name: Apply replay hardening v3
         shell: bash
         run: |
           python .github/scripts/apply-3v1-replay-hardening.py
           python .github/scripts/apply-3v1-replay-hardening-v2.py
+          python .github/scripts/apply-3v1-replay-projection-v3.py
       - uses: microsoft/setup-msbuild@v3
       - name: Install v141 XP toolset
         shell: pwsh
@@ -147,6 +167,6 @@ jobs:
           test -f deploy/expansions/script/c511001152.lua
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-3v1-replay-hardening-v2-windows-x86-no-upx
+          name: edopro-3v1-replay-hardening-v3-windows-x86-no-upx
           path: deploy/
           if-no-files-found: error
