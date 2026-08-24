@@ -1,0 +1,7 @@
+3v1 replay V3 invariants:
+- field_focus controls only MZONE/SZONE camera.
+- logical_active controls mounted Deck/Hand/Extra/GY/Banish.
+- replay view changes never rebuild private piles.
+- actual logical seat changes project private piles once.
+- normal and multiplayer draws update the exact logical cache.
+- face-up Deck Master summon is public and keeps its logical owner/grave.
