@@ -1,0 +1,68 @@
+name: 3v1 Replay Smooth V2 MinGW
+
+on:
+  pull_request:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+
+permissions:
+  contents: read
+
+jobs:
+  windows-mingw:
+    name: Windows x86 MinGW smooth V2
+    runs-on: ubuntu-latest
+    env:
+      DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+      DEPLOY_DIR: deploy
+      TRAVIS_OS_NAME: linux
+      TARGET_OS: windows
+      DXSDK_DIR: /tmp/d3d9sdk/
+      VCPKG_ROOT: /tmp/vcpkg2
+      BUILD_CONFIG: release
+      ARCH: win32
+      MINGW_LITE_VARIANT: -msvcrt
+      VCPKG_TRIPLET: -mingw-static
+      EXTRA_CFLAGS: ""
+      CC: /usr/local/bin/i686-w64-mingw32-gcc
+      CXX: /usr/local/bin/i686-w64-mingw32-g++
+      AR: /usr/local/bin/i686-w64-mingw32-gcc-ar
+    steps:
+      - name: Set dependency cache
+        shell: bash
+        run: echo "VCPKG_CACHE_ZIP_URL=$DEPENDENCIES_BASE_URL/installed_x86-windows-mingw-static.zip" >> $GITHUB_ENV
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply deterministic replay V2
+        run: python3 .github/scripts/run-3v1-replay-smooth-v2.py
+      - name: Install MinGW lite
+        run: ./travis/install_mingw_lite.sh
+      - name: Install Premake
+        run: ./travis/install-premake5.sh
+      - name: Install dependencies
+        run: ./travis/dependencies.sh
+      - name: Build
+        run: ./travis/build.sh
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/expansions/script deploy/textures
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-deck-master deploy/
+          cp -r multiplayer-effect-examples deploy/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/expansions/script/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' deploy/expansions/script/c153000012.lua
+          ! grep -Fq 'Duel.ConfirmCards(' deploy/expansions/script/c153000012.lua
+          grep -Fq 'e1:SetValue(-1350)' deploy/expansions/script/c511001152.lua
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-3v1-replay-smooth-v2-windows-mingw-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
