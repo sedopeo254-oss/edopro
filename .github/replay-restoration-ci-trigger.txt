@@ -1,1 +1,1 @@
-Replay restoration validation v2: preserve P2 owner lock without changing 3v1 replay/view focus; validate current stable base.
+Replay restoration validation v3: enforce full 4210273 replay baseline plus replay-safe P2 owner lock.
