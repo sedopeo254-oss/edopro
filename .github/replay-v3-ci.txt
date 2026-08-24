@@ -1,1 +1,1 @@
-Run V3 replay validation and Windows build.
+Run V3 replay validation plus MSVC and MinGW Windows builds.
