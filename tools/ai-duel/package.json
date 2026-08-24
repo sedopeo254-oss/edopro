@@ -1,12 +1,13 @@
 {
   "name": "ai-duel",
-  "version": "0.2.0",
-  "description": "Ai Duel - semantic Yu-Gi-Oh duel intelligence, Master Duel Steam source discovery, and causal tactical memory",
+  "version": "0.3.0",
+  "description": "Ai Duel - Master Duel capture bridge, semantic duel memory, and WindBot training export",
   "main": "src/main.js",
   "author": "Ai Duel Project",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "test": "node tests/bridge-smoke.js",
     "build:win": "electron-builder --win portable --x64"
   },
   "devDependencies": {
@@ -29,12 +30,7 @@
     ],
     "win": {
       "icon": "assets/icon.ico",
-      "target": [
-        {
-          "target": "portable",
-          "arch": ["x64"]
-        }
-      ]
+      "target": [{"target":"portable","arch":["x64"]}]
     }
   }
 }
