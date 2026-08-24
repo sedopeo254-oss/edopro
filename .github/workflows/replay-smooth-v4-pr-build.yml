@@ -105,8 +105,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./travis/predeploy.sh
+          # MinGW builds the standalone client directly. predeploy.sh also
+          # expects ygoprodll.exe, which this target intentionally does not
+          # produce, so package the verified executable itself.
+          test -f bin/x86/release/ygopro.exe
           mkdir -p deploy/expansions/script deploy/textures
+          cp bin/x86/release/ygopro.exe deploy/ygopro.exe
           cp multiplayer-deck-master/c*.lua deploy/expansions/script/
           cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
           cp textures/field-3v1.png deploy/textures/field-3v1.png
