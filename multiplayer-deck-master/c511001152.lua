@@ -62,9 +62,7 @@ function s.con(e,tp,eg,ep,ev,re,r,rp)
 end
 function s.getlogicalplayer(c)
 	local p=c:GetLogicalControler()
-	if p==nil then
-		p=c:GetControler()
-	end
+	if p==nil then p=c:GetControler() end
 	return p
 end
 function s.selectresult(c)
@@ -76,27 +74,22 @@ function s.applyresult(c,result,source)
 	e1:SetType(EFFECT_TYPE_SINGLE)
 	e1:SetReset(RESET_EVENT+RESETS_STANDARD+RESET_PHASE+PHASE_DAMAGE)
 	if result==1 then
-		--1: Lose 1000 ATK
 		e1:SetCode(EFFECT_UPDATE_ATTACK)
 		e1:SetValue(-1000)
 	elseif result==2 then
-		--2: Gain 1000 ATK
 		e1:SetCode(EFFECT_UPDATE_ATTACK)
 		e1:SetValue(1000)
 	elseif result==3 then
-		--3: ATK becomes 0
 		e1:SetCode(EFFECT_SET_ATTACK_FINAL)
 		e1:SetValue(0)
 	elseif result==4 then
-		--4: ATK becomes 2000
 		e1:SetCode(EFFECT_SET_ATTACK_FINAL)
 		e1:SetValue(2000)
 	elseif result==5 then
-		--5: Current ATK is halved
-		e1:SetCode(EFFECT_SET_ATTACK_FINAL)
-		e1:SetValue(math.floor(math.max(0,c:GetAttack())/2))
+		--5: Lose exactly 1350 ATK
+		e1:SetCode(EFFECT_UPDATE_ATTACK)
+		e1:SetValue(-1350)
 	elseif result==6 then
-		--6: Current ATK is doubled
 		e1:SetCode(EFFECT_SET_ATTACK_FINAL)
 		e1:SetValue(math.max(0,c:GetAttack())*2)
 	else
@@ -109,9 +102,6 @@ function s.op(e,tp,eg,ep,ev,re,r,rp)
 	local bc=Duel.GetAttackTarget()
 	local c=e:GetHandler()
 	if not c:IsRelateToEffect(e) or not at or not bc then return end
-
-	--Each participant receives their own 1-6 menu. AnnounceNumberPlayer routes
-	--the prompt to the correct logical player in 3v1 and Battle Royale.
 	local result_at=s.selectresult(at)
 	local result_bc=s.selectresult(bc)
 	s.applyresult(at,result_at,c)
