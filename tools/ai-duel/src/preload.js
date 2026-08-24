@@ -1,1 +1,19 @@
-const{contextBridge,ipcRenderer}=require('electron');contextBridge.exposeInMainWorld('aiDuel',{getState:()=>ipcRenderer.invoke('state:get'),importReplay:s=>ipcRenderer.invoke('replay:import',s),importKnowledge:()=>ipcRenderer.invoke('knowledge:import'),startLive:p=>ipcRenderer.invoke('live:start',p),recordEvent:e=>ipcRenderer.invoke('live:event',e),stopLive:()=>ipcRenderer.invoke('live:stop'),updateSettings:p=>ipcRenderer.invoke('settings:update',p),openDataFolder:()=>ipcRenderer.invoke('data:open-folder'),appInfo:()=>ipcRenderer.invoke('app:info')});
+'use strict';
+const{contextBridge,ipcRenderer}=require('electron');
+contextBridge.exposeInMainWorld('aiDuel',{
+  getState:()=>ipcRenderer.invoke('state:get'),
+  importReplay:s=>ipcRenderer.invoke('replay:import',s),
+  importKnowledge:()=>ipcRenderer.invoke('knowledge:import'),
+  chooseMasterDuelFolder:()=>ipcRenderer.invoke('md:choose-folder'),
+  inspectMasterDuel:p=>ipcRenderer.invoke('md:inspect',p),
+  scanMasterDuel:p=>ipcRenderer.invoke('md:scan',p),
+  openMasterDuelFolder:()=>ipcRenderer.invoke('md:open-game-folder'),
+  startLive:p=>ipcRenderer.invoke('live:start',p),
+  recordEvent:e=>ipcRenderer.invoke('live:event',e),
+  stopLive:()=>ipcRenderer.invoke('live:stop'),
+  runSemanticDemo:()=>ipcRenderer.invoke('semantic:demo'),
+  updateSettings:p=>ipcRenderer.invoke('settings:update',p),
+  openDataFolder:()=>ipcRenderer.invoke('data:open-folder'),
+  appInfo:()=>ipcRenderer.invoke('app:info'),
+  onReplayCaptured:cb=>ipcRenderer.on('md:replay-captured',(_e,item)=>cb(item))
+});
