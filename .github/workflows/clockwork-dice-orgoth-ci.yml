@@ -1,0 +1,29 @@
+name: Clockwork Night and Dice Dungeon script CI
+
+on:
+  push:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate anime scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+          luac5.4 -p multiplayer-deck-master/c511000405.lua
+          luac5.4 -p multiplayer-deck-master/c511001152.lua
+          grep -Fq 'EFFECT_CHANGE_RACE' multiplayer-deck-master/c511000405.lua
+          grep -Fq 's.machineboosttarget' multiplayer-deck-master/c511000405.lua
+          grep -Fq 'EVENT_DESTROYED' multiplayer-deck-master/c511001152.lua
+          grep -Fq '15744417' multiplayer-deck-master/c511001152.lua
+          grep -Fq '140000073' multiplayer-deck-master/c511001152.lua
