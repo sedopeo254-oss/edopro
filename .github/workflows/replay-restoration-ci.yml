@@ -19,7 +19,7 @@ env:
 
 jobs:
   validate:
-    name: Validate full 3v1 replay baseline
+    name: Validate replay hands, targets and Deck Masters
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +27,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Verify replay client stayed on best baseline
+      - name: Verify replay client starts from best baseline
         shell: bash
         run: |
           set -euo pipefail
@@ -37,9 +37,13 @@ jobs:
             field.cpp processor.cpp playerop.cpp operations.cpp
           test "$(git -C ocgcore rev-parse HEAD)" = "a0bd861c521689e3e2f08a421845351a1274dc7f"
 
-      - name: Apply replay-safe Deck Master owner lock
+      - name: Apply replay-safe P2 Deck Master ownership
         shell: bash
-        run: python3 .github/scripts/apply-super-roboyarou-visible-grave-fix.py
+        run: python3 .github/scripts/apply-3v1-core-owner-no-view-swap.py
+
+      - name: Apply 3v1 replay hardening
+        shell: bash
+        run: python3 .github/scripts/apply-3v1-replay-hardening.py
 
       - name: Install Lua parser
         shell: bash
@@ -59,7 +63,7 @@ jobs:
           luac5.4 -p multiplayer-deck-master/c22959079.lua
           luac5.4 -p multiplayer-deck-master/c21175632.lua
 
-          # Replay/view and arrow fixes from the best 4210273 build.
+          # Best replay/arrow baseline remains present.
           grep -Fq 'SetThreeVsOneView' gframe/duelclient.cpp
           grep -Fq 'IsThreeVsOneReplayPrivatePileDisplayed' gframe/client_field.cpp
           grep -Fq 'final arrow attached to the authoritative fields' gframe/duelclient.cpp
@@ -67,15 +71,28 @@ jobs:
           grep -Fq 'publish_multiplayer_effect_view' ocgcore/field.cpp
           grep -Fq 'authoritative attacker/target pair immediately before' ocgcore/processor.cpp
 
-          # Replay-safe Super Roboyarou owner lock: no view-changing TagSwap.
+          # No hand flicker/mixing: identical snapshots and duplicate view hints are no-ops.
+          grep -Fq 'const bool same_snapshot' gframe/client_field.cpp
+          grep -Fq 'Authoritative replay snapshots beat visual recapture' gframe/client_field.cpp
+          grep -Fq 'Replay view changes are visual only' gframe/client_field.cpp
+          grep -Fq 'Identical view hints are common in attack/target sequences' gframe/duelclient.cpp
+          grep -Fq 'Never replay TAG_SWAP' gframe/duelclient.cpp
+
+          # Cross-teammate targets must be shown even when a chain is negated later.
+          grep -Fq 'target_logical = mainGame->dInfo.GetLogicalPlayer' gframe/duelclient.cpp
+          grep -Fq 'SetThreeVsOneView(target_logical)' gframe/duelclient.cpp
+
+          # Super Roboyarou: exact P2 field/damage/GY without changing replay focus.
           grep -Fq 'preserve_private_duelist' ocgcore/field.cpp
-          grep -Fq 'must not emit TAG_SWAP and mutate replay perspective' ocgcore/tests/multiplayer_field_tests.cpp
+          grep -Fq 'moving P2'"'"'s Deck Master must not change the P3 replay/view focus' ocgcore/tests/multiplayer_field_tests.cpp
+          grep -Fq 'battle damage redirected to P2'"'"'s Deck Master must be charged to P2' ocgcore/tests/multiplayer_field_tests.cpp
+          grep -Fq 'A face-up Special Summon is public information' gframe/duelclient.cpp
           ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
           ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
           grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
           grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
 
-          # Keep the latest requested anime-card behavior.
+          # Keep latest requested anime-card behavior.
           grep -Fq 'e1:SetValue(-1350)' multiplayer-deck-master/c511001152.lua
           grep -Fq 'code==15744417 or code==140000073' multiplayer-deck-master/c511001152.lua
           grep -Fq 's.apply(sc,tc,-500,true)' multiplayer-deck-master/c511000405.lua
@@ -116,12 +133,12 @@ jobs:
           test -f windbot-package/WindBot/WindBot.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: windbot-replay-restoration
+          name: windbot-replay-hardening
           path: windbot-package/
           if-no-files-found: error
 
   windows:
-    name: Windows replay-restored client
+    name: Windows hardened 3v1 replay client
     runs-on: windows-2022
     needs:
       - validate
@@ -138,9 +155,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Apply replay-safe Deck Master owner lock
+      - name: Apply replay-safe P2 Deck Master ownership
         shell: bash
-        run: python .github/scripts/apply-super-roboyarou-visible-grave-fix.py
+        run: python .github/scripts/apply-3v1-core-owner-no-view-swap.py
+      - name: Apply 3v1 replay hardening
+        shell: bash
+        run: python .github/scripts/apply-3v1-replay-hardening.py
       - uses: microsoft/setup-msbuild@v3
       - name: Install v141 XP toolset
         shell: pwsh
@@ -158,7 +178,7 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: ./travis/dependencies.sh
-      - name: Build replay-restored client
+      - name: Build hardened client
         shell: bash
         run: ./travis/build.sh
       - name: Package full Windows client
@@ -178,10 +198,10 @@ jobs:
           test -f deploy/expansions/script/c511001152.lua
       - uses: actions/download-artifact@v4
         with:
-          name: windbot-replay-restoration
+          name: windbot-replay-hardening
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-3v1-replay-restored-windows-x86-no-upx
+          name: edopro-3v1-replay-hardened-windows-x86-no-upx
           path: deploy/
           if-no-files-found: error
