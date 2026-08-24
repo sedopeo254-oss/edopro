@@ -1,0 +1,66 @@
+name: Build Ai Duel Master Duel Bridge
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'tools/ai-duel/integrations/master-duel/**'
+      - '.github/workflows/ai-duel-masterduel-bridge-build.yml'
+jobs:
+  build-bridge:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Ai Duel source
+        uses: actions/checkout@v4
+        with:
+          path: edopro
+      - name: Checkout YgoMaster
+        uses: actions/checkout@v4
+        with:
+          repository: pixeltris/YgoMaster
+          path: YgoMaster
+      - name: Add Ai Duel bridge source
+        shell: pwsh
+        run: |
+          Copy-Item 'edopro/tools/ai-duel/integrations/master-duel/AiDuelBridge.cs' 'YgoMaster/YgoMasterClient/AiDuelBridge.cs' -Force
+      - name: Patch YgoMaster duel callbacks
+        shell: pwsh
+        run: |
+          $p='YgoMaster/YgoMasterClient/DuelDll.cs'
+          $s=Get-Content $p -Raw
+          function MustReplace([string]$old,[string]$new){
+            if(-not $script:s.Contains($old)){ throw "Patch anchor not found: $old" }
+            $script:s=$script:s.Replace($old,$new)
+          }
+          MustReplace 'MyID = YgomSystem.Utility.ClientWork.GetByJsonPath<int>("Duel.MyID");' 'MyID = YgomSystem.Utility.ClientWork.GetByJsonPath<int>("Duel.MyID");`r`n            AiDuelBridge.OnDuelBegin(gameMode, MyID);'
+          MustReplace 'public static void OnDuelEnd()`r`n        {' 'public static void OnDuelEnd()`r`n        {`r`n            AiDuelBridge.OnDuelEnd(DuelEndResult, DuelEndFinish, DuelEndFinishCardID);'
+          MustReplace 'static void DLL_DuelComMovePhase(int phase)`r`n        {' 'static void DLL_DuelComMovePhase(int phase)`r`n        {`r`n            AiDuelBridge.OnPhase(RunEffectSeq, phase);'
+          MustReplace 'public static void DLL_DuelComDoCommand(int player, int position, int index, int commandId)`r`n        {' 'public static void DLL_DuelComDoCommand(int player, int position, int index, int commandId)`r`n        {`r`n            AiDuelBridge.OnCommand(RunEffectSeq, player, position, index, commandId);'
+          MustReplace 'static int RunEffect(int id, int param1, int param2, int param3)`r`n        {' 'static int RunEffect(int id, int param1, int param2, int param3)`r`n        {`r`n            AiDuelBridge.OnRunEffect(RunEffectSeq, id, param1, param2, param3);'
+          MustReplace 'static void DLL_DuelDlgSetResult(uint result)`r`n        {' 'static void DLL_DuelDlgSetResult(uint result)`r`n        {`r`n            AiDuelBridge.OnDialogResult(RunEffectSeq, result);'
+          MustReplace 'static void DLL_DuelListSetCardExData(int index, int data)`r`n        {' 'static void DLL_DuelListSetCardExData(int index, int data)`r`n        {`r`n            AiDuelBridge.OnListCardExData(RunEffectSeq, index, data);'
+          MustReplace 'static void DLL_DuelListSetIndex(int index)`r`n        {' 'static void DLL_DuelListSetIndex(int index)`r`n        {`r`n            AiDuelBridge.OnListIndex(RunEffectSeq, index);'
+          Set-Content $p $s -Encoding UTF8
+      - name: Build YgoMasterClient x64
+        shell: pwsh
+        run: |
+          & "$env:WINDIR/Microsoft.NET/Framework/v4.0.30319/MSBuild.exe" 'YgoMaster/YgoMaster.sln' /p:Configuration=Debug /p:Platform=x64
+          if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }
+      - name: Collect bridge-enabled client
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifact -Force | Out-Null
+          Copy-Item 'YgoMaster/YgoMaster/YgoMasterClient.exe' artifact/ -ErrorAction SilentlyContinue
+          Copy-Item 'YgoMaster/YgoMaster/YgoMasterClient.exe.config' artifact/ -ErrorAction SilentlyContinue
+          Copy-Item 'YgoMaster/YgoMaster/*.dll' artifact/ -ErrorAction SilentlyContinue
+          Copy-Item 'edopro/tools/ai-duel/integrations/master-duel/AiDuelBridge.cs' artifact/
+          Copy-Item 'edopro/tools/ai-duel/integrations/master-duel/AiDuelBridgeHooks.patch' artifact/
+          if(-not (Test-Path 'artifact/YgoMasterClient.exe')){ throw 'YgoMasterClient.exe not found after build' }
+      - name: Upload Master Duel bridge client
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ai-Duel-MasterDuel-Bridge-v0.3
+          path: artifact/**
+          if-no-files-found: error
+          retention-days: 30
