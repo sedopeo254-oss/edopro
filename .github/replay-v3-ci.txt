@@ -1,1 +1,1 @@
-Run V3 replay validation plus MSVC and MinGW Windows builds.
+Run V4 replay validation: field-only camera refresh + logical private-pile isolation.
