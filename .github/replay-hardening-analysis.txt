@@ -1,0 +1,7 @@
+Uploaded YRPX diagnostics used for this replay-hardening validation:
+- 3259 streamed packets
+- 122 MSG_MULTIPLAYER_PRIVATE_PILES snapshots
+- 29 MSG_MULTIPLAYER_REPLAY_VIEW messages, including 10 consecutive duplicate views
+- 12 MSG_TAG_SWAP messages
+- P2 Block/Stop Attack targeting P1 is present as P2->P1 replay view followed by MSG_BECOME_TARGET before later chain negation
+- Super Roboyarou packets identify logical P2 for field placement, redirected battle damage and Graveyard; disappearance is a client replay projection/cache regression
