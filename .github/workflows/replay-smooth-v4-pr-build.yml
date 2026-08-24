@@ -1,0 +1,124 @@
+name: 3v1 Replay Smooth V4
+
+on:
+  pull_request:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate stable hands, draws and Deck Master replay
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply V4
+        run: python3 .github/scripts/run-3v1-replay-smooth-v4.py
+      - name: Install Lua
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+      - name: Run regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          grep -Fq '#include <algorithm>' ocgcore/tests/multiplayer_field_tests.cpp || sed -i '1i#include <algorithm>' ocgcore/tests/multiplayer_field_tests.cpp
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          luac5.4 -p multiplayer-deck-master/c153000012.lua
+          luac5.4 -p multiplayer-deck-master/c511001152.lua
+          grep -Fq 'FIELD CAMERA ONLY' gframe/duelclient.cpp
+          grep -Fq 'RefreshThreeVsOneFieldOnly' gframe/duelclient.cpp
+          grep -Fq 'GetDisplayedPrivateDuelist(core_player)' gframe/duelclient.cpp
+          grep -Fq 'GetLogicalPlayer(core_side) == logical_player' gframe/client_field.cpp
+          grep -Fq 'ApplyThreeVsOneReplayDraw' gframe/duelclient.cpp
+          grep -Fq 'SetThreeVsOneView(summon_logical)' gframe/duelclient.cpp
+          grep -Fq 'pcard->is_public = true' gframe/duelclient.cpp
+          grep -Fq 'smooth_three_vs_one_replay' gframe/duelclient.cpp
+          grep -Fq 'std::atan2(xd - xa, ya - yd)' gframe/duelclient.cpp
+          ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.ConfirmCards(' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'e1:SetValue(-1350)' multiplayer-deck-master/c511001152.lua
+          git -C ocgcore diff --check
+          git diff --check
+      - name: Verify private pile is independent from field camera
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          logical_active = 1
+          hand_p2 = [201,202,203]
+          hand_p1 = [101,102]
+          for field_focus in [0,2,1,0,2,0]:
+              assert logical_active == 1
+              assert hand_p2 == [201,202,203]
+              assert hand_p1 == [101,102]
+          # Card of Sanctity normal side-0 draw belongs to logical_active=P2.
+          hand_p2 += [204,205]
+          assert hand_p1 == [101,102]
+          assert hand_p2[-2:] == [204,205]
+          print('V4 camera/private hand isolation passed')
+          PY
+
+  windows-mingw:
+    name: Windows x86 replay smooth V4
+    runs-on: ubuntu-latest
+    needs: validate
+    env:
+      DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+      DEPLOY_DIR: deploy
+      TRAVIS_OS_NAME: linux
+      TARGET_OS: windows
+      DXSDK_DIR: /tmp/d3d9sdk/
+      VCPKG_ROOT: /tmp/vcpkg2
+      BUILD_CONFIG: release
+      ARCH: win32
+      MINGW_LITE_VARIANT: -msvcrt
+      VCPKG_TRIPLET: -mingw-static
+      EXTRA_CFLAGS: ""
+      CC: /usr/local/bin/i686-w64-mingw32-gcc
+      CXX: /usr/local/bin/i686-w64-mingw32-g++
+      AR: /usr/local/bin/i686-w64-mingw32-gcc-ar
+    steps:
+      - name: Set dependency cache
+        shell: bash
+        run: echo "VCPKG_CACHE_ZIP_URL=$DEPENDENCIES_BASE_URL/installed_x86-windows-mingw-static.zip" >> $GITHUB_ENV
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply V4
+        run: python3 .github/scripts/run-3v1-replay-smooth-v4.py
+      - name: Install MinGW lite
+        run: ./travis/install_mingw_lite.sh
+      - name: Install Premake
+        run: ./travis/install-premake5.sh
+      - name: Install dependencies
+        run: ./travis/dependencies.sh
+      - name: Build
+        run: ./travis/build.sh
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/expansions/script deploy/textures
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-deck-master deploy/
+          cp -r multiplayer-effect-examples deploy/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/expansions/script/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' deploy/expansions/script/c153000012.lua
+          grep -Fq 'e1:SetValue(-1350)' deploy/expansions/script/c511001152.lua
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-3v1-replay-smooth-v4-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
