@@ -1,0 +1,1 @@
+Validate the uploaded 3v1 replay failure modes: private-pile stability, duplicate view suppression, teammate target visibility, and Deck Master image/Graveyard ownership.
