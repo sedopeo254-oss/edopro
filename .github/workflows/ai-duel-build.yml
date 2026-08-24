@@ -23,7 +23,10 @@ jobs:
           if ($chunks.Count -ne 6) { throw "Expected 6 chunks, found $($chunks.Count)" }
           $b64 = ($chunks | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
           [IO.File]::WriteAllBytes('ai-duel-v0.3-build.zip', [Convert]::FromBase64String($b64))
-          Expand-Archive -Path 'ai-duel-v0.3-build.zip' -DestinationPath 'ai-duel-v0.3-build'
+          New-Item -ItemType Directory -Path 'ai-duel-v0.3-build' -Force | Out-Null
+          tar -xf 'ai-duel-v0.3-build.zip' -C 'ai-duel-v0.3-build'
+          if (-not (Test-Path 'ai-duel-v0.3-build/package.json')) { throw 'Reconstructed source is missing package.json' }
+          if (-not (Test-Path 'ai-duel-v0.3-build/assets/icon.ico')) { throw 'Reconstructed source is missing icon.ico' }
       - name: Install dependencies
         working-directory: ai-duel-v0.3-build
         run: npm install
