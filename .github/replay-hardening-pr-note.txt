@@ -1,0 +1,1 @@
+This branch only triggers CI against the replay-hardening source already present on stable. It does not replace the stable fixes.
