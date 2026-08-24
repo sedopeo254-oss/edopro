@@ -1,0 +1,1 @@
+Validate Card of Sanctity logical hand isolation, lightweight replay pile updates, and persistent Deck Master images.
