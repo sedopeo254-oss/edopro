@@ -18,7 +18,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
       - name: Apply V2
-        run: python3 .github/scripts/apply-3v1-replay-smooth-v2.py
+        run: python3 .github/scripts/run-3v1-replay-smooth-v2.py
       - name: Install Lua
         run: |
           sudo apt-get update -qq
@@ -53,8 +53,6 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          # Uploaded replay: P2 is displayed while side-0's active logical player is P3.
-          # P3's legacy MSG_DRAW must never be appended to P2's visible hand.
           p2 = [403847,3682106,87322378,78577570,76232340,511001325]
           p3 = [22959079,87511987,140000073,511000480]
           displayed = list(p2)
@@ -84,7 +82,7 @@ jobs:
           submodules: recursive
       - name: Apply V2
         shell: bash
-        run: python .github/scripts/apply-3v1-replay-smooth-v2.py
+        run: python .github/scripts/run-3v1-replay-smooth-v2.py
       - uses: microsoft/setup-msbuild@v3
       - name: Install v141 XP toolset
         shell: pwsh
