@@ -1,0 +1,25 @@
+*** YgoMasterClient/DuelDll.cs
+@@ public static void OnDuelBegin(GameMode gameMode)
++            AiDuelBridge.OnDuelBegin(gameMode, MyID);
+@@ public static void OnDuelEnd()
++            AiDuelBridge.OnDuelEnd(DuelEndResult, DuelEndFinish, DuelEndFinishCardID);
+@@ static void DLL_DuelComMovePhase(int phase)
++            AiDuelBridge.OnPhase(RunEffectSeq, phase);
+@@ public static void DLL_DuelComDoCommand(int player, int position, int index, int commandId)
++            AiDuelBridge.OnCommand(RunEffectSeq, player, position, index, commandId);
+@@ static int RunEffect(int id, int param1, int param2, int param3)
++            AiDuelBridge.OnRunEffect(RunEffectSeq, id, param1, param2, param3);
+@@ static void DLL_DuelDlgSetResult(uint result)
++            AiDuelBridge.OnDialogResult(RunEffectSeq, result);
+@@ static void DLL_DuelListSetCardExData(int index, int data)
++            AiDuelBridge.OnListCardExData(RunEffectSeq, index, data);
+@@ static void DLL_DuelListSetIndex(int index)
++            AiDuelBridge.OnListIndex(RunEffectSeq, index);
+
+*** YgoMasterClient/HomeSubMenuViewController.cs (or the existing HomeSubMenuViewController block)
+@@ inside OnCreatedView after the normal YgoMaster entries
++            SubMenuViewController.AddMenuItem(thisPtr, AiDuelBridge.StatusText, delegate { });
+
+# Optional replay-byte forwarding
+# In DuelDll.AddRecord, after copying ptr->buffer:
++            AiDuelBridge.OnReplayRecord(buffer);

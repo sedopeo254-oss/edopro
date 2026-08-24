@@ -1,0 +1,22 @@
+{
+  "cards": [
+    {
+      "id": 900001,
+      "name": "Ai Duel Tribute Scholar",
+      "level": 7,
+      "text": "If this card is Tribute Summoned: Draw 2 cards."
+    },
+    {
+      "id": 900002,
+      "name": "Material Alpha",
+      "level": 4,
+      "text": ""
+    },
+    {
+      "id": 900003,
+      "name": "Material Beta",
+      "level": 4,
+      "text": ""
+    }
+  ]
+}
