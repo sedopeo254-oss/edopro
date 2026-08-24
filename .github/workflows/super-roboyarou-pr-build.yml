@@ -10,15 +10,25 @@ permissions:
 
 jobs:
   validate:
-    name: Validate P2 summon and Graveyard ownership
+    name: Validate full replay, targeting and P2 owner lock
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Apply fix
+          fetch-depth: 0
+      - name: Verify best replay baseline before owner-lock patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code 42102739e2af74f816fcdbd9835730f7542f280c -- \
+            gframe/client_field.cpp gframe/client_field.h gframe/duelclient.cpp
+          git -C ocgcore diff --exit-code 4f21cd92c0956e46f51fbaf8386e0fd4bce87bbf..HEAD -- \
+            field.cpp processor.cpp playerop.cpp operations.cpp
+          test "$(git -C ocgcore rev-parse HEAD)" = "a0bd861c521689e3e2f08a421845351a1274dc7f"
+      - name: Apply replay-safe owner lock
         run: python3 .github/scripts/apply-super-roboyarou-visible-grave-fix.py
-      - name: Validate
+      - name: Validate all regressions
         shell: bash
         run: |
           set -euo pipefail
@@ -27,14 +37,35 @@ jobs:
           sh ./ocgcore/tests/run_multiplayer_state_tests.sh
           sh ./ocgcore/tests/run_multiplayer_field_tests.sh
           luac5.4 -p multiplayer-deck-master/c153000012.lua
+          luac5.4 -p multiplayer-deck-master/c511001152.lua
+          luac5.4 -p multiplayer-deck-master/c511000405.lua
+
+          # Preserve every replay/targeting correction from the best build.
+          grep -Fq 'SetThreeVsOneView' gframe/duelclient.cpp
+          grep -Fq 'IsThreeVsOneReplayPrivatePileDisplayed' gframe/client_field.cpp
+          grep -Fq 'final arrow attached to the authoritative fields' gframe/duelclient.cpp
+          grep -Fq 'std::atan2(xd - xa, ya - yd)' gframe/duelclient.cpp
+          grep -Fq 'publish_multiplayer_effect_view' ocgcore/field.cpp
+          grep -Fq 'authoritative attacker/target pair immediately before' ocgcore/processor.cpp
+
+          # P2 Deck Master remains P2 without changing P3's displayed/replay field.
           grep -Fq 'preserve_private_duelist' ocgcore/field.cpp
-          grep -Fq 'a P2 Deck Master must enter P2' ocgcore/tests/multiplayer_field_tests.cpp
+          grep -Fq 'must not emit TAG_SWAP and mutate replay perspective' ocgcore/tests/multiplayer_field_tests.cpp
+          grep -Fq 'battle damage redirected to P2' ocgcore/tests/multiplayer_field_tests.cpp
           grep -Fq 'A face-up Special Summon is public information' gframe/duelclient.cpp
+          ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
+
+          # Keep latest requested Dice Dungeon behavior.
+          grep -Fq 'e1:SetValue(-1350)' multiplayer-deck-master/c511001152.lua
+          grep -Fq 'code==15744417 or code==140000073' multiplayer-deck-master/c511001152.lua
           git -C ocgcore diff --check
           git diff --check
 
   windows:
-    name: Windows patched client
+    name: Windows replay-restored client
     runs-on: windows-2022
     needs: validate
     env:
@@ -51,7 +82,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Apply fix
+      - name: Apply replay-safe owner lock
         shell: bash
         run: python .github/scripts/apply-super-roboyarou-visible-grave-fix.py
       - uses: microsoft/setup-msbuild@v3
@@ -74,7 +105,7 @@ jobs:
       - name: Build
         shell: bash
         run: ./travis/build.sh
-      - name: Package patched client
+      - name: Package replay-restored client
         shell: bash
         run: |
           set -euo pipefail
@@ -83,11 +114,14 @@ jobs:
           cp multiplayer-deck-master/c*.lua deploy/expansions/script/
           cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
           cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-deck-master deploy/
+          cp -r multiplayer-effect-examples deploy/
           rm -f deploy/compressed-ygopro.exe
           test -f deploy/ygopro.exe
           test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/expansions/script/c511001152.lua
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-super-roboyarou-visible-grave-windows-x86-no-upx
+          name: edopro-3v1-replay-restored-windows-x86-no-upx
           path: deploy/
           if-no-files-found: error
