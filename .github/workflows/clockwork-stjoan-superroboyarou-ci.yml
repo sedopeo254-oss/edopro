@@ -41,13 +41,16 @@ jobs:
           luac5.4 -p multiplayer-deck-master/c21175632.lua
           luac5.4 -p multiplayer-deck-master/c153000012.lua
 
-          # Clockwork Night: snapshot only; current monsters only, no Defense exclusion.
+          # Clockwork Night: opponent effects are activation-time snapshots;
+          # the controller's later Machine monsters still receive +500 ATK.
           grep -Fq 'e1:SetOperation(s.activate)' multiplayer-deck-master/c511000405.lua
           grep -Fq 'Duel.GetPlayerFieldGroup(p,LOCATION_MZONE)' multiplayer-deck-master/c511000405.lua
           grep -Fq 's.apply(sc,tc,500,false)' multiplayer-deck-master/c511000405.lua
           grep -Fq 's.apply(sc,tc,-500,true)' multiplayer-deck-master/c511000405.lua
           grep -Fq 'e1:SetValue(RACE_MACHINE)' multiplayer-deck-master/c511000405.lua
-          ! grep -Fq 'SetTargetRange' multiplayer-deck-master/c511000405.lua
+          grep -Fq 'e2:SetTargetRange(LOCATION_MZONE,LOCATION_MZONE)' multiplayer-deck-master/c511000405.lua
+          grep -Fq 'function s.machineboosttarget' multiplayer-deck-master/c511000405.lua
+          grep -Fq 'c:GetFlagEffect(id)==0' multiplayer-deck-master/c511000405.lua
           ! grep -Fq 'EVENT_SUMMON_SUCCESS' multiplayer-deck-master/c511000405.lua
           ! grep -Fq 'Card.IsDefensePos' multiplayer-deck-master/c511000405.lua
 
@@ -61,10 +64,12 @@ jobs:
           grep -Fq 'e1:SetCode(511004016)' multiplayer-deck-master/c21175632.lua
           grep -Fq 'not c:IsHasEffect(511004016)' multiplayer-deck-master/c153999999.lua
 
-          # Super Roboyarou ownership/redirect fix must remain present.
+          # Super Roboyarou: exact logical owner without replay/view TagSwap.
           grep -Fq 'h:GetLogicalOwner()' multiplayer-deck-master/c153000012.lua
-          grep -Fq 'Duel.TagSwap(side)' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
           grep -Fq 'Duel.IsDeckMasterPlayer(logical,id)' multiplayer-deck-master/c153000012.lua
           grep -Fq 'POS_FACEUP_ATTACK' multiplayer-deck-master/c153000012.lua
           grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
           grep -Fq 'Duel.SSet(side,tc,side,false)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
