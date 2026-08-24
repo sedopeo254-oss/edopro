@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate replay hardening against multiplayer regressions
+    name: Validate replay hardening v2 regressions
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +19,9 @@ jobs:
       - name: Apply replay-safe P2 Deck Master ownership
         run: python3 .github/scripts/apply-3v1-core-owner-no-view-swap.py
       - name: Apply replay hardening
-        run: python3 .github/scripts/apply-3v1-replay-hardening.py
+        run: |
+          python3 .github/scripts/apply-3v1-replay-hardening.py
+          python3 .github/scripts/apply-3v1-replay-hardening-v2.py
       - name: Install Lua parser
         run: |
           sudo apt-get update -qq
@@ -33,24 +35,59 @@ jobs:
           luac5.4 -p multiplayer-deck-master/c153000012.lua
           luac5.4 -p multiplayer-deck-master/c511001152.lua
           luac5.4 -p multiplayer-deck-master/c511000405.lua
+
+          # First-stage replay hardening.
           grep -Fq 'const bool same_snapshot' gframe/client_field.cpp
           grep -Fq 'Authoritative replay snapshots beat visual recapture' gframe/client_field.cpp
           grep -Fq 'Replay view changes are visual only' gframe/client_field.cpp
           grep -Fq 'Identical view hints are common in attack/target sequences' gframe/duelclient.cpp
           grep -Fq 'Never replay TAG_SWAP' gframe/duelclient.cpp
           grep -Fq 'SetThreeVsOneView(target_logical)' gframe/duelclient.cpp
-          grep -Fq 'A face-up Special Summon is public information' gframe/duelclient.cpp
+
+          # V2: Card of Sanctity/off-focus draws never enter another teammate's visible hand.
+          grep -Fq 'Never put the active duelist'"'"'s cards directly into the' gframe/duelclient.cpp
+          grep -Fq 'UpdateMultiplayerPrivateDraw(logical_player, drawn_cards)' gframe/duelclient.cpp
+          grep -Fq 'multiplayer_private_piles_valid[logical_player]' gframe/duelclient.cpp
+
+          # V2: stable ClientCard identity and SetCode texture rebinding.
+          grep -Fq 'Only cards actually removed from a private pile' .github/scripts/apply-3v1-replay-hardening-v2.py
+          grep -Fq 'pile[i]->SetCode(cards[i].code)' gframe/client_field.cpp
+          grep -Fq 'deck[player].back()->SetCode(snapshot.top_code)' gframe/client_field.cpp
+          grep -Fq 'RefreshHandHitboxes();' gframe/client_field.cpp
+          grep -Fq 'pcard->is_public = true;' gframe/duelclient.cpp
+
+          # P2 Deck Master ownership/view safety remains intact.
           grep -Fq 'preserve_private_duelist' ocgcore/field.cpp
           grep -Fq 'moving P2'"'"'s Deck Master must not change the P3 replay/view focus' ocgcore/tests/multiplayer_field_tests.cpp
           ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
           ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
           grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
           grep -Fq 'e1:SetValue(-1350)' multiplayer-deck-master/c511001152.lua
+
+          # Card of Sanctity regression model from the uploaded replay:
+          # while P2 is displayed, off-focus side-0 DRAW belongs to active P3.
+          python3 - <<'PY'
+          hands = {0:[1,2,3,4,5], 1:[11,12,13,14,15], 2:[21,22,23,24], 3:[]}
+          active = [2,3]
+          focus = [1,0]
+          # MSG_MULTIPLAYER_DRAW for P1/P2
+          hands[0].append(101)
+          hands[1].append(102)
+          # Standard MSG_DRAW core side 0 must update active logical P3, not displayed P2.
+          logical = active[0]
+          hands[logical].extend([103,104])
+          assert hands[1] == [11,12,13,14,15,102]
+          assert hands[2] == [21,22,23,24,103,104]
+          assert focus[0] == 1
+          print('Card of Sanctity logical-hand isolation regression passed')
+          PY
+
           git -C ocgcore diff --check
           git diff --check
 
   windows:
-    name: Windows hardened replay client
+    name: Windows hardened replay v2 client
     runs-on: windows-2022
     needs: validate
     env:
@@ -70,9 +107,11 @@ jobs:
       - name: Apply replay-safe P2 Deck Master ownership
         shell: bash
         run: python .github/scripts/apply-3v1-core-owner-no-view-swap.py
-      - name: Apply replay hardening
+      - name: Apply replay hardening v2
         shell: bash
-        run: python .github/scripts/apply-3v1-replay-hardening.py
+        run: |
+          python .github/scripts/apply-3v1-replay-hardening.py
+          python .github/scripts/apply-3v1-replay-hardening-v2.py
       - uses: microsoft/setup-msbuild@v3
       - name: Install v141 XP toolset
         shell: pwsh
@@ -110,6 +149,6 @@ jobs:
           test -f deploy/expansions/script/c511001152.lua
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-3v1-replay-hardening-windows-x86-no-upx
+          name: edopro-3v1-replay-hardening-v2-windows-x86-no-upx
           path: deploy/
           if-no-files-found: error
