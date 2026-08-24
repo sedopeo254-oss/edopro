@@ -5,6 +5,7 @@ on:
     branches: [ master ]
     paths:
       - 'tools/ai-duel/**'
+      - 'tools/ai-duel-v0.3/**'
       - '.github/workflows/ai-duel-build.yml'
 jobs:
   build-windows:
@@ -15,16 +16,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Reconstruct Ai Duel v0.3 source
+        shell: pwsh
+        run: |
+          $chunks = Get-ChildItem 'tools/ai-duel-v0.3/*.b64' | Sort-Object Name
+          if ($chunks.Count -ne 6) { throw "Expected 6 chunks, found $($chunks.Count)" }
+          $b64 = ($chunks | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes('ai-duel-v0.3-build.zip', [Convert]::FromBase64String($b64))
+          Expand-Archive -Path 'ai-duel-v0.3-build.zip' -DestinationPath 'ai-duel-v0.3-build'
       - name: Install dependencies
-        working-directory: tools/ai-duel
+        working-directory: ai-duel-v0.3-build
         run: npm install
+      - name: Run Ai Duel smoke tests
+        working-directory: ai-duel-v0.3-build
+        run: npm test
       - name: Build portable Windows x64 EXE
-        working-directory: tools/ai-duel
+        working-directory: ai-duel-v0.3-build
         run: npm run build:win
       - name: Upload Ai Duel EXE
         uses: actions/upload-artifact@v4
         with:
-          name: Ai-Duel-v0.1.0-Windows-x64
-          path: tools/ai-duel/dist/*.exe
+          name: Ai-Duel-v0.3.0-Windows-x64
+          path: ai-duel-v0.3-build/dist/*.exe
           if-no-files-found: error
           retention-days: 30
