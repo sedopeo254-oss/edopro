@@ -1,0 +1,10 @@
+name: Trigger replay hardening validation
+on:
+  pull_request:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+jobs:
+  marker:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo replay-hardening
