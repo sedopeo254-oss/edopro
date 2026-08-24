@@ -1,1 +1,1 @@
-Validate Card of Sanctity logical hand isolation, lightweight replay pile updates, persistent Deck Master images, and corrected CI guard v2.
+Validate replay hardening v3: Card of Sanctity hand isolation, same-player stable identity, clean logical view switches, lightweight pile refresh and persistent Deck Master images.
