@@ -102,28 +102,10 @@ function s.haslogicalzone(logical,side)
 	end
 	return Duel.GetLocationCount(side,LOCATION_MZONE)>0
 end
---Force the physical side to the exact logical owner before any summon or
---battle redirect. The patched Core implements FocusLogicalPlayer with
---field::tag_swap_to(), so P2 cannot inherit P3's currently displayed field.
-function s.focuslogical(logical)
-	if Duel.GetActiveLogicalPlayerMask()==0 then return true end
-	if Duel.FocusLogicalPlayer then
-		return Duel.FocusLogicalPlayer(logical)
-	end
-	--Compatibility fallback for older clients: identify the currently swapped
-	--private pile and cycle TagSwap until the requested logical player is active.
-	local side=Duel.GetLogicalPlayerSide(logical)
-	if side==nil then return false end
-	local swap=Duel.TagSwap
-	for _=1,4 do
-		local g=Duel.GetFieldGroup(side,
-			LOCATION_DECK|LOCATION_HAND|LOCATION_EXTRA|LOCATION_GRAVE|LOCATION_REMOVED,0)
-		local tc=g:GetFirst()
-		if tc and tc:GetLogicalControler()==logical then return true end
-		swap(side)
-	end
-	return false
-end
+--Replay-safe owner lock: the patched Core preserves this Deck Master's
+--logical private-pile duelist when it moves to the field. Do not TagSwap or
+--change current_duelist here; the replay/view must stay on the player it was
+--already showing while P2's card still enters P2's encoded field slots.
 function s.dmcon(e,tp,eg,ep,ev,re,r,rp)
 	local dm,logical=s.getzonemaster(e,tp)
 	if not dm or not s.isopponentattack(e,tp) then return false end
@@ -141,7 +123,6 @@ end
 function s.summonfromdeckmaster(e,tp)
 	local c,logical=s.getzonemaster(e,tp)
 	if not c then return nil end
-	if not s.focuslogical(logical) then return nil end
 	local side=Duel.GetLogicalPlayerSide(logical) or tp
 	if not s.haslogicalzone(logical,side) then return nil end
 	Duel.ClearDeckMasterZonePlayer(logical)
@@ -202,9 +183,9 @@ function s.dmop(e,tp,eg,ep,ev,re,r,rp)
 	if not c then return end
 	if Duel.GetAttacker()==attacker and c:IsFaceup()
 		and c:IsLocation(LOCATION_MZONE) then
-		--ChangeAttackTarget records c:GetLogicalControler(), so after the owner
-		--focus above battle damage is charged to P2 rather than the previously
-		--displayed teammate (for example P3).
+		--ChangeAttackTarget records c:GetLogicalControler(). The Core keeps the
+		--Deck Master on its logical owner without changing replay/view focus, so
+		--battle damage is charged to P2 even while P3 remains displayed.
 		Duel.ChangeAttackTarget(c,true)
 	end
 	--Set any 1 S/T from the same logical owner's hand. The summon/redirect
