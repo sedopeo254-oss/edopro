@@ -68,6 +68,8 @@ public:
 	int extra_p_count[2];
 	std::array<MultiplayerPrivatePileSnapshot, 4> multiplayer_private_piles;
 	std::array<bool, 4> multiplayer_private_piles_valid{};
+	std::array<uint8_t, 2> multiplayer_displayed_field_logical{ 0xff, 0xff };
+	std::array<uint8_t, 2> multiplayer_displayed_hand_logical{ 0xff, 0xff };
 
 	size_t selected_option;
 	ClientCard* attacker;
@@ -126,10 +128,11 @@ public:
 	std::wstring GetOptionText(uint64_t option) const;
 	void ReplaySwap();
 	void RefreshAllCards();
+	void RefreshPublicFieldCards();
 	void RefreshLogicalDeckMasters();
 	void RefreshHandHitboxes();
 	void CycleTeamField();
-	void ReplaceMultiplayerPrivatePiles(uint8_t player,
+	bool ReplaceMultiplayerPrivatePiles(uint8_t player,
 		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient = true);
 	void CacheMultiplayerPrivatePiles(uint8_t logical_player, const MultiplayerPrivatePileSnapshot& snapshot);
 	void CaptureBattleRoyaleReplayPrivatePiles();
@@ -137,6 +140,7 @@ public:
 	void CaptureThreeVsOneReplayPrivatePiles();
 	void ApplyThreeVsOneReplayPrivatePiles();
 	bool IsThreeVsOneReplayPrivatePileDisplayed(uint8_t logical_player) const;
+	bool IsThreeVsOneReplayHandDisplayed(uint8_t logical_player) const;
 	void UpdateMultiplayerPrivateDraw(uint8_t logical_player,
 		const std::vector<MultiplayerPrivatePileCard>& drawn_cards);
 	void UpdateMultiplayerPrivateMove(uint8_t previous_logical,

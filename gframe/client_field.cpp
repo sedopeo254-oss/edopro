@@ -112,6 +112,8 @@ void ClientField::Clear() {
 		multiplayer_private_piles[logical] = {};
 		multiplayer_private_piles_valid[logical] = false;
 	}
+	multiplayer_displayed_field_logical = { 0xff, 0xff };
+	multiplayer_displayed_hand_logical = { 0xff, 0xff };
 }
 void ClientField::Initial(uint8_t player, uint32_t deckc, uint32_t extrac) {
 	ClientCard* pcard;
@@ -740,10 +742,73 @@ void ClientField::RefreshAllCards() {
 		chit.UpdateDrawCoordinates();
 	mainGame->should_refresh_hands = true;
 }
-void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
+void ClientField::RefreshPublicFieldCards() {
+	RefreshLogicalDeckMasters();
+	auto refresh = [](ClientCard* const& pcard) {
+		if(!pcard)
+			return;
+		pcard->UpdateDrawCoordinates(true);
+		pcard->is_moving = false;
+		pcard->refresh_on_stop = false;
+		pcard->aniFrame = 0;
+	};
+	for(uint8_t player = 0; player < 2; ++player) {
+		for(auto* pcard : mzone[player])
+			refresh(pcard);
+		for(auto* pcard : szone[player])
+			refresh(pcard);
+		refresh(skills[player]);
+	}
+	for(auto* pcard : overlay_cards)
+		refresh(pcard);
+	for(auto& chain : chains)
+		chain.UpdateDrawCoordinates();
+}
+bool ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
 		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient) {
 	if(player > 1)
-		return;
+		return false;
+	auto public_for = [](uint8_t location, const MultiplayerPrivatePileCard& card) {
+		switch(location) {
+		case LOCATION_HAND:
+			return card.code != 0;
+		case LOCATION_EXTRA:
+			return card.code != 0 && (card.position & POS_FACEUP);
+		case LOCATION_GRAVE:
+			return card.code != 0;
+		case LOCATION_REMOVED:
+			return card.code != 0 && (card.position & POS_FACEUP);
+		default:
+			return false;
+		}
+	};
+	auto same_cards = [&](const auto& pile, const auto& cards, uint8_t location) {
+		if(pile.size() != cards.size())
+			return false;
+		for(size_t i = 0; i < pile.size(); ++i) {
+			const auto* pcard = pile[i];
+			if(!pcard || pcard->code != cards[i].code
+					|| static_cast<uint8_t>(pcard->position) != cards[i].position
+					|| pcard->is_public != public_for(location, cards[i]))
+				return false;
+		}
+		return true;
+	};
+	const auto visible_top = deck[player].empty() || !deck[player].back()
+		? 0u : deck[player].back()->code;
+	const auto wanted_extra_p = static_cast<int>(std::min<size_t>(
+		snapshot.extra_p_count, snapshot.extra.size()));
+	const bool deck_changed = deck[player].size() != snapshot.deck_count
+		|| visible_top != snapshot.top_code;
+	const bool hand_changed = !same_cards(hand[player], snapshot.hand, LOCATION_HAND);
+	const bool extra_changed = extra_p_count[player] != wanted_extra_p
+		|| !same_cards(extra[player], snapshot.extra, LOCATION_EXTRA);
+	const bool grave_changed = !same_cards(grave[player], snapshot.grave, LOCATION_GRAVE);
+	const bool removed_changed = !same_cards(remove[player], snapshot.removed, LOCATION_REMOVED);
+	if(!deck_changed && !hand_changed && !extra_changed
+			&& !grave_changed && !removed_changed)
+		return false;
+
 	if(clear_transient) {
 		ClearSelect();
 		ClearChainSelect();
@@ -792,18 +857,12 @@ void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
 		if(current_chain.chain_card == pcard)
 			current_chain.chain_card = nullptr;
 	};
-	auto reset_card = [player](ClientCard* pcard, uint8_t location, uint32_t sequence) {
-		pcard->owner = player;
-		pcard->controler = player;
-		pcard->location = location;
-		pcard->sequence = sequence;
-		pcard->position = POS_FACEDOWN_DEFENSE;
-		pcard->code = 0;
+	auto reset_identity = [&](ClientCard* pcard) {
+		detach_card(pcard);
 		pcard->cover = 0;
 		pcard->status = 0;
 		pcard->cmdFlag = 0;
 		pcard->chain_code = 0;
-		pcard->is_public = false;
 		pcard->is_reversed = false;
 		pcard->is_hovered = false;
 		pcard->is_selectable = false;
@@ -812,16 +871,30 @@ void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
 		pcard->is_showtarget = false;
 		pcard->is_showchaintarget = false;
 		pcard->is_highlighting = false;
+		pcard->counters.clear();
+		pcard->desc_hints.clear();
+	};
+	auto set_common = [player](ClientCard* pcard, uint8_t location,
+			uint32_t sequence, uint32_t code, uint8_t position, bool is_public) {
+		pcard->owner = player;
+		pcard->controler = player;
+		pcard->location = location;
+		pcard->sequence = sequence;
+		// A card can already carry the correct numeric code while still rendering
+		// the old private card back. Re-run SetCode whenever it becomes public.
+		if(pcard->code != code || (is_public && !pcard->is_public))
+			pcard->SetCode(code);
+		pcard->position = position;
+		pcard->is_public = is_public;
 		pcard->is_moving = false;
 		pcard->is_fading = false;
 		pcard->refresh_on_stop = false;
 		pcard->aniFrame = 0;
 		pcard->curAlpha = 255;
 		pcard->draw_scale = 1.0f;
-		pcard->counters.clear();
-		pcard->desc_hints.clear();
+		pcard->UpdateDrawCoordinates(true);
 	};
-	auto match_pile = [&detach_card, &reset_card](auto& pile, size_t count, uint8_t location) {
+	auto resize_pile = [&](auto& pile, size_t count) {
 		while(pile.size() > count) {
 			auto* pcard = pile.back();
 			detach_card(pcard);
@@ -830,32 +903,49 @@ void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
 		}
 		while(pile.size() < count)
 			pile.push_back(new ClientCard{});
-		for(size_t sequence = 0; sequence < pile.size(); ++sequence) {
-			detach_card(pile[sequence]);
-			reset_card(pile[sequence], location, static_cast<uint32_t>(sequence));
-		}
 	};
-	auto apply_visible_cards = [](auto& pile, const auto& cards) {
-		for(size_t i = 0; i < pile.size() && i < cards.size(); ++i) {
-			pile[i]->code = cards[i].code;
-			pile[i]->position = cards[i].position;
+	auto reconcile_cards = [&](auto& pile, const auto& cards,
+			uint8_t location) {
+		resize_pile(pile, cards.size());
+		for(size_t sequence = 0; sequence < cards.size(); ++sequence) {
+			auto* pcard = pile[sequence];
+			const bool wanted_public = public_for(location, cards[sequence]);
+			const bool identity_changed = pcard->location != location
+				|| pcard->code != cards[sequence].code;
+			if(identity_changed)
+				reset_identity(pcard);
+			set_common(pcard, location, static_cast<uint32_t>(sequence),
+				cards[sequence].code, cards[sequence].position, wanted_public);
 		}
 	};
 
-	match_pile(deck[player], snapshot.deck_count, LOCATION_DECK);
-	match_pile(hand[player], snapshot.hand.size(), LOCATION_HAND);
-	match_pile(extra[player], snapshot.extra.size(), LOCATION_EXTRA);
-	match_pile(grave[player], snapshot.grave.size(), LOCATION_GRAVE);
-	match_pile(remove[player], snapshot.removed.size(), LOCATION_REMOVED);
-	extra_p_count[player] = static_cast<int>(std::min<size_t>(
-		snapshot.extra_p_count, extra[player].size()));
-	if(!deck[player].empty())
-		deck[player].back()->code = snapshot.top_code;
-	apply_visible_cards(hand[player], snapshot.hand);
-	apply_visible_cards(extra[player], snapshot.extra);
-	apply_visible_cards(grave[player], snapshot.grave);
-	apply_visible_cards(remove[player], snapshot.removed);
-	RefreshAllCards();
+	if(deck_changed) {
+		resize_pile(deck[player], snapshot.deck_count);
+		for(size_t sequence = 0; sequence < deck[player].size(); ++sequence) {
+			auto* pcard = deck[player][sequence];
+			const auto code = sequence + 1 == deck[player].size()
+				? snapshot.top_code : 0u;
+			if(pcard->location != LOCATION_DECK || pcard->code != code)
+				reset_identity(pcard);
+			set_common(pcard, LOCATION_DECK, static_cast<uint32_t>(sequence),
+				code, POS_FACEDOWN_DEFENSE, false);
+		}
+	}
+	if(hand_changed)
+		reconcile_cards(hand[player], snapshot.hand, LOCATION_HAND);
+	if(extra_changed) {
+		reconcile_cards(extra[player], snapshot.extra, LOCATION_EXTRA);
+		extra_p_count[player] = wanted_extra_p;
+	}
+	if(grave_changed)
+		reconcile_cards(grave[player], snapshot.grave, LOCATION_GRAVE);
+	if(removed_changed)
+		reconcile_cards(remove[player], snapshot.removed, LOCATION_REMOVED);
+	if(hand_changed) {
+		mainGame->should_refresh_hands = true;
+		RefreshHandHitboxes();
+	}
+	return true;
 }
 void ClientField::CacheMultiplayerPrivatePiles(uint8_t logical_player,
 		const MultiplayerPrivatePileSnapshot& snapshot) {
@@ -926,27 +1016,27 @@ void ClientField::CaptureThreeVsOneReplayPrivatePiles() {
 	auto capture_cards = [](const auto& source, auto& destination) {
 		destination.clear();
 		destination.reserve(source.size());
-		for(const auto* pcard : source) {
+		for(const auto* pcard : source)
 			if(pcard)
-				destination.push_back({
-					pcard->code, static_cast<uint8_t>(pcard->position)
-				});
-		}
+				destination.push_back({ pcard->code,
+					static_cast<uint8_t>(pcard->position) });
 	};
 	for(uint8_t display_side = 0; display_side < 2; ++display_side) {
 		const auto core_side = mainGame->LocalPlayer(display_side);
 		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
-		if(logical >= multiplayer_private_piles.size())
+		if(logical >= multiplayer_private_piles.size()
+				|| multiplayer_private_piles_valid[logical])
 			continue;
 		MultiplayerPrivatePileSnapshot snapshot;
 		snapshot.deck_count = static_cast<uint32_t>(deck[display_side].size());
 		snapshot.extra_p_count = extra_p_count[display_side] > 0
 			? static_cast<uint32_t>(std::min<size_t>(
-				extra_p_count[display_side], extra[display_side].size()))
-			: 0;
+				extra_p_count[display_side], extra[display_side].size())) : 0;
 		snapshot.top_code = deck[display_side].empty()
 			? 0 : deck[display_side].back()->code;
-		capture_cards(hand[display_side], snapshot.hand);
+		// Do not copy a hand projected for another teammate into this field owner.
+		if(mainGame->dInfo.GetThreeVsOneReplayHandLogical(core_side) == logical)
+			capture_cards(hand[display_side], snapshot.hand);
 		capture_cards(extra[display_side], snapshot.extra);
 		capture_cards(grave[display_side], snapshot.grave);
 		capture_cards(remove[display_side], snapshot.removed);
@@ -959,31 +1049,64 @@ bool ClientField::IsThreeVsOneReplayPrivatePileDisplayed(
 			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 			|| logical_player >= mainGame->dInfo.team1 + mainGame->dInfo.team2)
 		return false;
-	for(uint8_t core_side = 0; core_side < 2; ++core_side) {
-		if(mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player)
+	for(uint8_t core_side = 0; core_side < 2; ++core_side)
+		if(mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player
+				|| mainGame->dInfo.GetThreeVsOneReplayHandLogical(core_side) == logical_player)
 			return true;
-	}
 	return false;
+}
+bool ClientField::IsThreeVsOneReplayHandDisplayed(uint8_t logical_player) const {
+	if(!mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+		return false;
+	const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
+	return core_side < 2
+		&& mainGame->dInfo.GetThreeVsOneReplayHandLogical(core_side) == logical_player;
 }
 void ClientField::ApplyThreeVsOneReplayPrivatePiles() {
 	if(!mainGame->dInfo.isReplay
 			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 		return;
-	bool clear_transient = true;
+	auto capture_cards = [](const auto& source, auto& destination) {
+		destination.clear();
+		destination.reserve(source.size());
+		for(const auto* pcard : source)
+			if(pcard)
+				destination.push_back({ pcard->code,
+					static_cast<uint8_t>(pcard->position) });
+	};
 	for(uint8_t core_side = 0; core_side < 2; ++core_side) {
 		const auto display_side = mainGame->LocalPlayer(core_side);
-		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
 		if(display_side > 1)
 			continue;
-		if(logical < multiplayer_private_piles.size()
-				&& multiplayer_private_piles_valid[logical]) {
-			ReplaceMultiplayerPrivatePiles(display_side,
-				multiplayer_private_piles[logical], clear_transient);
+		const auto field_logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
+		const auto hand_logical = mainGame->dInfo.GetThreeVsOneReplayHandLogical(core_side);
+		MultiplayerPrivatePileSnapshot composed;
+		if(field_logical < multiplayer_private_piles.size()
+				&& multiplayer_private_piles_valid[field_logical]) {
+			composed = multiplayer_private_piles[field_logical];
 		} else {
-			ReplaceMultiplayerPrivatePiles(display_side,
-				MultiplayerPrivatePileSnapshot{}, clear_transient);
+			// At replay start the first view hint can precede its authoritative
+			// snapshot. Preserve the current non-hand projection instead of wiping it.
+			composed.deck_count = static_cast<uint32_t>(deck[display_side].size());
+			composed.extra_p_count = extra_p_count[display_side] > 0
+				? static_cast<uint32_t>(std::min<size_t>(
+					extra_p_count[display_side], extra[display_side].size())) : 0;
+			composed.top_code = deck[display_side].empty()
+				? 0 : deck[display_side].back()->code;
+			capture_cards(extra[display_side], composed.extra);
+			capture_cards(grave[display_side], composed.grave);
+			capture_cards(remove[display_side], composed.removed);
 		}
-		clear_transient = false;
+		// Field camera determines Deck/Extra/GY/Banish. Hand visibility follows
+		// the dedicated replay policy and may intentionally be empty.
+		composed.hand.clear();
+		if(hand_logical < multiplayer_private_piles.size()
+				&& multiplayer_private_piles_valid[hand_logical])
+			composed.hand = multiplayer_private_piles[hand_logical].hand;
+		ReplaceMultiplayerPrivatePiles(display_side, composed, false);
+		multiplayer_displayed_field_logical[display_side] = field_logical;
+		multiplayer_displayed_hand_logical[display_side] = hand_logical;
 	}
 }
 void ClientField::UpdateMultiplayerPrivateDraw(uint8_t logical_player,

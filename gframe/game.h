@@ -6,6 +6,7 @@
 #include <list>
 #include <atomic>
 #include "materials.h"
+#include "multiplayer_replay_policy.h"
 #include "settings_window.h"
 #include "config.h"
 #include "common.h"
@@ -107,6 +108,12 @@ struct DuelInfo {
 	// sides. Battle Royale owns two saved fields per side; 3-vs-1 owns three
 	// on side 0 and one on side 1.
 	uint8_t field_focus[2]{ 0, 0 };
+	// In 3v1 replay, the public field camera and the private hand owner are
+	// intentionally independent. A team hand is visible only for its turn owner
+	// or for the player currently attacked/targeted/damaged. 0xff means hide it.
+	uint8_t replay_hand_focus[2]{ 0xff, 0xff };
+	uint8_t replay_hand_reveal_mask{ 0 };
+	uint8_t replay_hand_preferred{ 0xff };
 	// Battle Royale is rendered as a stable two-seat view: the local logical
 	// player is always the lower field and this player is always the upper
 	// field. This is deliberately independent from the two core field sides.
@@ -253,6 +260,36 @@ struct DuelInfo {
 			return GetLocalDuelist();
 		const auto logical = GetLogicalPlayer(core_side);
 		return GetLogicalDuelist(logical);
+	}
+	uint8_t GetThreeVsOneReplayHandLogical(uint8_t core_side) const {
+		if(!isReplay || !HasFieldFlag(DUEL_3_V_1) || core_side > 1)
+			return GetLogicalPlayer(core_side);
+		const auto logical = replay_hand_focus[core_side];
+		return logical < team1 + team2 ? logical : 0xff;
+	}
+	bool SetThreeVsOneReplayHandPolicy(uint8_t affected = 0xff) {
+		if(!isReplay || !HasFieldFlag(DUEL_3_V_1))
+			return false;
+		const auto player_count = static_cast<uint8_t>(team1 + team2);
+		const auto mask = multiplayer_replay_policy::MakeVisibleHandMask(
+			logical_turn_player, affected, active_player_mask, player_count);
+		uint8_t next[2]{ 0xff, 0xff };
+		for(uint8_t side = 0; side < 2; ++side)
+			next[side] = multiplayer_replay_policy::ChooseHandForSide(
+				mask, logical_turn_player, affected, side,
+				static_cast<uint8_t>(team1), player_count);
+		const bool changed = replay_hand_focus[0] != next[0]
+			|| replay_hand_focus[1] != next[1]
+			|| replay_hand_reveal_mask != mask
+			|| replay_hand_preferred != affected;
+		replay_hand_focus[0] = next[0];
+		replay_hand_focus[1] = next[1];
+		replay_hand_reveal_mask = mask;
+		replay_hand_preferred = affected;
+		return changed;
+	}
+	bool RestoreThreeVsOneReplayTurnHand() {
+		return SetThreeVsOneReplayHandPolicy(0xff);
 	}
 	uint8_t GetPromptCoreSide(uint8_t selecting_player) const {
 		if((duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1))

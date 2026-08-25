@@ -1360,6 +1360,17 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		return (location & (LOCATION_DECK | LOCATION_HAND | LOCATION_GRAVE
 			| LOCATION_REMOVED | LOCATION_EXTRA)) != 0;
 	};
+	auto IsThreeVsOneReplayPrivateVisible = [&](uint8_t core_side,
+			uint8_t location, uint8_t logical_player) {
+		if(!mainGame->dInfo.isReplay
+				|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| core_side > 1
+				|| logical_player >= mainGame->dInfo.team1 + mainGame->dInfo.team2)
+			return true;
+		if(location & LOCATION_HAND)
+			return mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player);
+		return mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player;
+	};
 	auto MapLocationDisplay = [&](CoreUtils::loc_info& info) {
 		const auto core_controler = info.controler;
 		if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
@@ -1373,6 +1384,26 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			info.controler = mainGame->LocalPlayer(core_controler);
 		return true;
 	};
+	auto RestoreThreeVsOneReplayTurnHand = [&]() {
+		if(!mainGame->dInfo.isReplay
+				|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+			return false;
+		const bool changed = mainGame->dInfo.RestoreThreeVsOneReplayTurnHand();
+		if(changed)
+			mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
+		return changed;
+	};
+	auto ShowThreeVsOneAffectedHand = [&](uint8_t affected) {
+		if(!mainGame->dInfo.isReplay
+				|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| affected >= mainGame->dInfo.team1 + mainGame->dInfo.team2)
+			return false;
+		const bool changed = mainGame->dInfo.SetThreeVsOneReplayHandPolicy(affected);
+		if(changed)
+			mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
+		return changed;
+	};
+
 	auto SetBattleRoyaleReplayView = [&](uint8_t perspective,
 			uint8_t opponent = 0xff) {
 		if(!mainGame->dInfo.isReplay
@@ -1414,8 +1445,6 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				|| mainGame->dInfo.team1 == 0
 				|| mainGame->dInfo.team2 == 0)
 			return false;
-		if(mainGame->dInfo.isReplay)
-			mainGame->dField.CaptureThreeVsOneReplayPrivatePiles();
 		uint8_t allied_logical = 0xff;
 		for(const auto logical : { perspective, opponent,
 				mainGame->dInfo.logical_turn_player }) {
@@ -1435,17 +1464,21 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		}
 		if(allied_logical >= mainGame->dInfo.team1)
 			return false;
-		const auto allied_duelist =
-			mainGame->dInfo.GetLogicalDuelist(allied_logical);
+		const auto allied_duelist = mainGame->dInfo.GetLogicalDuelist(allied_logical);
 		const bool changed = mainGame->dInfo.field_focus[0] != allied_duelist
 			|| mainGame->dInfo.field_focus[1] != 0;
+		if(!changed)
+			return false;
+		if(mainGame->dInfo.isReplay)
+			mainGame->dField.CaptureThreeVsOneReplayPrivatePiles();
 		mainGame->dInfo.SetFieldFocus(0, allied_duelist);
 		mainGame->dInfo.SetFieldFocus(1, 0);
 		if(mainGame->dInfo.isReplay)
 			mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
-		if(changed)
-			mainGame->dField.RefreshAllCards();
-		return changed;
+		// Only the public field changes here. Rebuilding Hand/Deck/Extra caused
+		// the summon stalls and repeated P3 hand flicker in streamed replays.
+		mainGame->dField.RefreshPublicFieldCards();
+		return true;
 	};
 	const auto* pbuf = msg;
 	if(!mainGame->dInfo.isReplay && !mainGame->dInfo.isSingleMode) {
@@ -1821,11 +1854,15 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			}
 		}
 		mainGame->dInfo.logical_turn_player = logical_player;
+		if(mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+			mainGame->dInfo.RestoreThreeVsOneReplayTurnHand();
 		if(mainGame->dInfo.isReplay) {
 			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 				SetBattleRoyaleReplayView(logical_player);
-			else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+			else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
 				SetThreeVsOneView(logical_player);
+				mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
+			}
 		}
 		const auto field_side = static_cast<uint8_t>(logical_player < mainGame->dInfo.team1 ? 0 : 1);
 		const auto field_duelist = static_cast<uint8_t>(field_side == 0
@@ -1841,7 +1878,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			const auto outgoing = mainGame->dInfo.logical_active[field_side];
 			active_seat_changed = outgoing != logical_player;
 			const auto local_side = mainGame->LocalPlayer(field_side);
-			if(outgoing < 4) {
+			if(outgoing < 4
+					&& !(mainGame->dInfo.isReplay
+						&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {
 				mainGame->dInfo.logical_deck_count[outgoing] = static_cast<uint32_t>(mainGame->dField.deck[local_side].size());
 				mainGame->dInfo.logical_hand_count[outgoing] = static_cast<uint32_t>(mainGame->dField.hand[local_side].size());
 				mainGame->dInfo.logical_extra_count[outgoing] = static_cast<uint32_t>(mainGame->dField.extra[local_side].size());
@@ -1861,8 +1900,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		// Rebuild the normal two-side projection when either side changes focus.
 		if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
-				&& active_seat_changed)
-			mainGame->dField.RefreshAllCards();
+				&& active_seat_changed) {
+			if(mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+				mainGame->dField.RefreshPublicFieldCards();
+			else
+				mainGame->dField.RefreshAllCards();
+		}
 		break;
 	}
 	case MSG_MULTIPLAYER_REPLAY_VIEW: {
@@ -1915,6 +1958,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.replay_battle_royale_perspective = 0xff;
 		mainGame->dInfo.field_focus[0] = 0;
 		mainGame->dInfo.field_focus[1] = 0;
+		mainGame->dInfo.replay_hand_focus[0] = 0xff;
+		mainGame->dInfo.replay_hand_focus[1] = 0xff;
+		mainGame->dInfo.replay_hand_reveal_mask = 0;
+		mainGame->dInfo.replay_hand_preferred = 0xff;
 		mainGame->dInfo.battle_royale_opponent_logical = 0xff;
 		std::fill_n(mainGame->dInfo.logical_deck_master_code, 4, 0u);
 		mainGame->dInfo.logical_deck_master_enabled = false;
@@ -2002,6 +2049,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			| LOCATION_GRAVE | LOCATION_REMOVED | LOCATION_EXTRA;
 		auto player = mainGame->LocalPlayer(core_player);
 		if((location & PRIVATE_LOCATIONS)
+				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				&& !IsThreeVsOneReplayPrivateVisible(core_player, location,
+					mainGame->dInfo.GetLogicalPlayer(core_player)))
+			return true;
+		if((location & PRIVATE_LOCATIONS)
 				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 			const auto private_display =
 				GetActivePrivateDisplaySide(core_player);
@@ -2020,6 +2072,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		constexpr uint8_t PRIVATE_LOCATIONS = LOCATION_DECK | LOCATION_HAND
 			| LOCATION_GRAVE | LOCATION_REMOVED | LOCATION_EXTRA;
 		auto player = mainGame->LocalPlayer(core_player);
+		if((loc & PRIVATE_LOCATIONS)
+				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				&& !IsThreeVsOneReplayPrivateVisible(core_player, loc,
+					mainGame->dInfo.GetLogicalPlayer(core_player)))
+			break;
 		if((loc & PRIVATE_LOCATIONS)
 				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 			const auto private_display =
@@ -3107,10 +3164,13 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			auto sequence = CompatRead<uint8_t, uint32_t>(pbuf);
 			const auto private_display = IsPrivatePileLocation(location)
 				? GetActivePrivateDisplaySide(core_controller) : 0xff;
-			const bool hidden_private =
-				mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
-				&& IsPrivatePileLocation(location)
-				&& private_display > 1;
+			const auto private_logical = mainGame->dInfo.GetLogicalPlayer(core_controller);
+			const bool hidden_private = IsPrivatePileLocation(location)
+				&& ((mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+					&& private_display > 1)
+					|| (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						&& !IsThreeVsOneReplayPrivateVisible(
+							core_controller, location, private_logical)));
 			auto controller = private_display < 2
 				? private_display : mainGame->LocalPlayer(core_controller);
 			std::unique_lock<epro::mutex> lock(mainGame->gMutex);
@@ -3275,8 +3335,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					&& private_display > 1)
 				|| (mainGame->dInfo.isReplay
 					&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
-					&& mainGame->dInfo.GetLogicalPlayer(core_player)
-						!= mainGame->dInfo.GetFocusedLogicalPlayer(core_player))) {
+					&& !mainGame->dField.IsThreeVsOneReplayHandDisplayed(
+						mainGame->dInfo.GetLogicalPlayer(core_player)))) {
 			for(uint32_t i = 0; i < count; ++i)
 				BufferIO::Read<uint32_t>(pbuf);
 			return true;
@@ -3286,7 +3346,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		for(uint32_t i = 0; i < count; ++i)
 			shuffled_codes.push_back(BufferIO::Read<uint32_t>(pbuf));
 		auto lock = LockIf();
-		if(!mainGame->dInfo.isCatchingUp) {
+		const bool instant_replay_hand = mainGame->dInfo.isReplay
+			&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1);
+		if(!mainGame->dInfo.isCatchingUp && !instant_replay_hand) {
 			mainGame->WaitFrameSignal(5, lock);
 			if(player == 1 && !mainGame->dInfo.isReplay && !mainGame->dInfo.isSingleMode) {
 				bool flip = false;
@@ -3319,13 +3381,19 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			const auto& pcard = mainGame->dField.hand[player][i];
 			pcard->SetCode(shuffled_codes[i]);
 			pcard->desc_hints.clear();
-			if(!mainGame->dInfo.isCatchingUp) {
+			if(!mainGame->dInfo.isCatchingUp && !instant_replay_hand) {
 				pcard->is_hovered = false;
 				mainGame->dField.MoveCard(pcard, 5);
 			}
 		}
-		if(!mainGame->dInfo.isCatchingUp)
+		if(!mainGame->dInfo.isCatchingUp && !instant_replay_hand)
 			mainGame->WaitFrameSignal(5, lock);
+		if(instant_replay_hand) {
+			for(auto* pcard : mainGame->dField.hand[player])
+				if(pcard)
+					pcard->UpdateDrawCoordinates(true);
+			mainGame->should_refresh_hands = true;
+		}
 		return true;
 	}
 	case MSG_SHUFFLE_EXTRA: {
@@ -3573,6 +3641,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	case MSG_NEW_PHASE: {
 		Play(SoundManager::SFX::PHASE);
 		const auto phase = BufferIO::Read<uint16_t>(pbuf);
+		RestoreThreeVsOneReplayTurnHand();
 		auto lock = LockIf();
 		mainGame->btnDP->setVisible(false);
 		mainGame->btnDP->setSubElement(false);
@@ -3703,8 +3772,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 				return GetPrivateDisplaySide(core_player, info.duelist) > 1;
 			if(mainGame->dInfo.isReplay
-					&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
-				return info.duelist != mainGame->dInfo.field_focus[core_player];
+					&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+				const auto logical = mainGame->dInfo.GetLogicalPlayer(
+					core_player, info.duelist);
+				return !IsThreeVsOneReplayPrivateVisible(
+					core_player, info.location, logical);
+			}
 			return info.duelist
 				!= mainGame->dInfo.GetDisplayedPrivateDuelist(core_player);
 		};
@@ -3817,12 +3890,23 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					pcard = new ClientCard{};
 					pcard->position = current.position;
 					pcard->SetCode(code);
+					pcard->is_public = current.location == LOCATION_GRAVE
+						|| (current.location == LOCATION_REMOVED
+							&& (current.position & POS_FACEUP))
+						|| (current.location & LOCATION_ONFIELD
+							&& (current.position & POS_FACEUP));
 					mainGame->dField.AddCard(pcard, current.controler,
 						current.location, current.sequence);
 					pcard->UpdateDrawCoordinates(true);
 					return true;
 				}
-				if (pcard->code != code && (code != 0 || current.location == LOCATION_EXTRA))
+				const bool becoming_public = current.location == LOCATION_GRAVE
+					|| (current.location == LOCATION_REMOVED
+						&& (current.position & POS_FACEUP))
+					|| (current.location & LOCATION_ONFIELD
+						&& (current.position & POS_FACEUP));
+				if((code != 0 || current.location == LOCATION_EXTRA)
+						&& (pcard->code != code || (becoming_public && !pcard->is_public)))
 					pcard->SetCode(code);
 				pcard->cHint = 0;
 				pcard->chValue = 0;
@@ -3842,6 +3926,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				pcard->is_showchaintarget = false;
 				mainGame->dField.RemoveCard(previous.controler, previous.location, previous.sequence);
 				pcard->position = current.position;
+				pcard->is_public = becoming_public;
 				mainGame->dField.AddCard(pcard, current.controler, current.location, current.sequence);
 				if(!mainGame->dInfo.isCatchingUp) {
 					if (previous.location == current.location && previous.controler == current.controler && (current.location & (LOCATION_DECK | LOCATION_GRAVE | LOCATION_REMOVED | LOCATION_EXTRA))) {
@@ -4036,7 +4121,24 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_SPSUMMONING: {
 		const auto code = BufferIO::Read<uint32_t>(pbuf);
-		/*CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);*/
+		CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
+		const auto summon_core_side = info.controler;
+		const auto summon_logical = summon_core_side < 2
+			? mainGame->dInfo.GetLogicalPlayer(summon_core_side, info.duelist) : 0xff;
+		if(mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				&& summon_logical < mainGame->dInfo.team1 + mainGame->dInfo.team2)
+			SetThreeVsOneView(summon_logical);
+		info.controler = mainGame->LocalPlayer(summon_core_side);
+		if(auto* pcard = mainGame->dField.GetCard(info.controler, info.location,
+				info.sequence, info.position); pcard) {
+			// Always rebind a public Special Summon. A hidden Deck Master may
+			// already have the correct numeric code while still using the card back.
+			if(code)
+				pcard->SetCode(code);
+			pcard->position = info.position;
+			pcard->is_public = true;
+			pcard->UpdateDrawCoordinates(true);
+		}
 		if(!code || !PlayChant(SoundManager::CHANT::SUMMON, code))
 			Play(SoundManager::SFX::SPECIAL_SUMMON);
 		if(!mainGame->dInfo.isCatchingUp) {
@@ -4205,6 +4307,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		return true;
 	}
 	case MSG_CHAIN_END: {
+		RestoreThreeVsOneReplayTurnHand();
 		for(const auto& chain : mainGame->dField.chains) {
 			for(const auto& target : chain.target)
 				if(target)
@@ -4263,6 +4366,17 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		const auto count = CompatRead<uint8_t, uint32_t>(pbuf);
 		for(uint32_t i = 0; i < count; ++i) {
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
+			if(mainGame->dInfo.curMsg == MSG_BECOME_TARGET
+					&& mainGame->dInfo.isReplay
+					&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					&& info.controler < 2) {
+				const auto target_logical = mainGame->dInfo.GetLogicalPlayer(
+					info.controler, info.duelist);
+				if(target_logical < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
+					SetThreeVsOneView(target_logical);
+					ShowThreeVsOneAffectedHand(target_logical);
+				}
+			}
 			if(!MapLocationDisplay(info))
 				continue;
 			ClientCard* pcard = mainGame->dField.GetCard(
@@ -4304,56 +4418,57 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		const auto player = private_display < 2
 			? private_display : mainGame->LocalPlayer(core_player);
 		const auto count = CompatRead<uint8_t, uint32_t>(pbuf);
-		const bool hidden_battle_royale_pile =
-			mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
-			&& private_display > 1;
-		if(hidden_battle_royale_pile) {
-			for(uint32_t i = 0; i < count; ++i) {
-				BufferIO::Read<uint32_t>(pbuf);
-				if(!mainGame->dInfo.compat_mode)
-					BufferIO::Read<uint32_t>(pbuf);
-			}
-			if(logical_player < 4) {
-				auto& deck_count = mainGame->dInfo.logical_deck_count[logical_player];
-				deck_count = deck_count > count ? deck_count - count : 0;
-				mainGame->dInfo.logical_hand_count[logical_player] += count;
-			}
-			return true;
-		}
-		auto lock = LockIf();
-		auto& deck = mainGame->dField.deck[player];
-		while(deck.size() < count)
-			mainGame->dField.AddCard(new ClientCard{}, player, LOCATION_DECK, 0);
-		for (auto it = deck.crbegin(), end = it + count; it != end; ++it) {
-			auto pcard = *it;
-			const auto code = BufferIO::Read<uint32_t>(pbuf);
-			if(!mainGame->dInfo.compat_mode) {
-				/*uint32_t position =*/BufferIO::Read<uint32_t>(pbuf);
-				if(!mainGame->dField.deck_reversed || code)
-					pcard->SetCode(code);
-			} else if(!mainGame->dField.deck_reversed || code) {
-				pcard->SetCode(code & 0x7fffffff);
-			}
-		}
+		std::vector<MultiplayerPrivatePileCard> drawn_cards;
+		drawn_cards.reserve(count);
 		for(uint32_t i = 0; i < count; ++i) {
-			Play(SoundManager::SFX::DRAW);
-			const auto pcard = deck.back();
-			deck.pop_back();
-			mainGame->dField.AddCard(pcard, player, LOCATION_HAND, 0);
-			if(!mainGame->dInfo.isCatchingUp) {
-				for(auto& hand_pcard : mainGame->dField.hand[player])
-					mainGame->dField.MoveCard(hand_pcard, 10);
-				mainGame->WaitFrameSignal(5, lock);
+			auto code = BufferIO::Read<uint32_t>(pbuf);
+			uint8_t position = POS_FACEDOWN_DEFENSE;
+			if(!mainGame->dInfo.compat_mode)
+				position = static_cast<uint8_t>(BufferIO::Read<uint32_t>(pbuf));
+			else {
+				position = code & 0x80000000 ? POS_FACEUP : POS_FACEDOWN;
+				code &= 0x7fffffff;
 			}
+			drawn_cards.push_back({ code, position });
 		}
 		if(logical_player < 4) {
 			auto& deck_count = mainGame->dInfo.logical_deck_count[logical_player];
 			deck_count = deck_count > count ? deck_count - count : 0;
 			mainGame->dInfo.logical_hand_count[logical_player] += count;
 		}
+		if(mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
+			if(mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player))
+				mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
+			for(uint32_t i = 0; i < count; ++i)
+				Play(SoundManager::SFX::DRAW);
+			return true;
+		}
+		const bool hidden_battle_royale_pile =
+			mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) && private_display > 1;
+		if(hidden_battle_royale_pile)
+			return true;
+		auto lock = LockIf();
+		auto& deck = mainGame->dField.deck[player];
+		while(deck.size() < count)
+			mainGame->dField.AddCard(new ClientCard{}, player, LOCATION_DECK, 0);
+		for(const auto& drawn : drawn_cards) {
+			if(deck.empty())
+				break;
+			auto* pcard = deck.back();
+			deck.pop_back();
+			if(pcard->code != drawn.code)
+				pcard->SetCode(drawn.code);
+			pcard->position = drawn.position;
+			mainGame->dField.AddCard(pcard, player, LOCATION_HAND, 0);
+			Play(SoundManager::SFX::DRAW);
+		}
+		for(auto* hand_card : mainGame->dField.hand[player])
+			if(hand_card)
+				hand_card->UpdateDrawCoordinates(true);
+		mainGame->should_refresh_hands = true;
 		event_string = epro::sprintf(gDataManager->GetSysString(1611 + player), count);
 		mainGame->dField.CaptureBattleRoyaleReplayPrivatePiles();
-		mainGame->dField.CaptureThreeVsOneReplayPrivatePiles();
 		return true;
 	}
 	case MSG_MULTIPLAYER_DRAW: {
@@ -4372,29 +4487,25 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dInfo.logical_hand_count[logical_player] += count;
 		}
 		if(mainGame->dInfo.isReplay) {
-			mainGame->dField.UpdateMultiplayerPrivateDraw(
-				logical_player, drawn_cards);
-			if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
+			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+				if(mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player))
+					mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
+			} else if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
 				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
-			else if(mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(
-					logical_player))
-				mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
-		}
-		if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()
-				&& !(mainGame->dInfo.isReplay
-					&& (mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
-						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))) {
+		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
 			auto lock = LockIf();
-			const auto player = mainGame->LocalPlayer(mainGame->dInfo.GetLogicalCoreSide(logical_player));
-			auto& deck = mainGame->dField.deck[player];
+			const auto side = mainGame->LocalPlayer(mainGame->dInfo.GetLogicalCoreSide(logical_player));
+			auto& deck = mainGame->dField.deck[side];
 			for(const auto& drawn : drawn_cards) {
 				if(deck.empty())
 					break;
 				auto* pcard = deck.back();
 				deck.pop_back();
-				pcard->code = drawn.code;
+				if(pcard->code != drawn.code)
+					pcard->SetCode(drawn.code);
 				pcard->position = drawn.position;
-				mainGame->dField.AddCard(pcard, player, LOCATION_HAND, 0);
+				mainGame->dField.AddCard(pcard, side, LOCATION_HAND, 0);
 			}
 			mainGame->dField.RefreshAllCards();
 		}
@@ -4431,16 +4542,37 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dInfo.logical_grave_count[logical_player] = grave_count;
 			mainGame->dInfo.logical_banish_count[logical_player] = removed_count;
 		}
+		auto same_cards = [](const auto& a, const auto& b) {
+			if(a.size() != b.size())
+				return false;
+			for(size_t i = 0; i < a.size(); ++i)
+				if(a[i].code != b[i].code || a[i].position != b[i].position)
+					return false;
+			return true;
+		};
+		const bool duplicate = logical_player < 4
+			&& mainGame->dField.multiplayer_private_piles_valid[logical_player]
+			&& [&]() {
+				const auto& previous = mainGame->dField.multiplayer_private_piles[logical_player];
+				return previous.deck_count == snapshot.deck_count
+					&& previous.extra_p_count == snapshot.extra_p_count
+					&& previous.top_code == snapshot.top_code
+					&& same_cards(previous.hand, snapshot.hand)
+					&& same_cards(previous.extra, snapshot.extra)
+					&& same_cards(previous.grave, snapshot.grave)
+					&& same_cards(previous.removed, snapshot.removed);
+			}();
 		if(mainGame->dInfo.isReplay
 				&& (mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
 					|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {
-			mainGame->dField.CacheMultiplayerPrivatePiles(
-				logical_player, snapshot);
-			if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
+			mainGame->dField.CacheMultiplayerPrivatePiles(logical_player, snapshot);
+			if(duplicate)
+				return true;
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+				if(mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(logical_player))
+					mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
+			} else if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
 				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
-			else if(mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(
-					logical_player))
-				mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
 		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
 			auto lock = LockIf();
 			const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
@@ -4465,8 +4597,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				mainGame->dInfo.GetLocalLogicalPlayer(), logical_player);
 		else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				&& logical_player < mainGame->dInfo.team1 + mainGame->dInfo.team2)
-			SetThreeVsOneView(
-				mainGame->dInfo.logical_turn_player, logical_player);
+			SetThreeVsOneView(mainGame->dInfo.logical_turn_player, logical_player);
 		const auto logical_display =
 			mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player);
 		const auto player = logical_display < 2
@@ -4765,10 +4896,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				&& valid_logical_attack) {
 			SetThreeVsOneView(attacker_logical, attack_target_logical);
-			// A replay-view packet may already have selected the same logical pair,
-			// but the previous card transform can remain for one frame. Refreshing
-			// here keeps the final arrow attached to the authoritative fields.
-			mainGame->dField.RefreshAllCards();
+			ShowThreeVsOneAffectedHand(attack_target_logical);
+			mainGame->dField.RefreshPublicFieldCards();
 		} else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 			if(mainGame->dInfo.isReplay && valid_logical_attack) {
 				SetBattleRoyaleReplayView(
@@ -4928,6 +5057,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		return true;
 	}
 	case MSG_ATTACK_DISABLED: {
+		RestoreThreeVsOneReplayTurnHand();
 		if(mainGame->dField.attacker)
 			event_string = epro::sprintf(gDataManager->GetSysString(1621),
 				gDataManager->GetName(mainGame->dField.attacker->code));
@@ -4937,6 +5067,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		return true;
 	}
 	case MSG_DAMAGE_STEP_END: {
+		RestoreThreeVsOneReplayTurnHand();
 		return true;
 	}
 	case MSG_MISSED_EFFECT: {
@@ -5226,6 +5357,13 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				? mainGame->dInfo.GetBattleRoyalePrivateDisplaySide(
 					logical_core_side, logical_duelist)
 				: mainGame->LocalPlayer(core_player);
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+			// Replay snapshots already carry exact logical Hand/Deck/Extra/GY/Banish.
+			// Replaying TAG_SWAP here would delete/recreate the visible hand and is
+			// the main source of flicker, stalls and P3 appearing during P4's turn.
+			return true;
+		}
 		const auto player = private_display < 2
 			? private_display : mainGame->LocalPlayer(core_player);
 		if((mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
