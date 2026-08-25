@@ -1,0 +1,242 @@
+diff --git a/gframe/duelclient.cpp b/gframe/duelclient.cpp
+index 2a7b82a..b4f8491 100644
+--- a/gframe/duelclient.cpp
++++ b/gframe/duelclient.cpp
+@@ -962,7 +962,11 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
+ 				mainGame->dInfo.logical_banish_count })
+ 			std::fill_n(counts, 4, 0u);
+ 		std::fill_n(mainGame->dInfo.logical_deck_master_code, 4, 0u);
++		std::fill_n(mainGame->dInfo.logical_deck_master_visible, 4, false);
+ 		mainGame->dInfo.logical_deck_master_enabled = false;
++		mainGame->dInfo.three_vs_one_replay_hand_mask = 0;
++		std::fill_n(mainGame->dInfo.three_vs_one_replay_pending_private, 2, 0xff);
++		std::fill_n(mainGame->dInfo.three_vs_one_replay_loaded_private, 2, 0xff);
+ 		mainGame->dInfo.turn = 0;
+ 		mainGame->dInfo.time_left[0] = 0;
+ 		mainGame->dInfo.time_left[1] = 0;
+@@ -1404,7 +1408,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		if(!visible_state_matches) {
+ 			// One deterministic repair is better than animating several wrong
+ 			// intermediate hands. This uses the already-updated authoritative cache.
+-			mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
++			mainGame->dField.ApplyThreeVsOneReplayPrivatePile(logical_player);
+ 			return true;
+ 		}
+ 		for(const auto& drawn : drawn_cards) {
+@@ -1424,6 +1428,18 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		return true;
+ 	};
+ 
++	auto SetThreeVsOneReplayHandMask = [&](uint8_t mask) {
++		if(!mainGame->dInfo.isReplay
++				|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			return false;
++		mask &= mainGame->dInfo.active_player_mask;
++		if(mainGame->dInfo.three_vs_one_replay_hand_mask == mask)
++			return false;
++		mainGame->dInfo.three_vs_one_replay_hand_mask = mask;
++		mainGame->dField.RefreshThreeVsOneReplayHands();
++		return true;
++	};
++
+ 	auto SetBattleRoyaleReplayView = [&](uint8_t perspective,
+ 			uint8_t opponent = 0xff) {
+ 		if(!mainGame->dInfo.isReplay
+@@ -1466,14 +1482,22 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 				|| mainGame->dInfo.team2 == 0)
+ 			return false;
+ 		uint8_t allied_logical = 0xff;
+-		for(const auto logical : { perspective, opponent,
+-				mainGame->dInfo.logical_turn_player }) {
++		for(const auto logical : { perspective, opponent }) {
+ 			if(logical < mainGame->dInfo.team1
+ 					&& (mainGame->dInfo.active_player_mask & (1u << logical))) {
+ 				allied_logical = logical;
+ 				break;
+ 			}
+ 		}
++		// During Nezbitt's turn, keep the currently displayed teammate until
++		// an actual attack/target selects a different one. This prevents P3's
++		// field and hand from being repeatedly re-projected by view hints.
++		if(allied_logical >= mainGame->dInfo.team1) {
++			const auto current = mainGame->dInfo.GetFocusedLogicalPlayer(0);
++			if(current < mainGame->dInfo.team1
++					&& (mainGame->dInfo.active_player_mask & (1u << current)))
++				allied_logical = current;
++		}
+ 		if(allied_logical >= mainGame->dInfo.team1) {
+ 			for(uint8_t logical = 0; logical < mainGame->dInfo.team1; ++logical) {
+ 				if(mainGame->dInfo.active_player_mask & (1u << logical)) {
+@@ -1487,16 +1511,38 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		const auto allied_duelist = mainGame->dInfo.GetLogicalDuelist(allied_logical);
+ 		const bool changed = mainGame->dInfo.field_focus[0] != allied_duelist
+ 			|| mainGame->dInfo.field_focus[1] != 0;
+-		if(!changed)
+-			return false;
+-		if(mainGame->dInfo.isReplay)
+-			mainGame->dField.CaptureThreeVsOneReplayPrivatePiles();
+-		mainGame->dInfo.SetFieldFocus(0, allied_duelist);
+-		mainGame->dInfo.SetFieldFocus(1, 0);
+-		if(mainGame->dInfo.isReplay)
+-			mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
+-		mainGame->dField.RefreshAllCards();
+-		return true;
++		if(changed) {
++			mainGame->dInfo.SetFieldFocus(0, allied_duelist);
++			mainGame->dInfo.SetFieldFocus(1, 0);
++		}
++		if(mainGame->dInfo.isReplay) {
++			const auto core_side = mainGame->dInfo.GetLogicalCoreSide(allied_logical);
++			if(core_side < 2
++					&& mainGame->dInfo.three_vs_one_replay_loaded_private[core_side]
++						!= allied_logical) {
++				mainGame->dInfo.three_vs_one_replay_pending_private[core_side] =
++					allied_logical;
++				if(!mainGame->dField.ApplyThreeVsOneReplayPrivatePile(allied_logical)) {
++					const auto display_side = mainGame->LocalPlayer(core_side);
++					if(display_side < 2)
++						mainGame->dField.ReplaceMultiplayerPrivatePiles(display_side,
++							MultiplayerPrivatePileSnapshot{}, false);
++					mainGame->dInfo.three_vs_one_replay_loaded_private[core_side] = 0xff;
++				}
++			}
++		}
++		if(changed)
++			mainGame->dField.RefreshThreeVsOneReplayField();
++		return changed;
++	};
++	auto RestoreThreeVsOneReplayTurnView = [&] {
++		if(!mainGame->dInfo.isReplay
++				|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			return;
++		const auto turn = mainGame->dInfo.logical_turn_player;
++		SetThreeVsOneReplayHandMask(turn < 4
++			? static_cast<uint8_t>(1u << turn) : 0);
++		SetThreeVsOneView(turn);
+ 	};
+ 	const auto* pbuf = msg;
+ 	if(!mainGame->dInfo.isReplay && !mainGame->dInfo.isSingleMode) {
+@@ -1875,8 +1921,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		if(mainGame->dInfo.isReplay) {
+ 			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+ 				SetBattleRoyaleReplayView(logical_player);
+-			else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
++				SetThreeVsOneReplayHandMask(logical_player < 4
++					? static_cast<uint8_t>(1u << logical_player) : 0);
+ 				SetThreeVsOneView(logical_player);
++			}
+ 		}
+ 		const auto field_side = static_cast<uint8_t>(logical_player < mainGame->dInfo.team1 ? 0 : 1);
+ 		const auto field_duelist = static_cast<uint8_t>(field_side == 0
+@@ -1912,7 +1961,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		// Rebuild the normal two-side projection when either side changes focus.
+ 		if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+ 				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+-				&& active_seat_changed)
++				&& active_seat_changed
++				&& !(mainGame->dInfo.isReplay
++					&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))
+ 			mainGame->dField.RefreshAllCards();
+ 		break;
+ 	}
+@@ -1922,8 +1973,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		if(mainGame->dInfo.isReplay
+ 				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+ 			SetBattleRoyaleReplayView(perspective, opponent);
+-		else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++		else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
++				&& !mainGame->dInfo.isReplay)
+ 			SetThreeVsOneView(perspective, opponent);
++		// 3v1 replay view packets are advisory and frequently duplicated.
++		// Actual turn/attack/target messages below are authoritative.
+ 		break;
+ 	}
+ 	case MSG_MULTIPLAYER_DECK_MASTER: {
+@@ -1932,9 +1986,20 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		const auto code = BufferIO::Read<uint32_t>(pbuf);
+ 		if(logical_player < 4) {
+ 			mainGame->dInfo.logical_deck_master_enabled = true;
+-			mainGame->dInfo.logical_deck_master_code[logical_player] = visible ? code : 0;
++			if(code)
++				mainGame->dInfo.logical_deck_master_code[logical_player] = code;
++			mainGame->dInfo.logical_deck_master_visible[logical_player] = visible != 0;
+ 			std::lock_guard<epro::mutex> lock(mainGame->gMutex);
+-			mainGame->dField.RefreshAllCards();
++			bool view_changed = false;
++			if(mainGame->dInfo.isReplay
++					&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
++					&& !visible)
++				view_changed = SetThreeVsOneView(logical_player);
++			const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
++			if(!view_changed && core_side < 2
++					&& mainGame->dInfo.GetFocusedLogicalPlayer(core_side)
++						== logical_player)
++				mainGame->dField.RefreshThreeVsOneReplayField();
+ 		}
+ 		break;
+ 	}
+@@ -1968,7 +2033,13 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		mainGame->dInfo.field_focus[1] = 0;
+ 		mainGame->dInfo.battle_royale_opponent_logical = 0xff;
+ 		std::fill_n(mainGame->dInfo.logical_deck_master_code, 4, 0u);
++		std::fill_n(mainGame->dInfo.logical_deck_master_visible, 4, false);
+ 		mainGame->dInfo.logical_deck_master_enabled = false;
++		mainGame->dInfo.three_vs_one_replay_hand_mask = 0;
++		mainGame->dInfo.three_vs_one_replay_pending_private[0] = 0;
++		mainGame->dInfo.three_vs_one_replay_pending_private[1] =
++			static_cast<uint8_t>(mainGame->dInfo.team1);
++		std::fill_n(mainGame->dInfo.three_vs_one_replay_loaded_private, 2, 0xff);
+ 		mainGame->dInfo.logical_active[0] = 0;
+ 		mainGame->dInfo.logical_active[1] = static_cast<uint8_t>(mainGame->dInfo.team1);
+ 		mainGame->dInfo.local_player_eliminated = false;
+@@ -2052,6 +2123,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		constexpr uint8_t PRIVATE_LOCATIONS = LOCATION_DECK | LOCATION_HAND
+ 			| LOCATION_GRAVE | LOCATION_REMOVED | LOCATION_EXTRA;
+ 		auto player = mainGame->LocalPlayer(core_player);
++		if((location & PRIVATE_LOCATIONS)
++				&& mainGame->dInfo.isReplay
++				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
++				&& mainGame->dInfo.GetLogicalPlayer(core_player)
++					!= mainGame->dInfo.GetFocusedLogicalPlayer(core_player))
++			return true;
+ 		if((location & PRIVATE_LOCATIONS)
+ 				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+ 			const auto private_display =
+@@ -2071,6 +2148,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		constexpr uint8_t PRIVATE_LOCATIONS = LOCATION_DECK | LOCATION_HAND
+ 			| LOCATION_GRAVE | LOCATION_REMOVED | LOCATION_EXTRA;
+ 		auto player = mainGame->LocalPlayer(core_player);
++		if((loc & PRIVATE_LOCATIONS)
++				&& mainGame->dInfo.isReplay
++				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
++				&& mainGame->dInfo.GetLogicalPlayer(core_player)
++					!= mainGame->dInfo.GetFocusedLogicalPlayer(core_player))
++			break;
+ 		if((loc & PRIVATE_LOCATIONS)
+ 				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+ 			const auto private_display =
+@@ -3713,12 +3796,22 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
+ 		return true;
+ 	}
+ 	case MSG_MOVE: {
+-		const auto code = BufferIO::Read<uint32_t>(pbuf);
++		auto code = BufferIO::Read<uint32_t>(pbuf);
+ 		CoreUtils::loc_info previous = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
+ 		const auto previous_core_player = previous.controler;
+ 		CoreUtils::loc_info current = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
+ 		const auto current_core_player = current.controler;
+ 		const auto reason = BufferIO::Read<uint32_t>(pbuf);
++		if(mainGame->dInfo.isReplay
++				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
++				&& !code && previous.location == 0
++				&& (current.location & LOCATION_ONFIELD)
++				&& current_core_player < 2) {
++			const auto logical = mainGame->dInfo.GetLogicalPlayer(
++				current_core_player, current.duelist);
++			if(logical < 4)
++				code = mainGame->dInfo.logical_deck_master_code[logical];
++		}
+ 		auto IsPrivatePile = [](uint8_t location) {
+ 			return (location & (LOCATION_DECK | LOCATION_HAND | LOCATION_GRAVE
+ 				| LOCATION_REMOVED | LOCATION_EXTRA)) != 0;
