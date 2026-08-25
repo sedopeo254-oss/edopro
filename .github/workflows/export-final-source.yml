@@ -20,7 +20,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tar --exclude-vcs -czf replay-smooth-final-source.tar.gz .
+          tar --exclude-vcs -C "$GITHUB_WORKSPACE" -czf "$RUNNER_TEMP/replay-smooth-final-source.tar.gz" .
+          cp "$RUNNER_TEMP/replay-smooth-final-source.tar.gz" replay-smooth-final-source.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: replay-smooth-final-source
