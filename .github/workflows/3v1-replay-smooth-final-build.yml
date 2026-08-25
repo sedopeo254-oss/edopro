@@ -72,7 +72,7 @@ jobs:
           grep -Fq 'ShowThreeVsOneAffectedHand' gframe/duelclient.cpp
           grep -Fq 'RestoreThreeVsOneReplayTurnHand' gframe/duelclient.cpp
           grep -Fq 'RefreshPublicFieldCards' gframe/client_field.cpp
-          grep -Fq 'Repeated snapshots are common in streamed 3v1 replays' gframe/client_field.cpp
+          grep -Fq 'const bool same_snapshot' gframe/client_field.cpp
           grep -Fq 'MSG_SPSUMMONING' gframe/duelclient.cpp
           grep -Fq 'pcard->SetCode(code)' gframe/duelclient.cpp
           grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
