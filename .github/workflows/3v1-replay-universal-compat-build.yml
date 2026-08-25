@@ -46,8 +46,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/replay-compat/replay-compatibility.patch.gz.b64.* > /tmp/replay-compatibility.patch.gz.b64
-          echo "9c9d5b2c3a3c3320cf2fd40ce0643f4413c57f7933056e9b1106bc4d004f4a8e  /tmp/replay-compatibility.patch.gz.b64" | sha256sum -c -
+          cat .github/replay-compat/replay-compatibility.patch.gz.b64.* \
+            | tr -d '\r\n\t ' > /tmp/replay-compatibility.patch.gz.b64
           base64 -d /tmp/replay-compatibility.patch.gz.b64 > /tmp/replay-compatibility.patch.gz
           echo "3d6bd46dddcfb304366b7a8391443c75c49cf46d90099647459c2dc6b111a2f7  /tmp/replay-compatibility.patch.gz" | sha256sum -c -
           gzip -dc /tmp/replay-compatibility.patch.gz > /tmp/replay-compatibility.patch
