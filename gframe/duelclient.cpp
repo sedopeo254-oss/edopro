@@ -1909,6 +1909,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		break;
 	}
 	case MSG_MULTIPLAYER_REPLAY_VIEW: {
+		if(mainGame->dInfo.isReplay
+				&& !mainGame->dInfo.HasReplayCapability(
+					ReplayCompat::CAP_REPLAY_VIEW_HINTS))
+			return true;
 		const auto perspective = BufferIO::Read<uint8_t>(pbuf);
 		const auto opponent = BufferIO::Read<uint8_t>(pbuf);
 		if(mainGame->dInfo.isReplay
@@ -4436,7 +4440,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			deck_count = deck_count > count ? deck_count - count : 0;
 			mainGame->dInfo.logical_hand_count[logical_player] += count;
 		}
-		if(mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+		if(mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				&& mainGame->dInfo.HasReplayCapability(
+					ReplayCompat::CAP_PRIVATE_PILE_SNAPSHOTS)) {
 			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
 			if(mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player))
 				mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
@@ -4487,12 +4493,36 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dInfo.logical_hand_count[logical_player] += count;
 		}
 		if(mainGame->dInfo.isReplay) {
-			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
-			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					&& mainGame->dInfo.HasReplayCapability(
+						ReplayCompat::CAP_PRIVATE_PILE_SNAPSHOTS)) {
+				mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
 				if(mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player))
 					mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
-			} else if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
-				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+			} else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
+				if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
+					mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+			} else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					&& logical_player == mainGame->dInfo.GetThreeVsOneReplayHandLogical(
+						mainGame->dInfo.GetLogicalCoreSide(logical_player))) {
+				// Legacy streamed 3v1 without private snapshots: use the old visible
+				// hand path instead of dropping the draw event.
+				const auto side = mainGame->LocalPlayer(
+					mainGame->dInfo.GetLogicalCoreSide(logical_player));
+				auto& deck = mainGame->dField.deck[side];
+				for(const auto& drawn : drawn_cards) {
+					if(deck.empty())
+						break;
+					auto* pcard = deck.back();
+					deck.pop_back();
+					if(pcard->code != drawn.code)
+						pcard->SetCode(drawn.code);
+					pcard->position = drawn.position;
+					mainGame->dField.AddCard(pcard, side, LOCATION_HAND, 0);
+				}
+				mainGame->should_refresh_hands = true;
+			}
 		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
 			auto lock = LockIf();
 			const auto side = mainGame->LocalPlayer(mainGame->dInfo.GetLogicalCoreSide(logical_player));
@@ -4514,6 +4544,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		return true;
 	}
 	case MSG_MULTIPLAYER_PRIVATE_PILES: {
+		if(mainGame->dInfo.isReplay
+				&& !mainGame->dInfo.HasReplayCapability(
+					ReplayCompat::CAP_PRIVATE_PILE_SNAPSHOTS))
+			return true;
 		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
 		MultiplayerPrivatePileSnapshot snapshot;
 		snapshot.deck_count = BufferIO::Read<uint32_t>(pbuf);
@@ -5358,7 +5392,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					logical_core_side, logical_duelist)
 				: mainGame->LocalPlayer(core_player);
 		if(mainGame->dInfo.isReplay
-				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				&& mainGame->dInfo.HasReplayCapability(
+					ReplayCompat::CAP_PRIVATE_PILE_SNAPSHOTS)) {
 			// Replay snapshots already carry exact logical Hand/Deck/Extra/GY/Banish.
 			// Replaying TAG_SWAP here would delete/recreate the visible hand and is
 			// the main source of flicker, stalls and P3 appearing during P4's turn.
@@ -6090,6 +6126,7 @@ void DuelClient::ReplayPrompt(bool local_stream) {
 			last_replay.WriteData(name.data(), 40, false);
 		}
 		last_replay.Write<uint64_t>(mainGame->dInfo.duel_params);
+		last_replay.WritePacket(ReplayCompat::MakeMetadataPacket());
 		last_replay.WriteStream(replay_stream);
 		last_replay.EndRecord();
 	}

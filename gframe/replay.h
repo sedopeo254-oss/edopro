@@ -7,6 +7,7 @@
 #include "RNG/Xoshiro256.hpp"
 #include "config.h"
 #include "core_utils.h"
+#include "replay_compat.h"
 #include "text_types.h"
 
 namespace ygo {
@@ -115,6 +116,10 @@ public:
 	int GetPlayersCount(int side);
 	int GetTurnsCount();
 	epro::path_string GetReplayName();
+	const ReplayCompat::Info& GetCompatibilityInfo() const { return replay_compatibility; }
+	bool HasCapability(ReplayCompat::Capability capability) const {
+		return replay_compatibility.Has(capability);
+	}
 	std::unique_ptr<Replay> yrp;
 	std::vector<uint8_t> replay_data;
 	std::vector<uint8_t> comp_data;
@@ -156,6 +161,7 @@ private:
 	std::vector<uint32_t> replay_custom_rule_cards;
 	std::vector<ReplayResponse>::iterator responses_iterator;
 	int turn_count;
+	ReplayCompat::Info replay_compatibility{};
 	static inline epro::path_string replay_folder = EPRO_TEXT("./replay/");
 };
 template<typename T>

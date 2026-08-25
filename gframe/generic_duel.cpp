@@ -637,6 +637,7 @@ void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 		});
 	}
 	new_replay.Write<uint64_t>(opt);
+	new_replay.WritePacket(ReplayCompat::MakeMetadataPacket());
 	last_replay.Write<uint32_t>(host_info.start_lp, false);
 	last_replay.Write<uint32_t>(host_info.start_hand, false);
 	last_replay.Write<uint32_t>(host_info.draw_count, false);

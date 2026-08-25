@@ -1011,7 +1011,9 @@ void ClientField::ApplyBattleRoyaleReplayPrivatePiles() {
 }
 void ClientField::CaptureThreeVsOneReplayPrivatePiles() {
 	if(!mainGame->dInfo.isReplay
-			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| !mainGame->dInfo.HasReplayCapability(
+				ReplayCompat::CAP_PRIVATE_PILE_SNAPSHOTS))
 		return;
 	auto capture_cards = [](const auto& source, auto& destination) {
 		destination.clear();
@@ -1047,6 +1049,8 @@ bool ClientField::IsThreeVsOneReplayPrivatePileDisplayed(
 		uint8_t logical_player) const {
 	if(!mainGame->dInfo.isReplay
 			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| !mainGame->dInfo.HasReplayCapability(
+				ReplayCompat::CAP_PRIVATE_PILE_SNAPSHOTS)
 			|| logical_player >= mainGame->dInfo.team1 + mainGame->dInfo.team2)
 		return false;
 	for(uint8_t core_side = 0; core_side < 2; ++core_side)
@@ -1065,7 +1069,9 @@ bool ClientField::IsThreeVsOneReplayHandDisplayed(uint8_t logical_player) const 
 }
 void ClientField::ApplyThreeVsOneReplayPrivatePiles() {
 	if(!mainGame->dInfo.isReplay
-			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| !mainGame->dInfo.HasReplayCapability(
+				ReplayCompat::CAP_PRIVATE_PILE_SNAPSHOTS))
 		return;
 	auto capture_cards = [](const auto& source, auto& destination) {
 		destination.clear();

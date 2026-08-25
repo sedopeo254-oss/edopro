@@ -267,10 +267,19 @@ bool Replay::ReadNextPacket(CoreUtils::Packet* packet) {
 }
 void Replay::ParseStream() {
 	packets_stream.clear();
+	replay_compatibility = {};
 	if(!IsStreamedReplay())
 		return;
 	CoreUtils::Packet p;
 	while(ReadNextPacket(&p)) {
+		if(p.message == MSG_MULTIPLAYER_REPLAY_CAPS) {
+			ReplayCompat::Info metadata = replay_compatibility;
+			if(ReplayCompat::ParseMetadata(p, metadata))
+				replay_compatibility = metadata;
+			// Metadata is consumed by Replay and is not a gameplay event.
+			continue;
+		}
+		ReplayCompat::ObservePacket(replay_compatibility, p.message);
 		if(p.message == MSG_AI_NAME) {
 			auto* pbuf = p.data();
 			uint16_t len = BufferIO::Read<uint16_t>(pbuf);
@@ -320,6 +329,7 @@ void Replay::Reset() {
 	comp_data.clear();
 	comp_data.shrink_to_fit();
 	turn_count = 0;
+	replay_compatibility = {};
 }
 int Replay::GetPlayersCount(int side) {
 	if(side == 0)

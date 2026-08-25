@@ -7,6 +7,7 @@
 #include <atomic>
 #include "materials.h"
 #include "multiplayer_replay_policy.h"
+#include "replay_compat.h"
 #include "settings_window.h"
 #include "config.h"
 #include "common.h"
@@ -114,6 +115,18 @@ struct DuelInfo {
 	uint8_t replay_hand_focus[2]{ 0xff, 0xff };
 	uint8_t replay_hand_reveal_mask{ 0 };
 	uint8_t replay_hand_preferred{ 0xff };
+	// Stream compatibility is data-driven. Legacy recordings infer their
+	// capabilities from packet presence; new recordings publish an explicit
+	// length-prefixed metadata envelope.
+	uint16_t replay_stream_schema{ ReplayCompat::LEGACY_SCHEMA };
+	uint16_t replay_minimum_reader_schema{ ReplayCompat::LEGACY_SCHEMA };
+	ReplayCompat::CapabilityMask replay_stream_capabilities{ 0 };
+	bool replay_has_explicit_capabilities{ false };
+	bool replay_requires_newer_reader{ false };
+	bool HasReplayCapability(ReplayCompat::Capability capability) const {
+		return !isReplay || (replay_stream_capabilities
+			& static_cast<ReplayCompat::CapabilityMask>(capability)) != 0;
+	}
 	// Battle Royale is rendered as a stable two-seat view: the local logical
 	// player is always the lower field and this player is always the upper
 	// field. This is deliberately independent from the two core field sides.

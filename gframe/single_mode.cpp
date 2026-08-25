@@ -78,6 +78,7 @@ int SingleMode::SinglePlayThread(DuelOptions&& duelOptions) {
 		last_replay.WriteData(script_name.data(), script_name.size(), false);
 		last_replay.Flush();
 		new_replay.Write<uint64_t>(opt);
+		new_replay.WritePacket(ReplayCompat::MakeMetadataPacket());
 	};
 	mainGame->btnLeaveGame->setRelativePosition(mainGame->Resize(205, 5, 295, 45));
 	is_continuing = false;

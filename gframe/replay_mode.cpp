@@ -88,6 +88,12 @@ int ReplayMode::ReplayThread() {
 	mainGame->dInfo.isHandTest = !!(replay_header.base.flag & REPLAY_HAND_TEST);
 	mainGame->dInfo.compat_mode = !(replay_header.base.flag & REPLAY_LUA64);
 	mainGame->dInfo.legacy_race_size = GET_CORE_VERSION_MAJOR(replay_header.base.version) < 10;
+	const auto& replay_compat = cur_replay.GetCompatibilityInfo();
+	mainGame->dInfo.replay_stream_schema = replay_compat.schema;
+	mainGame->dInfo.replay_minimum_reader_schema = replay_compat.minimum_reader_schema;
+	mainGame->dInfo.replay_stream_capabilities = replay_compat.capabilities;
+	mainGame->dInfo.replay_has_explicit_capabilities = replay_compat.explicit_metadata;
+	mainGame->dInfo.replay_requires_newer_reader = replay_compat.RequiresNewerReader();
 	mainGame->dInfo.team1 = cur_replay.GetPlayersCount(0);
 	mainGame->dInfo.team2 = cur_replay.GetPlayersCount(1);
 	mainGame->dInfo.current_player[0] = 0;
@@ -169,6 +175,11 @@ void ReplayMode::EndDuel() {
 		mainGame->dInfo.isSingleMode = false;
 		mainGame->dInfo.isHandTest = false;
 		mainGame->dInfo.isOldReplay = false;
+		mainGame->dInfo.replay_stream_schema = ReplayCompat::LEGACY_SCHEMA;
+		mainGame->dInfo.replay_minimum_reader_schema = ReplayCompat::LEGACY_SCHEMA;
+		mainGame->dInfo.replay_stream_capabilities = 0;
+		mainGame->dInfo.replay_has_explicit_capabilities = false;
+		mainGame->dInfo.replay_requires_newer_reader = false;
 		mainGame->closeDuelWindow = true;
 		mainGame->closeDoneSignal.Wait(lock);
 		mainGame->ShowElement(mainGame->wReplay);
@@ -231,6 +242,8 @@ bool ReplayMode::ReplayAnalyze(const CoreUtils::Packet& p) {
 		}
 		bool pauseable = true;
 		mainGame->dInfo.curMsg = p.message;
+		if(ReplayCompat::IsSkippableExtension(p.message))
+			return true;
 		switch (mainGame->dInfo.curMsg) {
 		case MSG_RETRY: {
 			if(mainGame->dInfo.isCatchingUp) {
