@@ -1,0 +1,223 @@
+diff --git a/gframe/game.h b/gframe/game.h
+index 9d332e5..4d284da 100644
+--- a/gframe/game.h
++++ b/gframe/game.h
+@@ -89,8 +89,16 @@ struct DuelInfo {
+ 	uint32_t logical_grave_count[4]{ 0, 0, 0, 0 };
+ 	uint32_t logical_banish_count[4]{ 0, 0, 0, 0 };
+ 	uint32_t logical_deck_master_code[4]{ 0, 0, 0, 0 };
++	bool logical_deck_master_visible[4]{ false, false, false, false };
+ 	bool logical_deck_master_enabled{ false };
+ 	uint8_t logical_active[2]{ 0, 1 };
++	// 3v1 replay presentation is event-driven. A hand is rendered only while
++	// its logical player owns the turn or is the current attack/target focus.
++	uint8_t three_vs_one_replay_hand_mask{ 0 };
++	// Private piles are projected only once per actual logical focus change.
++	// 0xff means no pending/loaded logical player for that physical side.
++	uint8_t three_vs_one_replay_pending_private[2]{ 0xff, 0xff };
++	uint8_t three_vs_one_replay_loaded_private[2]{ 0xff, 0xff };
+ 	int startlp;
+ 	int duel_field;
+ 	uint64_t duel_params;
+diff --git a/gframe/client_field.h b/gframe/client_field.h
+index 5a19d77..b5e7645 100644
+--- a/gframe/client_field.h
++++ b/gframe/client_field.h
+@@ -127,6 +127,9 @@ public:
+ 	void ReplaySwap();
+ 	void RefreshAllCards();
+ 	void RefreshLogicalDeckMasters();
++	void RefreshThreeVsOneReplayField();
++	void RefreshThreeVsOneReplayHands();
++	void RefreshMultiplayerPrivatePile(uint8_t player);
+ 	void RefreshHandHitboxes();
+ 	void CycleTeamField();
+ 	void ReplaceMultiplayerPrivatePiles(uint8_t player,
+@@ -135,6 +138,7 @@ public:
+ 	void CaptureBattleRoyaleReplayPrivatePiles();
+ 	void ApplyBattleRoyaleReplayPrivatePiles();
+ 	void CaptureThreeVsOneReplayPrivatePiles();
++	bool ApplyThreeVsOneReplayPrivatePile(uint8_t logical_player);
+ 	void ApplyThreeVsOneReplayPrivatePiles();
+ 	bool IsThreeVsOneReplayPrivatePileDisplayed(uint8_t logical_player) const;
+ 	void UpdateMultiplayerPrivateDraw(uint8_t logical_player,
+diff --git a/gframe/client_field.cpp b/gframe/client_field.cpp
+index a38e437..2d7d217 100644
+--- a/gframe/client_field.cpp
++++ b/gframe/client_field.cpp
+@@ -740,6 +740,58 @@ void ClientField::RefreshAllCards() {
+ 		chit.UpdateDrawCoordinates();
+ 	mainGame->should_refresh_hands = true;
+ }
++void ClientField::RefreshThreeVsOneReplayField() {
++	RefreshLogicalDeckMasters();
++	auto refresh = [](ClientCard* const& pcard) {
++		if(!pcard)
++			return;
++		pcard->UpdateDrawCoordinates(true);
++		pcard->is_moving = false;
++		pcard->refresh_on_stop = false;
++		pcard->aniFrame = 0;
++	};
++	for(uint8_t player = 0; player < 2; ++player) {
++		for(auto* pcard : mzone[player])
++			refresh(pcard);
++		for(auto* pcard : szone[player])
++			refresh(pcard);
++		refresh(skills[player]);
++	}
++	for(auto* pcard : overlay_cards)
++		refresh(pcard);
++	for(auto& chain : chains)
++		chain.UpdateDrawCoordinates();
++}
++void ClientField::RefreshThreeVsOneReplayHands() {
++	for(auto& player_hand : hand)
++		for(auto* pcard : player_hand)
++			if(pcard)
++				pcard->UpdateDrawCoordinates(true);
++	mainGame->should_refresh_hands = true;
++}
++void ClientField::RefreshMultiplayerPrivatePile(uint8_t player) {
++	if(player > 1)
++		return;
++	auto refresh = [](ClientCard* pcard) {
++		if(!pcard)
++			return;
++		pcard->UpdateDrawCoordinates(true);
++		pcard->is_moving = false;
++		pcard->refresh_on_stop = false;
++		pcard->aniFrame = 0;
++	};
++	for(auto* pcard : deck[player])
++		refresh(pcard);
++	for(auto* pcard : hand[player])
++		refresh(pcard);
++	for(auto* pcard : extra[player])
++		refresh(pcard);
++	for(auto* pcard : grave[player])
++		refresh(pcard);
++	for(auto* pcard : remove[player])
++		refresh(pcard);
++	mainGame->should_refresh_hands = true;
++}
+ void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
+ 		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient) {
+ 	if(player > 1)
+@@ -868,10 +920,13 @@ void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
+ 			if(pile[i]->code != cards[i].code)
+ 				pile[i]->SetCode(cards[i].code);
+ 			pile[i]->position = cards[i].position;
+-			// Grave/Banished/face-up Extra cards are public. Restoring this bit
+-			// prevents a valid code from still rendering with the old card back.
+-			pile[i]->is_public = (cards[i].position & POS_FACEUP)
+-				&& pile[i]->location != LOCATION_HAND;
++			// Grave cards are always public. Banished/Extra cards are public only
++			// when face-up. This preserves Deck Master artwork after it leaves the
++			// field even when the replay snapshot stores position as zero.
++			pile[i]->is_public = pile[i]->location == LOCATION_GRAVE
++				|| ((pile[i]->location == LOCATION_REMOVED
++					|| pile[i]->location == LOCATION_EXTRA)
++					&& (cards[i].position & POS_FACEUP));
+ 		}
+ 	};
+ 
+@@ -888,7 +943,11 @@ void ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
+ 	apply_visible_cards(extra[player], snapshot.extra);
+ 	apply_visible_cards(grave[player], snapshot.grave);
+ 	apply_visible_cards(remove[player], snapshot.removed);
+-	RefreshAllCards();
++	if(mainGame->dInfo.isReplay
++			&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++		RefreshMultiplayerPrivatePile(player);
++	else
++		RefreshAllCards();
+ }
+ void ClientField::CacheMultiplayerPrivatePiles(uint8_t logical_player,
+ 		const MultiplayerPrivatePileSnapshot& snapshot) {
+@@ -1002,28 +1061,30 @@ bool ClientField::IsThreeVsOneReplayPrivatePileDisplayed(
+ 	}
+ 	return false;
+ }
++bool ClientField::ApplyThreeVsOneReplayPrivatePile(uint8_t logical_player) {
++	if(!mainGame->dInfo.isReplay
++			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
++			|| logical_player >= multiplayer_private_piles.size()
++			|| !multiplayer_private_piles_valid[logical_player]
++			|| !IsThreeVsOneReplayPrivatePileDisplayed(logical_player))
++		return false;
++	const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
++	const auto display_side = mainGame->LocalPlayer(core_side);
++	if(core_side > 1 || display_side > 1)
++		return false;
++	ReplaceMultiplayerPrivatePiles(display_side,
++		multiplayer_private_piles[logical_player], false);
++	mainGame->dInfo.three_vs_one_replay_loaded_private[core_side] = logical_player;
++	mainGame->dInfo.three_vs_one_replay_pending_private[core_side] = 0xff;
++	return true;
++}
+ void ClientField::ApplyThreeVsOneReplayPrivatePiles() {
+ 	if(!mainGame->dInfo.isReplay
+ 			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+ 		return;
+-	// A replay camera change must never cancel/clear the chain or its selected
+-	// target. Only the visual private piles change here.
+-	bool clear_transient = false;
+-	for(uint8_t core_side = 0; core_side < 2; ++core_side) {
+-		const auto display_side = mainGame->LocalPlayer(core_side);
+-		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
+-		if(display_side > 1)
+-			continue;
+-		if(logical < multiplayer_private_piles.size()
+-				&& multiplayer_private_piles_valid[logical]) {
+-			ReplaceMultiplayerPrivatePiles(display_side,
+-				multiplayer_private_piles[logical], clear_transient);
+-		} else {
+-			ReplaceMultiplayerPrivatePiles(display_side,
+-				MultiplayerPrivatePileSnapshot{}, clear_transient);
+-		}
+-		clear_transient = false;
+-	}
++	for(uint8_t core_side = 0; core_side < 2; ++core_side)
++		ApplyThreeVsOneReplayPrivatePile(
++			mainGame->dInfo.GetFocusedLogicalPlayer(core_side));
+ }
+ void ClientField::UpdateMultiplayerPrivateDraw(uint8_t logical_player,
+ 		const std::vector<MultiplayerPrivatePileCard>& drawn_cards) {
+@@ -1116,8 +1177,9 @@ void ClientField::RefreshLogicalDeckMasters() {
+ 			continue;
+ 		const auto local_side = mainGame->LocalPlayer(field_side);
+ 		const auto code = mainGame->dInfo.logical_deck_master_code[logical_player];
++		const bool visible = mainGame->dInfo.logical_deck_master_visible[logical_player];
+ 		auto& pcard = skills[local_side];
+-		if(!code) {
++		if(!visible || !code) {
+ 			if(pcard == hovered_card)
+ 				hovered_card = nullptr;
+ 			delete pcard;
+@@ -1395,6 +1457,25 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
+ 			}
+ 		}
+ 	} else {
++		if(mainGame->dInfo.isReplay
++				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
++			const auto core_side = mainGame->LocalPlayer(
++				static_cast<uint8_t>(controler));
++			const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
++			if(logical >= 4
++					|| !(mainGame->dInfo.three_vs_one_replay_hand_mask
++						& (1u << logical))) {
++				pcard->draw_scale = 0.0f;
++				*t = { -100.0f, -100.0f, -10.0f };
++				*r = { 0.0f, 0.0f, 0.0f };
++				pcard->hand_collision = { -10000, -10000, -9999, -9999 };
++				if(setTrans) {
++					pcard->mTransform.setTranslation(*t);
++					pcard->mTransform.setRotationRadians(*r);
++				}
++				return;
++			}
++		}
+ 		auto ShouldCardShow = [pcard] {
+ 			return pcard->code
+ 				&& (!mainGame->dInfo.isReplay
