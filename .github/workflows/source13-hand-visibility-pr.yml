@@ -29,15 +29,16 @@ jobs:
           set -euo pipefail
           test "$(git -C ocgcore rev-parse HEAD)" = "a0bd861c521689e3e2f08a421845351a1274dc7f"
           test -f .github/scripts/run-3v1-replay-smooth-v2.py
-          test -f .github/patches/source13-hand-visibility.patch
+          test -f .github/patches/source13-hand-visibility.patch.gz.b64
 
       - name: Apply exact V2 source #13 and visibility patch
         shell: bash
         run: |
           set -euo pipefail
           python3 .github/scripts/run-3v1-replay-smooth-v2.py
-          git apply --check .github/patches/source13-hand-visibility.patch
-          git apply .github/patches/source13-hand-visibility.patch
+          base64 -d .github/patches/source13-hand-visibility.patch.gz.b64 | gzip -d > /tmp/source13-hand-visibility.patch
+          git apply --check /tmp/source13-hand-visibility.patch
+          git apply /tmp/source13-hand-visibility.patch
 
       - name: Install Lua
         shell: bash
@@ -77,7 +78,6 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          TEAM = {0, 1, 2}
           ACTIVE = {0, 1, 2, 3}
 
           def mask(turn, primary=None, secondary=None):
@@ -87,15 +87,10 @@ jobs:
                       visible.add(logical)
               return visible
 
-          # P3 turn: only P3 hand.
           assert mask(2, 2) == {2}
-          # Nezbitt idle turn: only Nezbitt; no allied hand repeats.
           assert mask(3, 3) == {3}
-          # Nezbitt attacks P2: only Nezbitt + P2.
           assert mask(3, 3, 1) == {1, 3}
-          # P2 targets P1: turn owner and target only; P3 remains hidden.
           assert mask(1, 1, 0) == {0, 1}
-          # Chain/damage end returns to turn owner only.
           assert mask(1, 1) == {1}
           print('source #13 3v1 replay hand visibility policy passed')
           PY
@@ -125,8 +120,9 @@ jobs:
         run: |
           set -euo pipefail
           python .github/scripts/run-3v1-replay-smooth-v2.py
-          git apply --check .github/patches/source13-hand-visibility.patch
-          git apply .github/patches/source13-hand-visibility.patch
+          base64 -d .github/patches/source13-hand-visibility.patch.gz.b64 | gzip -d > /tmp/source13-hand-visibility.patch
+          git apply --check /tmp/source13-hand-visibility.patch
+          git apply /tmp/source13-hand-visibility.patch
 
       - uses: microsoft/setup-msbuild@v3
 
