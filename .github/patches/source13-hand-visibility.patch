@@ -1,0 +1,339 @@
+--- a/gframe/game.h
++++ b/gframe/game.h
+@@ -100,6 +100,12 @@
+ 	uint8_t eliminated_player_mask{ 0 };
+ 	uint8_t elimination_reason[4]{ 0, 0, 0, 0 };
+ 	uint8_t logical_turn_player{ 0 };
++	// In 3v1 replay, hands are intentionally decoupled from field focus. A
++	// player's hand is rendered only while it is that player's turn or while
++	// that player is the source/target of the current interaction. This prevents
++	// an arbitrary teammate hand from repeatedly replacing the visible hand
++	// during the opponent's turn.
++	uint8_t replay_three_vs_one_visible_hand_mask{ 0 };
+ 	// Replays have no fixed local duelist. In Battle Royale the turn owner is
+ 	// projected as the lower player and the relevant opponent as the upper one.
+ 	uint8_t replay_battle_royale_perspective{ 0xff };
+@@ -128,6 +134,31 @@
+ 	bool HasFieldFlag(uint64_t flag) const {
+ 		return (flag & duel_params) == flag;
+ 	}
++	bool IsThreeVsOneReplayHandVisible(uint8_t logical) const {
++		if(!isReplay || !HasFieldFlag(DUEL_3_V_1))
++			return true;
++		return logical < team1 + team2
++			&& (replay_three_vs_one_visible_hand_mask & (1u << logical));
++	}
++	bool SetThreeVsOneReplayVisibleHands(uint8_t primary = 0xff,
++			uint8_t secondary = 0xff) {
++		if(!isReplay || !HasFieldFlag(DUEL_3_V_1))
++			return false;
++		uint8_t mask = 0;
++		auto add = [&](uint8_t logical) {
++			if(logical < team1 + team2
++					&& (active_player_mask & (1u << logical)))
++				mask |= static_cast<uint8_t>(1u << logical);
++		};
++		// The turn owner's hand is always the baseline. An attack/effect can add
++		// one or two involved players without exposing unrelated teammates.
++		add(logical_turn_player);
++		add(primary);
++		add(secondary);
++		const bool changed = mask != replay_three_vs_one_visible_hand_mask;
++		replay_three_vs_one_visible_hand_mask = mask;
++		return changed;
++	}
+ 	uint8_t GetLogicalPlayer(uint8_t core_side) const {
+ 		return core_side < 2 && logical_active[core_side] < 4 ? logical_active[core_side] : 0xff;
+ 	}
+--- a/gframe/drawing.cpp
++++ b/gframe/drawing.cpp
+@@ -371,8 +371,16 @@
+ 			DrawCard(pcard);
+ 		for(auto& pcard : dField.deck[p])
+ 			DrawCard(pcard);
+-		for(auto& pcard : dField.hand[p])
+-			DrawCard(pcard);
++		bool draw_hand = true;
++		if(dInfo.isReplay && dInfo.HasFieldFlag(DUEL_3_V_1)) {
++			const auto logical = dInfo.GetFocusedLogicalPlayer(LocalPlayer(p));
++			draw_hand = dInfo.IsThreeVsOneReplayHandVisible(logical);
++		}
++		if(draw_hand) {
++			for(auto& pcard : dField.hand[p])
++				DrawCard(pcard);
++		}
+ 		for(auto& pcard : dField.grave[p])
+ 			DrawCard(pcard);
+ 		for(auto& pcard : dField.remove[p])
+--- a/gframe/event_handler.cpp
++++ b/gframe/event_handler.cpp
+@@ -2468,7 +2468,17 @@
+ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
+ 	const int three_columns = mainGame->dInfo.HasFieldFlag(DUEL_3_COLUMNS_FIELD);
+ 	const int not_separate_pzones = !mainGame->dInfo.HasFieldFlag(DUEL_SEPARATE_PZONE);
+-	if(CheckHand(mouse, hand[0])) {
++	auto IsReplayHandVisible = [&](uint8_t display_side) {
++		if(!mainGame->dInfo.isReplay
++				|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			return true;
++		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(
++			mainGame->LocalPlayer(display_side));
++		return mainGame->dInfo.IsThreeVsOneReplayHandVisible(logical);
++	};
++	if(IsReplayHandVisible(0) && CheckHand(mouse, hand[0])) {
+ 		hovered_controler = 0;
+ 		hovered_location = LOCATION_HAND;
+ 		for(auto it = hand[0].rbegin(); it != hand[0].rend(); it++) {
+@@ -2476,7 +2486,7 @@
+ 			}
+ 		}
+ 		hovered_location = 0;
+-	} else if(CheckHand(mouse, hand[1])) {
++	} else if(IsReplayHandVisible(1) && CheckHand(mouse, hand[1])) {
+ 		hovered_controler = 1;
+ 		hovered_location = LOCATION_HAND;
+ 		for(auto it = hand[1].begin(); it != hand[1].end(); it++) {
+--- a/gframe/duelclient.cpp
++++ b/gframe/duelclient.cpp
+@@ -1378,6 +1378,7 @@
+ 				|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+ 				|| logical_player >= mainGame->dInfo.team1 + mainGame->dInfo.team2
++				|| !mainGame->dInfo.IsThreeVsOneReplayHandVisible(logical_player)
+ 				|| !mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(logical_player)
+ 				|| logical_player >= mainGame->dField.multiplayer_private_piles.size()
+ 				|| !mainGame->dField.multiplayer_private_piles_valid[logical_player])
+@@ -1464,27 +1465,27 @@
+ 				|| mainGame->dInfo.team2 == 0)
+ 			return false;
+ 		uint8_t allied_logical = 0xff;
+-		for(const auto logical : { perspective, opponent,
+-				mainGame->dInfo.logical_turn_player }) {
++		// Only an explicitly involved ally or the allied turn owner can change
++		// the team field. During Nezbitt's idle opponent turn we deliberately
++		// keep the current field and hide every allied hand instead of falling
++		// back to P1/P2/P3 and repeatedly remounting private piles.
++		for(const auto logical : { perspective, opponent }) {
+ 			if(logical < mainGame->dInfo.team1
+ 					&& (mainGame->dInfo.active_player_mask & (1u << logical))) {
+ 				allied_logical = logical;
+ 				break;
+ 			}
+ 		}
+-		if(allied_logical >= mainGame->dInfo.team1) {
+-			for(uint8_t logical = 0; logical < mainGame->dInfo.team1; ++logical) {
+-				if(mainGame->dInfo.active_player_mask & (1u << logical)) {
+-					allied_logical = logical;
+-					break;
+-				}
+-			}
+-		}
++		if(allied_logical >= mainGame->dInfo.team1
++				&& mainGame->dInfo.logical_turn_player < mainGame->dInfo.team1
++				&& (mainGame->dInfo.active_player_mask
++					& (1u << mainGame->dInfo.logical_turn_player)))
++			allied_logical = mainGame->dInfo.logical_turn_player;
+ 		if(allied_logical >= mainGame->dInfo.team1)
+ 			return false;
+ 		const auto allied_duelist = mainGame->dInfo.GetLogicalDuelist(allied_logical);
+@@ -1500,6 +1501,47 @@
+ 		mainGame->dField.RefreshAllCards();
+ 		return true;
+ 	};
++	auto SetThreeVsOneReplayHands = [&](uint8_t primary = 0xff,
++			uint8_t secondary = 0xff) {
++		if(!mainGame->dInfo.isReplay
++				|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			return false;
++		const bool changed = mainGame->dInfo.SetThreeVsOneReplayVisibleHands(
++			primary, secondary);
++		if(!changed)
++			return false;
++		if(mainGame->dField.hovered_card
++				&& mainGame->dField.hovered_card->location == LOCATION_HAND) {
++			const auto display_side = mainGame->dField.hovered_card->controler;
++			const auto logical = display_side < 2
++				? mainGame->dInfo.GetFocusedLogicalPlayer(
++					mainGame->LocalPlayer(display_side)) : 0xff;
++			if(!mainGame->dInfo.IsThreeVsOneReplayHandVisible(logical)) {
++				mainGame->dField.hovered_card->is_hovered = false;
++				mainGame->dField.hovered_card = nullptr;
++				mainGame->dField.hovered_location = 0;
++			}
++		}
++		mainGame->should_refresh_hands = true;
++		return true;
++	};
++	auto ResetThreeVsOneReplayInteraction = [&]() {
++		if(!mainGame->dInfo.isReplay
++				|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			return false;
++		const auto turn_logical = mainGame->dInfo.logical_turn_player;
++		const bool hands_changed = SetThreeVsOneReplayHands(turn_logical);
++		// When an allied player owns the turn, restore that player's own field
++		// after a temporary teammate target view. During Nezbitt's turn the last
++		// targeted allied field remains visible, but every allied hand is hidden.
++		const bool view_changed = turn_logical < mainGame->dInfo.team1
++			? SetThreeVsOneView(turn_logical) : false;
++		return hands_changed || view_changed;
++	};
+ 	const auto* pbuf = msg;
+ 	if(!mainGame->dInfo.isReplay && !mainGame->dInfo.isSingleMode) {
+ 		curMsg = BufferIO::Read<uint8_t>(pbuf);
+@@ -1852,13 +1894,17 @@
+ 			}
+ 		}
+ 		mainGame->dInfo.logical_turn_player = logical_player;
++		if(mainGame->dInfo.isReplay
++				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			SetThreeVsOneReplayHands(logical_player);
+ 		if(mainGame->dInfo.isReplay) {
+ 			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+ 				SetBattleRoyaleReplayView(logical_player);
+ 			else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+ 				SetThreeVsOneView(logical_player);
+ 		}
+@@ -1875,7 +1921,10 @@
+ 			const auto outgoing = mainGame->dInfo.logical_active[field_side];
+ 			active_seat_changed = outgoing != logical_player;
+ 			const auto local_side = mainGame->LocalPlayer(field_side);
+-			if(outgoing < 4) {
++			// Replay counts are already authoritative in MSG_MULTIPLAYER_NEW_TURN.
++			// Never overwrite an outgoing logical player's values with whichever
++			// private pile was just projected for the incoming player.
++			if(outgoing < 4 && !mainGame->dInfo.isReplay) {
+ 				mainGame->dInfo.logical_deck_count[outgoing] = static_cast<uint32_t>(mainGame->dField.deck[local_side].size());
+ 				mainGame->dInfo.logical_hand_count[outgoing] = static_cast<uint32_t>(mainGame->dField.hand[local_side].size());
+ 				mainGame->dInfo.logical_extra_count[outgoing] = static_cast<uint32_t>(mainGame->dField.extra[local_side].size());
+@@ -1904,7 +1953,7 @@
+ 		// Rebuild the normal two-side projection when either side changes focus.
+ 		if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+ 				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+-				&& active_seat_changed)
++				&& active_seat_changed && !mainGame->dInfo.isReplay)
+ 			mainGame->dField.RefreshAllCards();
+ 		break;
+ 	}
+@@ -1917,8 +1966,10 @@
+ 		if(mainGame->dInfo.isReplay
+ 				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+ 			SetBattleRoyaleReplayView(perspective, opponent);
+-		else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++		else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
++			SetThreeVsOneReplayHands(perspective, opponent);
+ 			SetThreeVsOneView(perspective, opponent);
++		}
+ 		break;
+ 	}
+ 	case MSG_MULTIPLAYER_DECK_MASTER: {
+@@ -1941,6 +1992,7 @@
+ 		mainGame->dInfo.elimination_reason[player] = reason;
+ 		mainGame->dInfo.logical_turn_player = 0;
++		mainGame->dInfo.replay_three_vs_one_visible_hand_mask = 0;
+ 		mainGame->dInfo.replay_battle_royale_perspective = 0xff;
+ 		mainGame->dInfo.field_focus[0] = 0;
+ 		mainGame->dInfo.field_focus[1] = 0;
+@@ -3628,6 +3680,9 @@
+ 	}
+ 	case MSG_NEW_PHASE: {
++		if(mainGame->dInfo.isReplay
++				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			ResetThreeVsOneReplayInteraction();
+ 		Play(SoundManager::SFX::PHASE);
+ 		const auto phase = BufferIO::Read<uint16_t>(pbuf);
+ 		auto lock = LockIf();
+@@ -3755,6 +3810,9 @@
+ 				ClientCard* pcard = new ClientCard{};
+ 				pcard->position = static_cast<uint8_t>(current.position);
+ 				pcard->SetCode(code);
++				pcard->is_public = (current.position & POS_FACEUP)
++					&& current.location != LOCATION_HAND
++					&& current.location != LOCATION_DECK;
+ 				mainGame->dField.AddCard(pcard, current.controler, current.location, current.sequence);
+ 				pcard->UpdateDrawCoordinates(true);
+ 			} else if(!previous_inactive && previous.location && current_inactive) {
+@@ -4093,8 +4151,13 @@
+ 	case MSG_SPSUMMONING: {
+ 		const auto code = BufferIO::Read<uint32_t>(pbuf);
+ 		CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
+ 		if(MapLocationDisplay(info)) {
+-			if(auto* pcard = mainGame->dField.GetCard(info.controler, info.location,
+-					info.sequence, info.position); pcard) {
++			auto* pcard = mainGame->dField.GetCard(info.controler, info.location,
++				info.sequence, info.position);
++			if(!pcard && info.location == LOCATION_MZONE
++					&& info.controler < 2
++					&& info.sequence < mainGame->dField.mzone[info.controler].size())
++				pcard = mainGame->dField.mzone[info.controler][info.sequence];
++			if(pcard) {
+ 				if(code && pcard->code != code)
+ 					pcard->SetCode(code);
+ 				pcard->position = info.position;
+@@ -4276,6 +4339,9 @@
+ 					chain.chain_card->is_showchaintarget = false;
+ 		}
+ 		mainGame->dField.chains.clear();
++		if(mainGame->dInfo.isReplay
++				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			ResetThreeVsOneReplayInteraction();
+ 		return true;
+ 	}
+ 	case MSG_CHAIN_NEGATED:
+@@ -4333,8 +4399,11 @@
+ 				const auto target_logical = mainGame->dInfo.GetLogicalPlayer(
+ 					target_core_player, info.duelist);
+-				if(target_logical < mainGame->dInfo.team1 + mainGame->dInfo.team2)
++				if(target_logical < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
++					SetThreeVsOneReplayHands(
++						mainGame->dInfo.logical_turn_player, target_logical);
+ 					SetThreeVsOneView(target_logical);
++				}
+ 			}
+ 			if(!MapLocationDisplay(info))
+ 				continue;
+@@ -4550,8 +4619,9 @@
+ 			mainGame->dField.CacheMultiplayerPrivatePiles(logical_player, snapshot);
+ 			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+-				if(mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(logical_player))
++				if(mainGame->dInfo.IsThreeVsOneReplayHandVisible(logical_player)
++						&& mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(logical_player))
+ 					mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
+ 			} else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+@@ -4573,9 +4643,12 @@
+ 			SetBattleRoyaleReplayView(
+ 				mainGame->dInfo.GetLocalLogicalPlayer(), logical_player);
+ 		else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+-				&& logical_player < mainGame->dInfo.team1 + mainGame->dInfo.team2)
++				&& logical_player < mainGame->dInfo.team1 + mainGame->dInfo.team2) {
++			SetThreeVsOneReplayHands(
++				mainGame->dInfo.logical_turn_player, logical_player);
+ 			SetThreeVsOneView(
+ 				mainGame->dInfo.logical_turn_player, logical_player);
++		}
+ 		const auto logical_display =
+ 			mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player);
+@@ -4874,6 +4947,7 @@
+ 		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+ 				&& valid_logical_attack) {
++			SetThreeVsOneReplayHands(attacker_logical, attack_target_logical);
+ 			SetThreeVsOneView(attacker_logical, attack_target_logical);
+ 			// A replay-view packet may already have selected the same logical pair,
+ 			// but the previous card transform can remain for one frame. Refreshing
+@@ -5038,6 +5112,9 @@
+ 	}
+ 	case MSG_ATTACK_DISABLED: {
++		if(mainGame->dInfo.isReplay
++				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			ResetThreeVsOneReplayInteraction();
+ 		if(mainGame->dField.attacker)
+ 			event_string = epro::sprintf(gDataManager->GetSysString(1621),
+ 				gDataManager->GetName(mainGame->dField.attacker->code));
+@@ -5047,6 +5124,9 @@
+ 		return true;
+ 	}
+ 	case MSG_DAMAGE_STEP_END: {
++		if(mainGame->dInfo.isReplay
++				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
++			ResetThreeVsOneReplayInteraction();
+ 		return true;
+ 	}
+ 	case MSG_MISSED_EFFECT: {
