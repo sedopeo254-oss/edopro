@@ -21,7 +21,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tar --exclude=.git --exclude='ocgcore/.git' -czf replay-source.tar.gz .
+          mkdir -p "$RUNNER_TEMP/replay-source"
+          rsync -a --exclude='.git/' --exclude='ocgcore/.git/' ./ "$RUNNER_TEMP/replay-source/"
+          tar -C "$RUNNER_TEMP/replay-source" -czf "$RUNNER_TEMP/replay-source.tar.gz" .
+          cp "$RUNNER_TEMP/replay-source.tar.gz" replay-source.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: replay-source
