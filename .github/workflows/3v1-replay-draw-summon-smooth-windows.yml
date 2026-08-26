@@ -1,0 +1,109 @@
+name: 3v1 Replay Draw and Summon Smooth Windows
+
+on:
+  push:
+    branches:
+      - fix/3v1-replay-draw-summon-smooth-20260826
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 3v1-replay-draw-summon-smooth-windows
+  cancel-in-progress: true
+
+env:
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+
+jobs:
+  validate:
+    name: Validate replay draw and summon smoothing
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Run focused and Core regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_replay_animation_test.cpp \
+            -o /tmp/multiplayer-replay-animation-test
+          /tmp/multiplayer-replay-animation-test
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_replay_policy_test.cpp \
+            -o /tmp/multiplayer-replay-policy-test
+          /tmp/multiplayer-replay-policy-test
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_attack_arrow_test.cpp \
+            -o /tmp/multiplayer-attack-arrow-test
+          /tmp/multiplayer-attack-arrow-test
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          grep -Fq 'ApplyThreeVsOneReplayPrivateDraw' gframe/client_field.cpp
+          grep -Fq 'DrawSoundCount' gframe/duelclient.cpp
+          grep -Fq 'SummonTiming{ 15, 4, 6 }' gframe/multiplayer_replay_animation.h
+          git diff --check
+
+  windows:
+    name: Windows x86 smooth replay client
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+      - name: Build bundled client
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package no-UPX client
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures deploy/expansions/script
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/textures/field-3v1.png
+          test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/expansions/script/c511001152.lua
+          test -f deploy/expansions/script/c511000405.lua
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-3v1-replay-draw-summon-smooth-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
