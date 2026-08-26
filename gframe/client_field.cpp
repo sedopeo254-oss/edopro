@@ -1132,6 +1132,65 @@ void ClientField::UpdateMultiplayerPrivateDraw(uint8_t logical_player,
 	snapshot.hand.insert(snapshot.hand.end(),
 		drawn_cards.begin(), drawn_cards.end());
 }
+bool ClientField::ApplyThreeVsOneReplayPrivateDraw(uint8_t logical_player,
+		const std::vector<MultiplayerPrivatePileCard>& drawn_cards) {
+	if(!mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| logical_player >= multiplayer_private_piles.size()
+			|| !multiplayer_private_piles_valid[logical_player]
+			|| drawn_cards.empty()
+			|| !IsThreeVsOneReplayHandDisplayed(logical_player))
+		return false;
+	const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
+	const auto display_side = core_side < 2
+		? mainGame->LocalPlayer(core_side) : static_cast<uint8_t>(0xff);
+	if(display_side > 1
+			|| multiplayer_displayed_field_logical[display_side] != logical_player
+			|| multiplayer_displayed_hand_logical[display_side] != logical_player)
+		return false;
+	const auto& snapshot = multiplayer_private_piles[logical_player];
+	const auto count = drawn_cards.size();
+	if(snapshot.hand.size() < count
+			|| hand[display_side].size() + count != snapshot.hand.size()
+			|| deck[display_side].size() < count)
+		return false;
+	// The visible prefix must still describe the pre-draw hand. If an older
+	// replay omitted a needed snapshot, fall back to the full atomic reconcile.
+	for(size_t i = 0; i < hand[display_side].size(); ++i) {
+		const auto* pcard = hand[display_side][i];
+		if(!pcard || pcard->code != snapshot.hand[i].code
+				|| static_cast<uint8_t>(pcard->position) != snapshot.hand[i].position)
+			return false;
+	}
+	for(const auto& drawn : drawn_cards) {
+		auto* pcard = deck[display_side].back();
+		deck[display_side].pop_back();
+		if(!pcard)
+			pcard = new ClientCard{};
+		pcard->owner = display_side;
+		pcard->controler = display_side;
+		pcard->location = LOCATION_DECK;
+		if(pcard->code != drawn.code)
+			pcard->SetCode(drawn.code);
+		pcard->position = drawn.position;
+		pcard->is_public = drawn.code != 0;
+		pcard->is_fading = false;
+		pcard->is_moving = false;
+		pcard->refresh_on_stop = false;
+		pcard->aniFrame = 0;
+		pcard->curAlpha = 255;
+		pcard->draw_scale = 1.0f;
+		AddCard(pcard, display_side, LOCATION_HAND, 0);
+	}
+	// Animate the complete hand as one non-blocking batch. This replaces the
+	// old full private-pile rebuild that caused a visible pause on every draw.
+	for(auto* pcard : hand[display_side])
+		if(pcard)
+			MoveCard(pcard, 8);
+	mainGame->should_refresh_hands = true;
+	RefreshHandHitboxes();
+	return true;
+}
 void ClientField::UpdateMultiplayerPrivateMove(uint8_t previous_logical,
 		uint8_t previous_location, uint32_t previous_sequence,
 		uint8_t current_logical, uint8_t current_location,

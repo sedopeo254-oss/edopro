@@ -22,6 +22,7 @@
 #include "single_mode.h"
 #include "game.h"
 #include "multiplayer_attack_arrow.h"
+#include "multiplayer_replay_animation.h"
 #include "replay.h"
 #include "replay_mode.h"
 #include "sound_manager.h"
@@ -4095,6 +4096,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_SUMMONING: {
 		const auto code = BufferIO::Read<uint32_t>(pbuf);
+		const auto summon_timing = multiplayer_replay_animation::GetSummonTiming(
+			mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
 		/*CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);*/
 		if(!PlayChant(SoundManager::CHANT::SUMMON, code))
 			Play(SoundManager::SFX::SUMMON);
@@ -4105,9 +4108,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->showcarddif = 0;
 			mainGame->showcardp = 0;
 			mainGame->showcard = 7;
-			mainGame->WaitFrameSignal(30, lock);
+			mainGame->WaitFrameSignal(summon_timing.reveal_frames, lock);
 			mainGame->showcard = 0;
-			mainGame->WaitFrameSignal(11, lock);
+			mainGame->WaitFrameSignal(summon_timing.settle_frames, lock);
 		}
 		return true;
 	}
@@ -4117,6 +4120,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_SPSUMMONING: {
 		const auto code = BufferIO::Read<uint32_t>(pbuf);
+		const auto summon_timing = multiplayer_replay_animation::GetSummonTiming(
+			mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
 		CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
 		const auto summon_core_side = info.controler;
 		const auto summon_logical = summon_core_side < 2
@@ -4147,9 +4152,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				mainGame->showcardcode = code;
 				mainGame->showcarddif = 1;
 				mainGame->showcard = 5;
-				mainGame->WaitFrameSignal(30, lock);
+				mainGame->WaitFrameSignal(summon_timing.reveal_frames, lock);
 				mainGame->showcard = 0;
-				mainGame->WaitFrameSignal(11, lock);
+				mainGame->WaitFrameSignal(summon_timing.settle_frames, lock);
 			}
 		}
 		return true;
@@ -4160,6 +4165,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_FLIPSUMMONING: {
 		const auto code = BufferIO::Read<uint32_t>(pbuf);
+		const auto summon_timing = multiplayer_replay_animation::GetSummonTiming(
+			mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
 		CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
 		info.controler = mainGame->LocalPlayer(info.controler);
 		if(!PlayChant(SoundManager::CHANT::SUMMON, code))
@@ -4172,15 +4179,15 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		if(!mainGame->dInfo.isCatchingUp) {
 			std::unique_lock<epro::mutex> lock(mainGame->gMutex);
 			event_string = epro::sprintf(gDataManager->GetSysString(1607), gDataManager->GetName(code));
-			mainGame->dField.MoveCard(pcard, 10);
-			mainGame->WaitFrameSignal(11, lock);
+			mainGame->dField.MoveCard(pcard, summon_timing.move_frames);
+			mainGame->WaitFrameSignal(summon_timing.settle_frames, lock);
 			mainGame->showcardcode = code;
 			mainGame->showcarddif = 0;
 			mainGame->showcardp = 0;
 			mainGame->showcard = 7;
-			mainGame->WaitFrameSignal(30, lock);
+			mainGame->WaitFrameSignal(summon_timing.reveal_frames, lock);
 			mainGame->showcard = 0;
-			mainGame->WaitFrameSignal(11, lock);
+			mainGame->WaitFrameSignal(summon_timing.settle_frames, lock);
 		}
 		return true;
 	}
@@ -4435,9 +4442,15 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		}
 		if(mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
 			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
-			if(mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player))
+			const bool displayed =
+				mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player);
+			if(displayed
+					&& !mainGame->dField.ApplyThreeVsOneReplayPrivateDraw(
+						logical_player, drawn_cards))
 				mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
-			for(uint32_t i = 0; i < count; ++i)
+			const auto sounds = multiplayer_replay_animation::DrawSoundCount(
+				true, displayed, count);
+			for(uint32_t i = 0; i < sounds; ++i)
 				Play(SoundManager::SFX::DRAW);
 			return true;
 		}
@@ -4483,11 +4496,18 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			deck_count = deck_count > count ? deck_count - count : 0;
 			mainGame->dInfo.logical_hand_count[logical_player] += count;
 		}
+		uint32_t sounds = count;
 		if(mainGame->dInfo.isReplay) {
 			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
 			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
-				if(mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player))
+				const bool displayed =
+					mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player);
+				if(displayed
+						&& !mainGame->dField.ApplyThreeVsOneReplayPrivateDraw(
+							logical_player, drawn_cards))
 					mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
+				sounds = multiplayer_replay_animation::DrawSoundCount(
+					true, displayed, count);
 			} else if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
 				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
 		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
@@ -4506,7 +4526,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			}
 			mainGame->dField.RefreshAllCards();
 		}
-		for(uint32_t i = 0; i < count; ++i)
+		for(uint32_t i = 0; i < sounds; ++i)
 			Play(SoundManager::SFX::DRAW);
 		return true;
 	}

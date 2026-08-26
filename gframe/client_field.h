@@ -143,6 +143,8 @@ public:
 	bool IsThreeVsOneReplayHandDisplayed(uint8_t logical_player) const;
 	void UpdateMultiplayerPrivateDraw(uint8_t logical_player,
 		const std::vector<MultiplayerPrivatePileCard>& drawn_cards);
+	bool ApplyThreeVsOneReplayPrivateDraw(uint8_t logical_player,
+		const std::vector<MultiplayerPrivatePileCard>& drawn_cards);
 	void UpdateMultiplayerPrivateMove(uint8_t previous_logical,
 		uint8_t previous_location, uint32_t previous_sequence,
 		uint8_t current_logical, uint8_t current_location,
