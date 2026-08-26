@@ -108,9 +108,9 @@ struct DuelInfo {
 	// sides. Battle Royale owns two saved fields per side; 3-vs-1 owns three
 	// on side 0 and one on side 1.
 	uint8_t field_focus[2]{ 0, 0 };
-	// In 3v1 replay, the public field camera and the private hand owner are
-	// intentionally independent. A team hand is visible only for its turn owner
-	// or for the player currently attacked/targeted/damaged. 0xff means hide it.
+	// 3v1 replay projects one complete logical player per side. Hand, Deck,
+	// Extra Deck, GY and Banish always follow the same field focus, preventing
+	// cards from different teammates from ever being composed together.
 	uint8_t replay_hand_focus[2]{ 0xff, 0xff };
 	uint8_t replay_hand_reveal_mask{ 0 };
 	uint8_t replay_hand_preferred{ 0xff };
@@ -264,7 +264,7 @@ struct DuelInfo {
 	uint8_t GetThreeVsOneReplayHandLogical(uint8_t core_side) const {
 		if(!isReplay || !HasFieldFlag(DUEL_3_V_1) || core_side > 1)
 			return GetLogicalPlayer(core_side);
-		const auto logical = replay_hand_focus[core_side];
+		const auto logical = GetFocusedLogicalPlayer(core_side);
 		return logical < team1 + team2 ? logical : 0xff;
 	}
 	bool SetThreeVsOneReplayHandPolicy(uint8_t affected = 0xff) {
@@ -272,7 +272,8 @@ struct DuelInfo {
 			return false;
 		const auto player_count = static_cast<uint8_t>(team1 + team2);
 		const auto mask = multiplayer_replay_policy::MakeVisibleHandMask(
-			logical_turn_player, affected, active_player_mask, player_count);
+			logical_turn_player, affected, active_player_mask, player_count,
+			static_cast<uint8_t>(team1));
 		uint8_t next[2]{ 0xff, 0xff };
 		for(uint8_t side = 0; side < 2; ++side)
 			next[side] = multiplayer_replay_policy::ChooseHandForSide(

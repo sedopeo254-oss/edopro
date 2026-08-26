@@ -1025,7 +1025,9 @@ void ClientField::CaptureThreeVsOneReplayPrivatePiles() {
 		const auto core_side = mainGame->LocalPlayer(display_side);
 		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
 		if(logical >= multiplayer_private_piles.size()
-				|| multiplayer_private_piles_valid[logical])
+				|| multiplayer_private_piles_valid[logical]
+				|| multiplayer_displayed_field_logical[display_side] != logical
+				|| multiplayer_displayed_hand_logical[display_side] != logical)
 			continue;
 		MultiplayerPrivatePileSnapshot snapshot;
 		snapshot.deck_count = static_cast<uint32_t>(deck[display_side].size());
@@ -1034,9 +1036,8 @@ void ClientField::CaptureThreeVsOneReplayPrivatePiles() {
 				extra_p_count[display_side], extra[display_side].size())) : 0;
 		snapshot.top_code = deck[display_side].empty()
 			? 0 : deck[display_side].back()->code;
-		// Do not copy a hand projected for another teammate into this field owner.
-		if(mainGame->dInfo.GetThreeVsOneReplayHandLogical(core_side) == logical)
-			capture_cards(hand[display_side], snapshot.hand);
+		// The complete private projection belongs to the same logical player.
+		capture_cards(hand[display_side], snapshot.hand);
 		capture_cards(extra[display_side], snapshot.extra);
 		capture_cards(grave[display_side], snapshot.grave);
 		capture_cards(remove[display_side], snapshot.removed);
@@ -1050,8 +1051,7 @@ bool ClientField::IsThreeVsOneReplayPrivatePileDisplayed(
 			|| logical_player >= mainGame->dInfo.team1 + mainGame->dInfo.team2)
 		return false;
 	for(uint8_t core_side = 0; core_side < 2; ++core_side)
-		if(mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player
-				|| mainGame->dInfo.GetThreeVsOneReplayHandLogical(core_side) == logical_player)
+		if(mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player)
 			return true;
 	return false;
 }
@@ -1061,7 +1061,7 @@ bool ClientField::IsThreeVsOneReplayHandDisplayed(uint8_t logical_player) const 
 		return false;
 	const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
 	return core_side < 2
-		&& mainGame->dInfo.GetThreeVsOneReplayHandLogical(core_side) == logical_player;
+		&& mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player;
 }
 void ClientField::ApplyThreeVsOneReplayPrivatePiles() {
 	if(!mainGame->dInfo.isReplay
@@ -1079,34 +1079,44 @@ void ClientField::ApplyThreeVsOneReplayPrivatePiles() {
 		const auto display_side = mainGame->LocalPlayer(core_side);
 		if(display_side > 1)
 			continue;
-		const auto field_logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
-		const auto hand_logical = mainGame->dInfo.GetThreeVsOneReplayHandLogical(core_side);
-		MultiplayerPrivatePileSnapshot composed;
-		if(field_logical < multiplayer_private_piles.size()
-				&& multiplayer_private_piles_valid[field_logical]) {
-			composed = multiplayer_private_piles[field_logical];
-		} else {
-			// At replay start the first view hint can precede its authoritative
-			// snapshot. Preserve the current non-hand projection instead of wiping it.
-			composed.deck_count = static_cast<uint32_t>(deck[display_side].size());
-			composed.extra_p_count = extra_p_count[display_side] > 0
+		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(core_side);
+		MultiplayerPrivatePileSnapshot complete;
+		if(logical < multiplayer_private_piles.size()
+				&& multiplayer_private_piles_valid[logical]) {
+			complete = multiplayer_private_piles[logical];
+		} else if(multiplayer_displayed_field_logical[display_side] == logical
+				&& multiplayer_displayed_hand_logical[display_side] == logical) {
+			// The first authoritative snapshot may trail the initial field. Preserve
+			// the current projection only when it is already known to be this player.
+			complete.deck_count = static_cast<uint32_t>(deck[display_side].size());
+			complete.extra_p_count = extra_p_count[display_side] > 0
 				? static_cast<uint32_t>(std::min<size_t>(
 					extra_p_count[display_side], extra[display_side].size())) : 0;
-			composed.top_code = deck[display_side].empty()
+			complete.top_code = deck[display_side].empty()
 				? 0 : deck[display_side].back()->code;
-			capture_cards(extra[display_side], composed.extra);
-			capture_cards(grave[display_side], composed.grave);
-			capture_cards(remove[display_side], composed.removed);
+			capture_cards(hand[display_side], complete.hand);
+			capture_cards(extra[display_side], complete.extra);
+			capture_cards(grave[display_side], complete.grave);
+			capture_cards(remove[display_side], complete.removed);
+		} else if(logical < 4) {
+			// Never leave another teammate's cards on screen under the new name.
+			// Use anonymous placeholders until this player's authoritative snapshot
+			// arrives, then ReplaceMultiplayerPrivatePiles reconciles them in place.
+			complete.deck_count = mainGame->dInfo.logical_deck_count[logical];
+			complete.hand.resize(mainGame->dInfo.logical_hand_count[logical],
+				{ 0, POS_FACEDOWN_DEFENSE });
+			complete.extra.resize(mainGame->dInfo.logical_extra_count[logical],
+				{ 0, POS_FACEDOWN_DEFENSE });
+			complete.grave.resize(mainGame->dInfo.logical_grave_count[logical],
+				{ 0, POS_FACEUP });
+			complete.removed.resize(mainGame->dInfo.logical_banish_count[logical],
+				{ 0, POS_FACEUP });
 		}
-		// Field camera determines Deck/Extra/GY/Banish. Hand visibility follows
-		// the dedicated replay policy and may intentionally be empty.
-		composed.hand.clear();
-		if(hand_logical < multiplayer_private_piles.size()
-				&& multiplayer_private_piles_valid[hand_logical])
-			composed.hand = multiplayer_private_piles[hand_logical].hand;
-		ReplaceMultiplayerPrivatePiles(display_side, composed, false);
-		multiplayer_displayed_field_logical[display_side] = field_logical;
-		multiplayer_displayed_hand_logical[display_side] = hand_logical;
+		// One atomic snapshot supplies Hand, Deck, Extra, GY and Banish. Never
+		// combine the hand of P3 with the graveyard or deck of P1/P2.
+		ReplaceMultiplayerPrivatePiles(display_side, complete, false);
+		multiplayer_displayed_field_logical[display_side] = logical;
+		multiplayer_displayed_hand_logical[display_side] = logical;
 	}
 }
 void ClientField::UpdateMultiplayerPrivateDraw(uint8_t logical_player,
