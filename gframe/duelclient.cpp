@@ -4878,11 +4878,18 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				? mainGame->dInfo.GetLogicalPlayer(
 					attacker_core_side, info1.duelist)
 				: static_cast<uint8_t>(0xff);
-		const auto attack_target_logical = has_battle_royale_attack
+		const auto encoded_attack_target_logical = has_battle_royale_attack
 			? BufferIO::Read<uint8_t>(pbuf)
 			: has_three_vs_one_target
 				? BufferIO::Read<uint8_t>(pbuf)
 				: static_cast<uint8_t>(0xff);
+		const auto derived_attack_target_logical =
+			mainGame->dInfo.GetLogicalPlayer(target_core_side, info2.duelist);
+		const auto attack_target_logical = has_three_vs_one_target
+			? multiplayer_attack_arrow::ResolveLogicalTarget(
+				encoded_attack_target_logical, derived_attack_target_logical,
+				player_count)
+			: encoded_attack_target_logical;
 		info1.controler = mainGame->LocalPlayer(attacker_core_side);
 		info2.controler = mainGame->LocalPlayer(target_core_side);
 		const bool valid_logical_attack = attacker_logical < player_count

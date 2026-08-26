@@ -2,8 +2,17 @@
 #define MULTIPLAYER_ATTACK_ARROW_H
 
 #include <cmath>
+#include <cstdint>
 
 namespace ygo::multiplayer_attack_arrow {
+
+inline uint8_t ResolveLogicalTarget(uint8_t encoded_target,
+		uint8_t derived_target, uint8_t player_count) {
+	// Source 13-era 3v1 replays use 0xff when a teammate attacks P4,
+	// although the target loc_info still identifies P4. Prefer a valid
+	// explicit target and otherwise recover it from that target location.
+	return encoded_target < player_count ? encoded_target : derived_target;
+}
 
 inline float AngleFromAttackerToTarget(float attacker_x, float attacker_y,
 		float target_x, float target_y) {

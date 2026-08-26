@@ -13,6 +13,13 @@ static void expect(bool value, const char* message) {
 }
 
 int main() {
+	// Source 13-era 3v1 replays encode teammate -> P4 targets as 0xff.
+	// The target card location still says P4, so recover P4 before drawing.
+	expect(ResolveLogicalTarget(0xff, 3, 4) == 3,
+		"legacy team-to-P4 attacks must derive P4 from target loc_info");
+	expect(ResolveLogicalTarget(2, 0, 4) == 2,
+		"an explicit P3 target must remain authoritative");
+
 	// Team -> opponent, opponent -> team, and diagonal attacks must all put the
 	// arrow head on the target rather than on the attacker.
 	expect(PointsToTarget(0.0f, 3.0f, 0.0f, -3.0f),
