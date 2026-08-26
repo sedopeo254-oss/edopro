@@ -17,9 +17,13 @@ int main() {
 		&& live.move_frames == 10,
 		"live duel summon timing must remain stock");
 	const auto replay = GetSummonTiming(true, true);
-	expect(replay.reveal_frames == 15 && replay.settle_frames == 4
-		&& replay.move_frames == 6,
-		"3v1 replay summons must use the smooth timing");
+	expect(replay.reveal_frames == 22 && replay.settle_frames == 8
+		&& replay.move_frames == 8,
+		"3v1 replay summons must use the balanced timing");
+	expect(GetDrawMoveFrames(true, true) == 12,
+		"3v1 replay draws must use a readable balanced movement");
+	expect(GetDrawMoveFrames(false, true) == 8,
+		"live duel draw movement must remain unchanged");
 	expect(DrawSoundCount(true, true, 6) == 1,
 		"Card of Sanctity must play one visible batch draw sound");
 	expect(DrawSoundCount(true, false, 6) == 0,

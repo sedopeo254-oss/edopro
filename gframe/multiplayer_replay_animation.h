@@ -13,11 +13,17 @@ struct SummonTiming {
 
 constexpr SummonTiming GetSummonTiming(bool is_replay, bool is_three_vs_one) {
 	// Keep live duels and all stock modes unchanged. 3v1 replay animations are
-	// shorter because a projected field/private-pile update already surrounds
-	// each summon and the stock 30+11 frame pause feels like a freeze.
+	// balanced because a projected field/private-pile update already surrounds
+	// each summon: slower than the fast profile, but still below the stock pause.
 	return is_replay && is_three_vs_one
-		? SummonTiming{ 15, 4, 6 }
+		? SummonTiming{ 22, 8, 8 }
 		: SummonTiming{ 30, 11, 10 };
+}
+
+constexpr uint8_t GetDrawMoveFrames(bool is_replay, bool is_three_vs_one) {
+	// A 12-frame batch movement is visible and deliberate without restoring
+	// the old full-pile rebuild or any blocking wait.
+	return is_replay && is_three_vs_one ? 12 : 8;
 }
 
 constexpr uint32_t DrawSoundCount(bool smooth_three_vs_one_replay,
