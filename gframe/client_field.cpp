@@ -12,6 +12,7 @@
 #include "client_field.h"
 #include "client_card.h"
 #include "duelclient.h"
+#include "multiplayer_replay_animation.h"
 #include "data_manager.h"
 #include "image_manager.h"
 #include "game.h"
@@ -1186,7 +1187,10 @@ bool ClientField::ApplyThreeVsOneReplayPrivateDraw(uint8_t logical_player,
 	// old full private-pile rebuild that caused a visible pause on every draw.
 	for(auto* pcard : hand[display_side])
 		if(pcard)
-			MoveCard(pcard, 8);
+			MoveCard(pcard,
+				multiplayer_replay_animation::GetDrawMoveFrames(
+					mainGame->dInfo.isReplay,
+					mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)));
 	mainGame->should_refresh_hands = true;
 	RefreshHandHitboxes();
 	return true;
