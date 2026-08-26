@@ -1,0 +1,232 @@
+name: 3v1 Replay P1 Lock and Arrow Build
+
+on:
+  push:
+    branches:
+      - fix/3v1-replay-p1-lock-arrow-20260826
+
+permissions:
+  contents: write
+
+concurrency:
+  group: 3v1-replay-p1-lock-arrow
+  cancel-in-progress: true
+
+env:
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+
+jobs:
+  prepare:
+    name: Apply, test and publish P1-locked replay source
+    runs-on: ubuntu-24.04
+    outputs:
+      commit_sha: ${{ steps.publish.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify clean Source 13-derived baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 95c26cca1f077060a384c1ee142166d7fd33a438 HEAD
+          test "$(git -C ocgcore rev-parse HEAD)" = "bb0c48e455857156b55a223d1766d416e16dbf10"
+          grep -Fq 'GetThreeVsOneReplayHandLogical' gframe/game.h
+          grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+
+      - name: Apply exact P1 replay lock and attack-arrow patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          tr -d '\r\n\t ' \
+            < .github/replay-p1-lock/3v1-replay-p1-lock-arrow.patch.gz.b64 \
+            | base64 -d | gzip -dc > /tmp/3v1-replay-p1-lock-arrow.patch
+          echo "31078921fe4cba8a6a19b94dc8468481543e9aaa822758c92fc2a7db9754d141  /tmp/3v1-replay-p1-lock-arrow.patch" | sha256sum -c -
+          git apply --check /tmp/3v1-replay-p1-lock-arrow.patch
+          git apply /tmp/3v1-replay-p1-lock-arrow.patch
+          git diff --check
+
+      - name: Test exact replay projection and arrow direction
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_replay_policy_test.cpp \
+            -o /tmp/multiplayer-replay-policy-test
+          /tmp/multiplayer-replay-policy-test
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_attack_arrow_test.cpp \
+            -o /tmp/multiplayer-attack-arrow-test
+          /tmp/multiplayer-attack-arrow-test
+
+      - name: Run multiplayer Core and Lua regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          luac5.4 -p multiplayer-deck-master/c153000012.lua
+          luac5.4 -p multiplayer-deck-master/c511001152.lua
+          luac5.4 -p multiplayer-deck-master/c511000405.lua
+          luac5.4 -p multiplayer-deck-master/c22959079.lua
+          luac5.4 -p multiplayer-effect-examples/c25880422.lua
+
+      - name: Verify atomic player projection and card behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'P4 turn must show exactly P1 and P4' .github/tests/multiplayer_replay_policy_test.cpp
+          grep -Fq 'P4 attacking/targeting P2 must show P2 and P4' .github/tests/multiplayer_replay_policy_test.cpp
+          grep -Fq 'P4 attacking/targeting P3 must show P3 and P4' .github/tests/multiplayer_replay_policy_test.cpp
+          grep -Fq 'ChooseFocusForSide' gframe/multiplayer_replay_policy.h
+          grep -Fq 'SetThreeVsOneView' gframe/duelclient.cpp
+          grep -Fq 'RestoreThreeVsOneReplayTurnView' gframe/duelclient.cpp
+          grep -Fq 'ShowThreeVsOneAffectedView' gframe/duelclient.cpp
+          grep -Fq 'multiplayer_displayed_hand_logical[display_side] = logical' gframe/client_field.cpp
+          grep -Fq 'AngleFromAttackerToTarget' gframe/duelclient.cpp
+          grep -Fq 'team-to-opponent vertical arrow must point at the opponent' .github/tests/multiplayer_attack_arrow_test.cpp
+          ! grep -Fq 'StabilizeAttackPoint' gframe/duelclient.cpp
+          grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'SetValue(-1350)' multiplayer-deck-master/c511001152.lua
+          grep -Fq '15744417' multiplayer-deck-master/c511001152.lua
+          grep -Fq '140000073' multiplayer-deck-master/c511001152.lua
+          grep -Fq 's.machineboosttarget' multiplayer-deck-master/c511000405.lua
+          grep -Fq 'Duel.SelectEffectPlayers' multiplayer-effect-examples/c25880422.lua
+          test -f textures/field-3v1.png
+          git -C ocgcore diff --check
+          git diff --check
+
+      - name: Publish tested source
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .github/replay-p1-lock
+          rm -f .github/workflows/3v1-replay-p1-lock-arrow-build.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Lock 3v1 opponent-turn replay to P1 and fix attack arrows"
+          git push origin HEAD:fix/3v1-replay-p1-lock-arrow-20260826
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  windbot:
+    name: Build patched WindBot
+    runs-on: ubuntu-24.04
+    needs: prepare
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - uses: actions/checkout@v4
+        with:
+          repository: ProjectIgnis/windbot
+          ref: fa0ae767967afc6a820784837f11cd3fabb9c47c
+          path: windbot
+          submodules: recursive
+      - name: Apply 3v1 compatibility patch
+        shell: bash
+        run: git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
+      - name: Build WindBot
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull ghcr.io/projectignis/mono_xamarin_builder_monodroid:master
+          docker image tag ghcr.io/projectignis/mono_xamarin_builder_monodroid:master monodroid
+          cd windbot
+          docker run --rm --volume "$PWD:/project" monodroid -t:restore -p:RestorePackagesPath=./.nuget WindBot.sln
+          ./ci/install-patched-mono-runtime.sh
+          docker run --rm --volume "$PWD:/project" monodroid -m -p:Configuration=Release WindBot.sln -p:Posix=true
+      - name: Package WindBot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p windbot-package/WindBot
+          cp -r windbot/bin/Release/. windbot-package/WindBot/
+          rm -f windbot-package/WindBot/mscorlib* windbot-package/WindBot/libWindbot*
+          cp windbot/COPYING windbot/LICENSE windbot/bots.json windbot-package/WindBot/
+          cp -r windbot/Decks windbot/Dialogs windbot-package/WindBot/
+          test -f windbot-package/WindBot/WindBot.exe
+          test -f windbot-package/WindBot/ExecutorBase.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windbot-3v1-replay-p1-lock-arrow
+          path: windbot-package/
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86 P1-locked replay client
+    runs-on: windows-2022
+    needs: [prepare, windbot]
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+          submodules: recursive
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+      - name: Build bundled client
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package full no-UPX client
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures deploy/expansions/script
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/textures/field-3v1.png
+          test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/expansions/script/c511001152.lua
+          test -f deploy/expansions/script/c511000405.lua
+          ! grep -Fq 'Duel.FocusLogicalPlayer' deploy/expansions/script/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' deploy/expansions/script/c153000012.lua
+      - uses: actions/download-artifact@v4
+        with:
+          name: windbot-3v1-replay-p1-lock-arrow
+          path: deploy/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-3v1-replay-p1-lock-arrow-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
