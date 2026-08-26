@@ -1,0 +1,225 @@
+name: 3v1 Team-to-P4 Arrow Compatibility Build
+
+on:
+  push:
+    branches:
+      - fix/3v1-replay-p1-lock-arrow-20260826
+
+permissions:
+  contents: write
+
+concurrency:
+  group: 3v1-team-to-p4-arrow-final
+  cancel-in-progress: true
+
+env:
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+
+jobs:
+  prepare:
+    name: Recover legacy team-to-P4 targets and publish
+    runs-on: ubuntu-24.04
+    outputs:
+      commit_sha: ${{ steps.publish.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Apply legacy target fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor b59f8659d1f289fcc45be69bb78acf1d1259b2ac HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+
+          header = Path('gframe/multiplayer_attack_arrow.h')
+          text = header.read_text(encoding='utf-8')
+          old = '''#include <cmath>\n\nnamespace ygo::multiplayer_attack_arrow {\n\n'''
+          new = '''#include <cmath>\n#include <cstdint>\n\nnamespace ygo::multiplayer_attack_arrow {\n\ninline uint8_t ResolveLogicalTarget(uint8_t encoded_target,\n\t\tuint8_t derived_target, uint8_t player_count) {\n\t// Source 13-era 3v1 replays use 0xff when a teammate attacks P4,\n\t// although the target loc_info still identifies P4. Prefer a valid\n\t// explicit target and otherwise recover it from that target location.\n\treturn encoded_target < player_count ? encoded_target : derived_target;\n}\n\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected multiplayer_attack_arrow.h patch site')
+          header.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          duelclient = Path('gframe/duelclient.cpp')
+          text = duelclient.read_text(encoding='utf-8')
+          old = '''\t\tconst auto attack_target_logical = has_battle_royale_attack\n\t\t\t? BufferIO::Read<uint8_t>(pbuf)\n\t\t\t: has_three_vs_one_target\n\t\t\t\t? BufferIO::Read<uint8_t>(pbuf)\n\t\t\t\t: static_cast<uint8_t>(0xff);\n'''
+          new = '''\t\tconst auto encoded_attack_target_logical = has_battle_royale_attack\n\t\t\t? BufferIO::Read<uint8_t>(pbuf)\n\t\t\t: has_three_vs_one_target\n\t\t\t\t? BufferIO::Read<uint8_t>(pbuf)\n\t\t\t\t: static_cast<uint8_t>(0xff);\n\t\tconst auto derived_attack_target_logical =\n\t\t\tmainGame->dInfo.GetLogicalPlayer(target_core_side, info2.duelist);\n\t\tconst auto attack_target_logical = has_three_vs_one_target\n\t\t\t? multiplayer_attack_arrow::ResolveLogicalTarget(\n\t\t\t\tencoded_attack_target_logical, derived_attack_target_logical,\n\t\t\t\tplayer_count)\n\t\t\t: encoded_attack_target_logical;\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected duelclient.cpp attack-target patch site')
+          duelclient.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test = Path('.github/tests/multiplayer_attack_arrow_test.cpp')
+          text = test.read_text(encoding='utf-8')
+          old = '''int main() {\n\t// Team -> opponent, opponent -> team, and diagonal attacks must all put the\n'''
+          new = '''int main() {\n\t// Source 13-era 3v1 replays encode teammate -> P4 targets as 0xff.\n\t// The target card location still says P4, so recover P4 before drawing.\n\texpect(ResolveLogicalTarget(0xff, 3, 4) == 3,\n\t\t"legacy team-to-P4 attacks must derive P4 from target loc_info");\n\texpect(ResolveLogicalTarget(2, 0, 4) == 2,\n\t\t"an explicit P3 target must remain authoritative");\n\n\t// Team -> opponent, opponent -> team, and diagonal attacks must all put the\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected multiplayer_attack_arrow_test.cpp patch site')
+          test.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Test P1 projection and all attack directions
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_replay_policy_test.cpp \
+            -o /tmp/multiplayer-replay-policy-test
+          /tmp/multiplayer-replay-policy-test
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_attack_arrow_test.cpp \
+            -o /tmp/multiplayer-attack-arrow-test
+          /tmp/multiplayer-attack-arrow-test
+          grep -Fq 'ResolveLogicalTarget' gframe/duelclient.cpp
+          grep -Fq 'legacy team-to-P4 attacks must derive P4' .github/tests/multiplayer_attack_arrow_test.cpp
+          grep -Fq 'P4 turn must show exactly P1 and P4' .github/tests/multiplayer_replay_policy_test.cpp
+          ! grep -Fq 'StabilizeAttackPoint' gframe/duelclient.cpp
+
+      - name: Run multiplayer Core regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "bb0c48e455857156b55a223d1766d416e16dbf10"
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          git -C ocgcore diff --check
+          git diff --check
+
+      - name: Preserve current anime card scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'SetValue(-1350)' multiplayer-deck-master/c511001152.lua
+          grep -Fq 's.machineboosttarget' multiplayer-deck-master/c511000405.lua
+          test -f textures/field-3v1.png
+
+      - name: Publish final tested source
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/3v1-replay-team-to-p4-arrow-build.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Recover P4 targets in legacy team attack replays"
+          git push origin HEAD:fix/3v1-replay-p1-lock-arrow-20260826
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  windbot:
+    name: Build patched WindBot
+    runs-on: ubuntu-24.04
+    needs: prepare
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - uses: actions/checkout@v4
+        with:
+          repository: ProjectIgnis/windbot
+          ref: fa0ae767967afc6a820784837f11cd3fabb9c47c
+          path: windbot
+          submodules: recursive
+      - name: Apply 3v1 compatibility patch
+        shell: bash
+        run: git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
+      - name: Build WindBot
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull ghcr.io/projectignis/mono_xamarin_builder_monodroid:master
+          docker image tag ghcr.io/projectignis/mono_xamarin_builder_monodroid:master monodroid
+          cd windbot
+          docker run --rm --volume "$PWD:/project" monodroid -t:restore -p:RestorePackagesPath=./.nuget WindBot.sln
+          ./ci/install-patched-mono-runtime.sh
+          docker run --rm --volume "$PWD:/project" monodroid -m -p:Configuration=Release WindBot.sln -p:Posix=true
+      - name: Package WindBot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p windbot-package/WindBot
+          cp -r windbot/bin/Release/. windbot-package/WindBot/
+          rm -f windbot-package/WindBot/mscorlib* windbot-package/WindBot/libWindbot*
+          cp windbot/COPYING windbot/LICENSE windbot/bots.json windbot-package/WindBot/
+          cp -r windbot/Decks windbot/Dialogs windbot-package/WindBot/
+          test -f windbot-package/WindBot/WindBot.exe
+          test -f windbot-package/WindBot/ExecutorBase.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windbot-3v1-replay-p1-lock-arrow-final
+          path: windbot-package/
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86 final P1-locked replay client
+    runs-on: windows-2022
+    needs: [prepare, windbot]
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+          submodules: recursive
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+      - name: Build bundled client
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package full no-UPX client
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures deploy/expansions/script
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/textures/field-3v1.png
+          test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/expansions/script/c511001152.lua
+          test -f deploy/expansions/script/c511000405.lua
+      - uses: actions/download-artifact@v4
+        with:
+          name: windbot-3v1-replay-p1-lock-arrow-final
+          path: deploy/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-3v1-replay-p1-lock-arrow-final-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
