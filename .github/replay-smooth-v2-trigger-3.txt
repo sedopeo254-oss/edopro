@@ -1,0 +1,1 @@
+Re-run after scoping the normal-summon patch to MSG_SUMMONING only.
