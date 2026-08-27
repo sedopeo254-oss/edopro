@@ -1,0 +1,32 @@
+name: Replay Source Export
+
+on:
+  pull_request:
+    branches:
+      - stable/3v1-replay-targeting-fixed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Export source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/replay-source"
+          rsync -a --exclude='.git/' --exclude='ocgcore/.git/' ./ "$RUNNER_TEMP/replay-source/"
+          tar -C "$RUNNER_TEMP/replay-source" -czf "$RUNNER_TEMP/replay-source.tar.gz" .
+          cp "$RUNNER_TEMP/replay-source.tar.gz" replay-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: replay-source
+          path: replay-source.tar.gz
+          if-no-files-found: error
