@@ -1,0 +1,215 @@
+name: 4-Way Live ec2d962 Restoration V2
+
+on:
+  push:
+    branches:
+      - fix/4way-live-ec2d962-restoration-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: 4way-live-ec2d962-restoration-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROTECTED_3V1_SHA: ef0b3f205cfd97b5fae6a181e1164c737affc896
+  PROTECTED_CORE_SHA: bb0c48e455857156b55a223d1766d416e16dbf10
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+
+jobs:
+  validate:
+    name: Validate live Battle Royale restoration
+    runs-on: ubuntu-24.04
+    outputs:
+      parent_sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - id: meta
+        name: Verify protected baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$PROTECTED_CORE_SHA"
+          git merge-base --is-ancestor ec2d962dc471abaea24cb1eba8371018ac17c952 HEAD
+          git merge-base --is-ancestor "$PROTECTED_3V1_SHA" HEAD
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          cp gframe/multiplayer_replay_policy.h /tmp/3v1-policy.h
+          cp gframe/multiplayer_attack_arrow.h /tmp/3v1-arrow.h
+          cp gframe/multiplayer_replay_animation.h /tmp/3v1-animation.h
+          sha256sum multiplayer-deck-master/* multiplayer-effect-examples/* | sort > /tmp/custom.sha
+      - name: Apply live-only patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/patch-live-restoration-anchors.py
+          python3 .github/scripts/apply-4way-live-ec2d962-restoration.py
+          git diff --check
+      - name: Test live policy and existing modes
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -Wall -Wextra -Werror -I. .github/tests/battle_royale_live_policy_test.cpp -o /tmp/live-policy
+          /tmp/live-policy
+          c++ -std=c++17 -Wall -Wextra -Werror -I. .github/tests/multiplayer_replay_policy_test.cpp -o /tmp/replay-policy
+          /tmp/replay-policy
+          c++ -std=c++17 -Wall -Wextra -Werror -I. .github/tests/multiplayer_attack_arrow_test.cpp -o /tmp/arrow
+          /tmp/arrow
+          c++ -std=c++17 -Wall -Wextra -Werror -I. .github/tests/multiplayer_replay_animation_test.cpp -o /tmp/animation
+          /tmp/animation
+          if test -f .github/tests/battle_royale_replay_smoothing_test.cpp; then
+            c++ -std=c++17 -Wall -Wextra -Werror -I. .github/tests/battle_royale_replay_smoothing_test.cpp -o /tmp/br-replay
+            /tmp/br-replay
+          fi
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+      - name: Enforce 3v1 and Core isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp -s /tmp/3v1-policy.h gframe/multiplayer_replay_policy.h
+          cmp -s /tmp/3v1-arrow.h gframe/multiplayer_attack_arrow.h
+          cmp -s /tmp/3v1-animation.h gframe/multiplayer_replay_animation.h
+          sha256sum multiplayer-deck-master/* multiplayer-effect-examples/* | sort > /tmp/custom-after.sha
+          cmp -s /tmp/custom.sha /tmp/custom-after.sha
+          test "$(git -C ocgcore rev-parse HEAD)" = "$PROTECTED_CORE_SHA"
+          git -C ocgcore diff --exit-code
+          grep -Fq 'CacheBattleRoyaleLivePrivatePiles' gframe/duelclient.cpp
+          grep -Fq 'ApplyBattleRoyaleLivePrivatePiles' gframe/duelclient.cpp
+          grep -Fq 'ApplyBattleRoyaleLivePrivateDraw' gframe/client_field.cpp
+          grep -Fq 'displayed_owner_matches' gframe/duelclient.cpp
+          grep -Fq 'SummonTiming{ 22, 8, 8 }' gframe/multiplayer_replay_animation.h
+          grep -Fq 'return is_replay && is_three_vs_one ? 12 : 8;' gframe/multiplayer_replay_animation.h
+          git diff --check
+
+  windbot:
+    name: Build protected WindBot
+    runs-on: ubuntu-24.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.parent_sha }}
+      - uses: actions/checkout@v4
+        with:
+          repository: ProjectIgnis/windbot
+          ref: fa0ae767967afc6a820784837f11cd3fabb9c47c
+          path: windbot
+          submodules: recursive
+      - name: Build WindBot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
+          docker pull ghcr.io/projectignis/mono_xamarin_builder_monodroid:master
+          docker image tag ghcr.io/projectignis/mono_xamarin_builder_monodroid:master monodroid
+          cd windbot
+          docker run --rm --volume "$PWD:/project" monodroid -t:restore -p:RestorePackagesPath=./.nuget WindBot.sln
+          ./ci/install-patched-mono-runtime.sh
+          docker run --rm --volume "$PWD:/project" monodroid -m -p:Configuration=Release WindBot.sln -p:Posix=true
+          cd ..
+          mkdir -p package/WindBot
+          cp -r windbot/bin/Release/. package/WindBot/
+          rm -f package/WindBot/mscorlib* package/WindBot/libWindbot*
+          cp windbot/COPYING windbot/LICENSE windbot/bots.json package/WindBot/
+          cp -r windbot/Decks windbot/Dialogs package/WindBot/
+          test -f package/WindBot/WindBot.exe
+          test -f package/WindBot/ExecutorBase.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windbot-4way-live-restored
+          path: package/
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86 live Battle Royale
+    runs-on: windows-2022
+    needs: [validate, windbot]
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.parent_sha }}
+          submodules: recursive
+      - name: Apply live-only patch
+        shell: bash
+        run: |
+          python3 .github/scripts/patch-live-restoration-anchors.py
+          python3 .github/scripts/apply-4way-live-ec2d962-restoration.py
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @("Microsoft.VisualStudio.Component.VC.v141.x86.x64", "Microsoft.VisualStudio.Component.WinXP")
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Build client
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+          ./travis/build.sh
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures deploy/expansions/script
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test ! -f deploy/compressed-ygopro.exe
+      - uses: actions/download-artifact@v4
+        with:
+          name: windbot-4way-live-restored
+          path: deploy/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-4way-live-ec2d962-restored-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
+
+  publish:
+    name: Publish tested source
+    runs-on: ubuntu-24.04
+    needs: [validate, windows]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.parent_sha }}
+          fetch-depth: 0
+          submodules: recursive
+      - name: Commit tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$PROTECTED_CORE_SHA"
+          python3 .github/scripts/patch-live-restoration-anchors.py
+          python3 .github/scripts/apply-4way-live-ec2d962-restoration.py
+          rm -f .github/scripts/apply-4way-live-ec2d962-restoration.py
+          rm -f .github/scripts/patch-live-restoration-anchors.py
+          rm -f .github/workflows/4way-live-ec2d962-restoration.yml
+          rm -f .github/workflows/4way-live-ec2d962-restoration-v2.yml
+          rm -f .github/4way-live-ec2d962-trigger.txt
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Restore live 4-way Battle Royale from ec2d962 without changing 3v1"
+          git push origin HEAD:fix/4way-live-ec2d962-restoration-20260829
