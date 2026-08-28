@@ -1,0 +1,1 @@
+Trigger live 4-way Battle Royale ec2d962 restoration validation.
