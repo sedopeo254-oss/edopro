@@ -1,0 +1,29 @@
+name: Export ec2d962 Source
+
+on:
+  push:
+    branches:
+      - automation/export-ec2d962-source-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Archive exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude='*.zip' -czf /tmp/ec2d962-source.tar.gz .
+          mv /tmp/ec2d962-source.tar.gz "$GITHUB_WORKSPACE/ec2d962-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-ec2d962-source
+          path: ec2d962-source.tar.gz
+          if-no-files-found: error
