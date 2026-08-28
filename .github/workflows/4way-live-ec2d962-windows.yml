@@ -1,0 +1,169 @@
+name: 4-Way Live ec2d962 Compatibility Windows
+
+on:
+  push:
+    branches:
+      - fix/4way-live-ec2d962-preserve-replay-3v1-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: 4way-live-ec2d962-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+  PROTECTED_CORE_SHA: bb0c48e455857156b55a223d1766d416e16dbf10
+
+jobs:
+  validate:
+    name: Validate live Battle Royale and protect replay/3v1
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Apply live-only ec2d962 compatibility patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/apply-4way-live-ec2d962.py
+          git diff --check
+
+      - name: Verify protected Core and focused policies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$PROTECTED_CORE_SHA"
+          git -C ocgcore diff --exit-code
+
+          g++ -std=c++17 -I. .github/tests/battle_royale_live_ec2_test.cpp -o /tmp/battle_royale_live_ec2_test
+          /tmp/battle_royale_live_ec2_test
+
+          g++ -std=c++17 -I. .github/tests/battle_royale_replay_smoothing_test.cpp -o /tmp/battle_royale_replay_smoothing_test
+          /tmp/battle_royale_replay_smoothing_test
+
+          g++ -std=c++17 -I. .github/tests/multiplayer_replay_policy_test.cpp -o /tmp/multiplayer_replay_policy_test
+          /tmp/multiplayer_replay_policy_test
+
+          g++ -std=c++17 -I. .github/tests/multiplayer_attack_arrow_test.cpp -o /tmp/multiplayer_attack_arrow_test
+          /tmp/multiplayer_attack_arrow_test
+
+          g++ -std=c++17 -I. .github/tests/multiplayer_replay_animation_test.cpp -o /tmp/multiplayer_replay_animation_test
+          /tmp/multiplayer_replay_animation_test
+
+      - name: Run multiplayer Core regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+
+      - name: Enforce mode isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'return !is_replay && is_battle_royale;' gframe/multiplayer_battle_royale_live.h
+          grep -Fq 'Battle Royale replay must remain on the tested replay path' .github/tests/battle_royale_live_ec2_test.cpp
+          grep -Fq '3v1 and stock modes must not enter the live Battle Royale path' .github/tests/battle_royale_live_ec2_test.cpp
+
+          grep -Fq 'SummonTiming{ 22, 8, 8 }' gframe/multiplayer_replay_animation.h
+          grep -Fq 'return is_replay && is_three_vs_one ? 12 : 8;' gframe/multiplayer_replay_animation.h
+          git diff --exit-code HEAD^ -- gframe/multiplayer_replay_policy.h gframe/multiplayer_attack_arrow.h gframe/multiplayer_replay_animation.h ocgcore
+
+          grep -Fq 'DrawStatus(pcard, static_cast<uint8_t>(p));' gframe/drawing.cpp
+          grep -Fq 'DrawPendScale(pcard, static_cast<uint8_t>(p));' gframe/drawing.cpp
+
+  windows:
+    name: Windows x86 live Battle Royale client
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply live-only ec2d962 compatibility patch
+        shell: bash
+        run: python3 .github/scripts/apply-4way-live-ec2d962.py
+      - uses: microsoft/setup-msbuild@v3
+
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+
+      - name: Build bundled client
+        shell: bash
+        run: ./travis/build.sh
+
+      - name: Package no-UPX client and custom assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures deploy/expansions/script
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test ! -f deploy/compressed-ygopro.exe
+          test -f deploy/textures/field-3v1.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-4way-live-ec2d962-replay-3v1-preserved-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
+
+  publish:
+    name: Publish tested source
+    runs-on: ubuntu-24.04
+    needs: [validate, windows]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply and publish tested source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/apply-4way-live-ec2d962.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gframe/client_field.cpp gframe/client_field.h gframe/duelclient.cpp gframe/multiplayer_battle_royale_live.h .github/tests/battle_royale_live_ec2_test.cpp
+          git commit -m "Restore ec2d962 live Battle Royale while preserving replay and 3v1 [skip ci]"
+          git push origin HEAD:refs/heads/stable/4way-live-ec2d962-replay-preserved --force
