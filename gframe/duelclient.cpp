@@ -1385,7 +1385,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		return true;
 	};
 	auto SetBattleRoyaleReplayView = [&](uint8_t perspective,
-			uint8_t opponent = 0xff) {
+			uint8_t opponent = 0xff, bool defer_private_piles = false) {
 		if(!mainGame->dInfo.isReplay
 				|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
 				|| perspective >= mainGame->dInfo.team1 + mainGame->dInfo.team2)
@@ -1414,10 +1414,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				}
 			}
 		}
-		mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
-		if(perspective_changed || opponent_changed)
-			mainGame->dField.RefreshAllCards();
-		return perspective_changed || opponent_changed;
+		if(!perspective_changed && !opponent_changed)
+			return false;
+		if(!defer_private_piles)
+			mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+		mainGame->dField.RefreshPublicFieldCards();
+		return true;
 	};
 	auto SetThreeVsOneView = [&](uint8_t perspective,
 			uint8_t opponent = 0xff) {
@@ -1854,9 +1856,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		}
 		mainGame->dInfo.logical_turn_player = logical_player;
 		if(mainGame->dInfo.isReplay) {
-			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
-				SetBattleRoyaleReplayView(logical_player);
-			else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				mainGame->dField.battle_royale_replay_snapshot_batch.Begin(
+					mainGame->dInfo.active_player_mask);
+				SetBattleRoyaleReplayView(logical_player, 0xff, true);
+			} else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 				SetThreeVsOneView(logical_player);
 		}
 		const auto field_side = static_cast<uint8_t>(logical_player < mainGame->dInfo.team1 ? 0 : 1);
@@ -1897,7 +1901,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 				&& active_seat_changed
 				&& !(mainGame->dInfo.isReplay
-					&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))
+					&& (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))))
 			mainGame->dField.RefreshAllCards();
 		break;
 	}
@@ -1960,6 +1965,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.replay_hand_reveal_mask = 0;
 		mainGame->dInfo.replay_hand_preferred = 0xff;
 		mainGame->dInfo.battle_royale_opponent_logical = 0xff;
+		mainGame->dField.battle_royale_replay_snapshot_batch.Reset();
 		std::fill_n(mainGame->dInfo.logical_deck_master_code, 4, 0u);
 		mainGame->dInfo.logical_deck_master_enabled = false;
 		mainGame->dInfo.logical_active[0] = 0;
@@ -3604,6 +3610,20 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		return true;
 	}
 	case MSG_NEW_TURN: {
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			auto& batch =
+				mainGame->dField.battle_royale_replay_snapshot_batch;
+			if(batch.NeedsApply()) {
+				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+				batch.MarkApplied();
+			} else if(batch.IsCollecting() && !batch.HasCurrentSnapshots()) {
+				// Old Battle Royale replay: no authoritative snapshots followed
+				// the logical turn packet, so use the captured legacy caches.
+				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+			}
+			batch.Finish();
+		}
 		Play(SoundManager::SFX::NEXT_TURN);
 		/*const auto player = */mainGame->LocalPlayer(BufferIO::Read<uint8_t>(pbuf));
 		auto lock = LockIf();
@@ -3630,7 +3650,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->showcarddif = 30;
 			mainGame->showcardp = 0;
 			mainGame->showcard = 101;
-			mainGame->WaitFrameSignal(40, lock);
+			mainGame->WaitFrameSignal(
+				multiplayer_replay_animation::GetBattleRoyaleTurnFrames(
+					mainGame->dInfo.isReplay,
+					mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)), lock);
 			mainGame->showcard = 0;
 		}
 		return true;
@@ -4454,6 +4477,23 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				Play(SoundManager::SFX::DRAW);
 			return true;
 		}
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+				&& logical_player < 4
+				&& mainGame->dField.multiplayer_private_piles_valid[logical_player]) {
+			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
+			const bool displayed =
+				mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2;
+			if(displayed
+					&& !mainGame->dField.ApplyBattleRoyaleReplayPrivateDraw(
+						logical_player, drawn_cards))
+				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+			const auto sounds = multiplayer_replay_animation::DrawSoundCount(
+				true, displayed, count);
+			for(uint32_t i = 0; i < sounds; ++i)
+				Play(SoundManager::SFX::DRAW);
+			return true;
+		}
 		const bool hidden_battle_royale_pile =
 			mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) && private_display > 1;
 		if(hidden_battle_royale_pile)
@@ -4508,8 +4548,16 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
 				sounds = multiplayer_replay_animation::DrawSoundCount(
 					true, displayed, count);
-			} else if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
-				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+			} else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				const bool displayed =
+					mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2;
+				if(displayed
+						&& !mainGame->dField.ApplyBattleRoyaleReplayPrivateDraw(
+							logical_player, drawn_cards))
+					mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+				sounds = multiplayer_replay_animation::DrawSoundCount(
+					true, displayed, count);
+			}
 		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
 			auto lock = LockIf();
 			const auto side = mainGame->LocalPlayer(mainGame->dInfo.GetLogicalCoreSide(logical_player));
@@ -4583,13 +4631,26 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				&& (mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
 					|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {
 			mainGame->dField.CacheMultiplayerPrivatePiles(logical_player, snapshot);
+			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				auto& batch =
+					mainGame->dField.battle_royale_replay_snapshot_batch;
+				const bool ready = batch.Observe(logical_player);
+				if(ready) {
+					mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+					batch.MarkApplied();
+				} else if(!batch.IsCollecting() && !duplicate
+						&& mainGame->dInfo.GetBattleRoyaleDisplaySide(
+							logical_player) < 2) {
+					mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+				}
+				return true;
+			}
 			if(duplicate)
 				return true;
 			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
 				if(mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(logical_player))
 					mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
-			} else if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
-				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+			}
 		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
 			auto lock = LockIf();
 			const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
@@ -5320,6 +5381,21 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				& (DUEL_BATTLE_ROYALE | DUEL_3_V_1)) != 0;
 		const auto player_count = static_cast<uint8_t>(
 			mainGame->dInfo.team1 + mainGame->dInfo.team2);
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+			auto& batch =
+				mainGame->dField.battle_royale_replay_snapshot_batch;
+			if(batch.HasCurrentSnapshots()) {
+				if(batch.NeedsApply()) {
+					mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+					batch.MarkApplied();
+				}
+				batch.Finish();
+				return true;
+			}
+			// No authoritative snapshot: allow the old TAG_SWAP decoder below.
+			batch.Finish();
+		}
 		uint8_t logical_player =
 			mainGame->dInfo.GetLogicalPlayer(core_player);
 		bool has_authoritative_logical = false;

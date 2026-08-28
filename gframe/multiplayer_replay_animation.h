@@ -26,6 +26,20 @@ constexpr uint8_t GetDrawMoveFrames(bool is_replay, bool is_three_vs_one) {
 	return is_replay && is_three_vs_one ? 12 : 8;
 }
 
+constexpr uint8_t GetBattleRoyaleDrawMoveFrames(bool is_replay,
+		bool is_battle_royale) {
+	// Keep a visible ten-frame movement, but never rebuild all five private
+	// piles or block replay playback for every drawn card.
+	return is_replay && is_battle_royale ? 10 : 8;
+}
+
+constexpr uint8_t GetBattleRoyaleTurnFrames(bool is_replay,
+		bool is_battle_royale) {
+	// The stock forty-frame banner plus duplicate field/pile rebuilds felt like
+	// a stall. Thirty-two frames remains readable after those rebuilds are gone.
+	return is_replay && is_battle_royale ? 32 : 40;
+}
+
 constexpr uint32_t DrawSoundCount(bool smooth_three_vs_one_replay,
 		bool displayed, uint32_t drawn_count) {
 	if(!drawn_count)

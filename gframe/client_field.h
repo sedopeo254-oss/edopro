@@ -9,6 +9,7 @@
 #include <IEventReceiver.h>
 #include <vector3d.h>
 #include <vector2d.h>
+#include "multiplayer_battle_royale_replay.h"
 
 namespace ygo {
 
@@ -70,6 +71,8 @@ public:
 	std::array<bool, 4> multiplayer_private_piles_valid{};
 	std::array<uint8_t, 2> multiplayer_displayed_field_logical{ 0xff, 0xff };
 	std::array<uint8_t, 2> multiplayer_displayed_hand_logical{ 0xff, 0xff };
+	multiplayer_battle_royale_replay::SnapshotBatch
+		battle_royale_replay_snapshot_batch{};
 
 	size_t selected_option;
 	ClientCard* attacker;
@@ -137,6 +140,8 @@ public:
 	void CacheMultiplayerPrivatePiles(uint8_t logical_player, const MultiplayerPrivatePileSnapshot& snapshot);
 	void CaptureBattleRoyaleReplayPrivatePiles();
 	void ApplyBattleRoyaleReplayPrivatePiles();
+	bool ApplyBattleRoyaleReplayPrivateDraw(uint8_t logical_player,
+		const std::vector<MultiplayerPrivatePileCard>& drawn_cards);
 	void CaptureThreeVsOneReplayPrivatePiles();
 	void ApplyThreeVsOneReplayPrivatePiles();
 	bool IsThreeVsOneReplayPrivatePileDisplayed(uint8_t logical_player) const;

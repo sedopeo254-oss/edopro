@@ -24,6 +24,14 @@ int main() {
 		"3v1 replay draws must use a readable balanced movement");
 	expect(GetDrawMoveFrames(false, true) == 8,
 		"live duel draw movement must remain unchanged");
+	expect(GetBattleRoyaleDrawMoveFrames(true, true) == 10,
+		"Battle Royale replay draws must use the smooth readable movement");
+	expect(GetBattleRoyaleDrawMoveFrames(false, true) == 8,
+		"live Battle Royale draw movement must remain unchanged");
+	expect(GetBattleRoyaleTurnFrames(true, true) == 32,
+		"Battle Royale replay turn banner must use the balanced transition");
+	expect(GetBattleRoyaleTurnFrames(true, false) == 40,
+		"3v1 and stock turn banners must remain unchanged");
 	expect(DrawSoundCount(true, true, 6) == 1,
 		"Card of Sanctity must play one visible batch draw sound");
 	expect(DrawSoundCount(true, false, 6) == 0,
