@@ -1,0 +1,66 @@
+name: Battle Royale Safe Audit
+
+on:
+  push:
+    branches:
+      - work/4way-battle-royale-ec2d962-safe-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: battle-royale-safe-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Verify Battle Royale baseline and protect 3v1
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify protected core baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "bb0c48e455857156b55a223d1766d416e16dbf10"
+
+      - name: Run client policy and arrow regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_attack_arrow_test.cpp \
+            -o /tmp/multiplayer-attack-arrow-test
+          /tmp/multiplayer-attack-arrow-test
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_replay_policy_test.cpp \
+            -o /tmp/multiplayer-replay-policy-test
+          /tmp/multiplayer-replay-policy-test
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/multiplayer_replay_animation_test.cpp \
+            -o /tmp/multiplayer-replay-animation-test
+          /tmp/multiplayer-replay-animation-test
+
+      - name: Run multiplayer core regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+
+      - name: Check mode isolation and frozen 3v1 pacing
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -R -Fq 'DUEL_BATTLE_ROYALE' gframe ocgcore
+          grep -R -Fq 'DUEL_3_V_1' gframe ocgcore
+          grep -Fq 'SummonTiming{ 22, 8, 8 }' gframe/multiplayer_replay_animation.h
+          grep -Fq 'return is_replay && is_three_vs_one ? 12 : 8;' gframe/multiplayer_replay_animation.h
+          grep -Fq 'ec2d962dc471abaea24cb1eba8371018ac17c952' BATTLE_ROYALE_RESTORATION.md
+          grep -Fq 'bb0c48e455857156b55a223d1766d416e16dbf10' BATTLE_ROYALE_RESTORATION.md
+          git diff --check
