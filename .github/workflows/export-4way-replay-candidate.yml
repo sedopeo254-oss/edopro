@@ -1,0 +1,29 @@
+name: Export 4-way replay candidate
+
+on:
+  push:
+    branches:
+      - tmp/export-4way-replay-candidate-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Archive exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude='*.zip' -czf /tmp/4way-replay-candidate.tar.gz .
+          mv /tmp/4way-replay-candidate.tar.gz "$GITHUB_WORKSPACE/4way-replay-candidate.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 4way-replay-candidate-source
+          path: 4way-replay-candidate.tar.gz
+          if-no-files-found: error
