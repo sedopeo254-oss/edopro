@@ -24,7 +24,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tar --exclude=.git --exclude='*.zip' -czf 4way-source.tar.gz .
+          tar --exclude=.git --exclude='*.zip' -czf /tmp/4way-source.tar.gz .
+          mv /tmp/4way-source.tar.gz "$GITHUB_WORKSPACE/4way-source.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
           name: edopro-4way-source-before-smoothing
