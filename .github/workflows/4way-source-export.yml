@@ -1,0 +1,32 @@
+name: 4-Way Battle Royale Source Export
+
+on:
+  push:
+    branches:
+      - fix/4way-replay-turn-draw-smooth-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 4way-source-export-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Archive exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude='*.zip' -czf 4way-source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-4way-source-before-smoothing
+          path: 4way-source.tar.gz
+          if-no-files-found: error
