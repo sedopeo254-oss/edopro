@@ -1,0 +1,39 @@
+name: Battle Royale ec2d962 Source Export
+
+on:
+  push:
+    branches:
+      - ci/battle-royale-ec2d962-source-export-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Export ec2d962 client and 7bb48dc core source
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+      - name: Verify baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git -C ocgcore rev-parse HEAD)" = "7bb48dc41d8cd21cd8d9d574d3ef5ec40841b792"
+      - name: Package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude='ocgcore/.git' -czf battle-royale-ec2d962-source.tar.gz .
+          sha256sum battle-royale-ec2d962-source.tar.gz > battle-royale-ec2d962-source.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: battle-royale-ec2d962-source
+          path: |
+            battle-royale-ec2d962-source.tar.gz
+            battle-royale-ec2d962-source.sha256
+          if-no-files-found: error
