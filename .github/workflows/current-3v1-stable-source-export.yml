@@ -1,0 +1,40 @@
+name: Current 3v1 Stable Source Export
+
+on:
+  push:
+    branches:
+      - ci/current-3v1-stable-source-export-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Export current 3v1 stable client and core source
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+      - name: Verify baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git -C ocgcore rev-parse HEAD)" = "bb0c48e455857156b55a223d1766d416e16dbf10"
+      - name: Package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude='ocgcore/.git' -czf /tmp/current-3v1-stable-source.tar.gz .
+          cp /tmp/current-3v1-stable-source.tar.gz ./current-3v1-stable-source.tar.gz
+          sha256sum current-3v1-stable-source.tar.gz > current-3v1-stable-source.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: current-3v1-stable-source
+          path: |
+            current-3v1-stable-source.tar.gz
+            current-3v1-stable-source.sha256
+          if-no-files-found: error
