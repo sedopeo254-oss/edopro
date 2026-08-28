@@ -142,6 +142,10 @@ public:
 	void ApplyBattleRoyaleReplayPrivatePiles();
 	bool ApplyBattleRoyaleReplayPrivateDraw(uint8_t logical_player,
 		const std::vector<MultiplayerPrivatePileCard>& drawn_cards);
+	bool ApplyBattleRoyaleLivePrivatePile(uint8_t logical_player,
+		bool clear_transient = false);
+	bool ApplyBattleRoyaleLivePrivateDraw(uint8_t logical_player,
+		const std::vector<MultiplayerPrivatePileCard>& drawn_cards);
 	void CaptureThreeVsOneReplayPrivatePiles();
 	void ApplyThreeVsOneReplayPrivatePiles();
 	bool IsThreeVsOneReplayPrivatePileDisplayed(uint8_t logical_player) const;

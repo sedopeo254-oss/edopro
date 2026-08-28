@@ -23,6 +23,7 @@
 #include "game.h"
 #include "multiplayer_attack_arrow.h"
 #include "multiplayer_replay_animation.h"
+#include "multiplayer_battle_royale_live.h"
 #include "replay.h"
 #include "replay_mode.h"
 #include "sound_manager.h"
@@ -1879,7 +1880,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			const auto local_side = mainGame->LocalPlayer(field_side);
 			if(outgoing < 4
 					&& !(mainGame->dInfo.isReplay
-						&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {
+						&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+					&& !multiplayer_battle_royale_live::Enabled(
+						mainGame->dInfo.isReplay,
+						mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))) {
 				mainGame->dInfo.logical_deck_count[outgoing] = static_cast<uint32_t>(mainGame->dField.deck[local_side].size());
 				mainGame->dInfo.logical_hand_count[outgoing] = static_cast<uint32_t>(mainGame->dField.hand[local_side].size());
 				mainGame->dInfo.logical_extra_count[outgoing] = static_cast<uint32_t>(mainGame->dField.extra[local_side].size());
@@ -1899,11 +1903,16 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		// Rebuild the normal two-side projection when either side changes focus.
 		if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
-				&& active_seat_changed
-				&& !(mainGame->dInfo.isReplay
+				&& active_seat_changed) {
+			if(multiplayer_battle_royale_live::Enabled(
+					mainGame->dInfo.isReplay,
+					mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)))
+				mainGame->dField.RefreshPublicFieldCards();
+			else if(!(mainGame->dInfo.isReplay
 					&& (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))))
-			mainGame->dField.RefreshAllCards();
+				mainGame->dField.RefreshAllCards();
+		}
 		break;
 	}
 	case MSG_MULTIPLAYER_REPLAY_VIEW: {
@@ -4494,6 +4503,58 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				Play(SoundManager::SFX::DRAW);
 			return true;
 		}
+		if(multiplayer_battle_royale_live::Enabled(
+				mainGame->dInfo.isReplay,
+				mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))) {
+			const bool displayed = private_display < 2;
+			if(logical_player < mainGame->dField.multiplayer_private_piles_valid.size()
+					&& mainGame->dField.multiplayer_private_piles_valid[logical_player]) {
+				mainGame->dField.UpdateMultiplayerPrivateDraw(
+					logical_player, drawn_cards);
+				if(displayed
+						&& !mainGame->dField.ApplyBattleRoyaleLivePrivateDraw(
+							logical_player, drawn_cards))
+					mainGame->dField.ApplyBattleRoyaleLivePrivatePile(
+						logical_player, false);
+			} else if(displayed) {
+				auto lock = LockIf();
+				auto& live_deck = mainGame->dField.deck[player];
+				while(live_deck.size() < count)
+					mainGame->dField.AddCard(
+						new ClientCard{}, player, LOCATION_DECK, 0);
+				const bool local = logical_player
+					== mainGame->dInfo.GetLocalLogicalPlayer();
+				for(const auto& drawn : drawn_cards) {
+					if(live_deck.empty())
+						break;
+					auto* pcard = live_deck.back();
+					live_deck.pop_back();
+					const auto visible_code = local ? drawn.code : 0u;
+					if(pcard->code != visible_code)
+						pcard->SetCode(visible_code);
+					pcard->position = local ? drawn.position
+						: static_cast<uint8_t>(POS_FACEDOWN_DEFENSE);
+					pcard->is_public = local && visible_code != 0;
+					mainGame->dField.AddCard(
+						pcard, player, LOCATION_HAND, 0);
+				}
+				for(auto* hand_card : mainGame->dField.hand[player])
+					if(hand_card)
+						mainGame->dField.MoveCard(hand_card,
+							multiplayer_battle_royale_live::DrawMoveFrames(
+								mainGame->dInfo.isReplay, true));
+				mainGame->should_refresh_hands = true;
+				mainGame->dField.RefreshHandHitboxes();
+			}
+			const auto sounds = multiplayer_battle_royale_live::DrawSoundCount(
+				mainGame->dInfo.isReplay, true, displayed, count);
+			for(uint32_t i = 0; i < sounds; ++i)
+				Play(SoundManager::SFX::DRAW);
+			if(displayed)
+				event_string = epro::sprintf(
+					gDataManager->GetSysString(1611 + player), count);
+			return true;
+		}
 		const bool hidden_battle_royale_pile =
 			mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) && private_display > 1;
 		if(hidden_battle_royale_pile)
@@ -4558,6 +4619,51 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				sounds = multiplayer_replay_animation::DrawSoundCount(
 					true, displayed, count);
 			}
+		} else if(multiplayer_battle_royale_live::Enabled(
+				mainGame->dInfo.isReplay,
+				mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))) {
+			const bool displayed =
+				mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2;
+			if(logical_player < mainGame->dField.multiplayer_private_piles_valid.size()
+					&& mainGame->dField.multiplayer_private_piles_valid[logical_player]) {
+				mainGame->dField.UpdateMultiplayerPrivateDraw(
+					logical_player, drawn_cards);
+				if(displayed
+						&& !mainGame->dField.ApplyBattleRoyaleLivePrivateDraw(
+							logical_player, drawn_cards))
+					mainGame->dField.ApplyBattleRoyaleLivePrivatePile(
+						logical_player, false);
+			} else if(displayed) {
+				const auto display_side =
+					mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player);
+				auto lock = LockIf();
+				auto& live_deck = mainGame->dField.deck[display_side];
+				const bool local = logical_player
+					== mainGame->dInfo.GetLocalLogicalPlayer();
+				for(const auto& drawn : drawn_cards) {
+					if(live_deck.empty())
+						break;
+					auto* pcard = live_deck.back();
+					live_deck.pop_back();
+					const auto visible_code = local ? drawn.code : 0u;
+					if(pcard->code != visible_code)
+						pcard->SetCode(visible_code);
+					pcard->position = local ? drawn.position
+						: static_cast<uint8_t>(POS_FACEDOWN_DEFENSE);
+					pcard->is_public = local && visible_code != 0;
+					mainGame->dField.AddCard(
+						pcard, display_side, LOCATION_HAND, 0);
+				}
+				for(auto* hand_card : mainGame->dField.hand[display_side])
+					if(hand_card)
+						mainGame->dField.MoveCard(hand_card,
+							multiplayer_battle_royale_live::DrawMoveFrames(
+								mainGame->dInfo.isReplay, true));
+				mainGame->should_refresh_hands = true;
+				mainGame->dField.RefreshHandHitboxes();
+			}
+			sounds = multiplayer_battle_royale_live::DrawSoundCount(
+				mainGame->dInfo.isReplay, true, displayed, count);
 		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
 			auto lock = LockIf();
 			const auto side = mainGame->LocalPlayer(mainGame->dInfo.GetLogicalCoreSide(logical_player));
@@ -4627,6 +4733,19 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					&& same_cards(previous.grave, snapshot.grave)
 					&& same_cards(previous.removed, snapshot.removed);
 			}();
+		if(multiplayer_battle_royale_live::ShouldCacheSnapshot(
+				mainGame->dInfo.isReplay,
+				mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+				&& !mainGame->dInfo.isReplay) {
+			mainGame->dField.CacheMultiplayerPrivatePiles(
+				logical_player, snapshot);
+			if(!duplicate
+					&& mainGame->dInfo.GetBattleRoyaleDisplaySide(
+						logical_player) < 2)
+				mainGame->dField.ApplyBattleRoyaleLivePrivatePile(
+					logical_player, false);
+			return true;
+		}
 		if(mainGame->dInfo.isReplay
 				&& (mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
 					|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {
@@ -5438,6 +5557,69 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				? mainGame->dInfo.GetBattleRoyalePrivateDisplaySide(
 					logical_core_side, logical_duelist)
 				: mainGame->LocalPlayer(core_player);
+		if(multiplayer_battle_royale_live::ShouldUseSnapshotTagSwap(
+				mainGame->dInfo.isReplay,
+				mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE),
+				has_authoritative_logical,
+				logical_player < mainGame->dField.multiplayer_private_piles_valid.size()
+					&& mainGame->dField.multiplayer_private_piles_valid[logical_player])) {
+			mainGame->dField.ApplyBattleRoyaleLivePrivatePile(
+				logical_player, true);
+			return true;
+		}
+		if(multiplayer_battle_royale_live::Enabled(
+				mainGame->dInfo.isReplay,
+				mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+				&& has_authoritative_logical) {
+			MultiplayerPrivatePileSnapshot snapshot;
+			snapshot.deck_count = mcount;
+			snapshot.extra_p_count = pcount;
+			snapshot.top_code = topcode;
+			auto read_private_card = [&]() {
+				MultiplayerPrivatePileCard card;
+				if(mainGame->dInfo.compat_mode) {
+					const auto flag = BufferIO::Read<uint32_t>(pbuf);
+					card.code = flag & 0x7fffffffu;
+					card.position = flag & 0x80000000u
+						? POS_FACEUP : POS_FACEDOWN;
+				} else {
+					card.code = BufferIO::Read<uint32_t>(pbuf);
+					card.position = static_cast<uint8_t>(
+						BufferIO::Read<uint32_t>(pbuf));
+				}
+				return card;
+			};
+			snapshot.hand.reserve(hcount);
+			for(uint32_t i = 0; i < hcount; ++i)
+				snapshot.hand.push_back(read_private_card());
+			snapshot.extra.reserve(ecount);
+			for(uint32_t i = 0; i < ecount; ++i)
+				snapshot.extra.push_back(read_private_card());
+			const auto gcount = BufferIO::Read<uint32_t>(pbuf);
+			const auto rcount = BufferIO::Read<uint32_t>(pbuf);
+			auto read_public_cards = [&](auto& cards, uint32_t count) {
+				cards.reserve(count);
+				for(uint32_t i = 0; i < count; ++i) {
+					const auto code = BufferIO::Read<uint32_t>(pbuf);
+					const auto position = static_cast<uint8_t>(
+						BufferIO::Read<uint32_t>(pbuf));
+					cards.push_back({ code, position });
+				}
+			};
+			read_public_cards(snapshot.grave, gcount);
+			read_public_cards(snapshot.removed, rcount);
+			BufferIO::Read<uint8_t>(pbuf);
+			mainGame->dField.CacheMultiplayerPrivatePiles(
+				logical_player, snapshot);
+			mainGame->dInfo.logical_deck_count[logical_player] = mcount;
+			mainGame->dInfo.logical_hand_count[logical_player] = hcount;
+			mainGame->dInfo.logical_extra_count[logical_player] = ecount;
+			mainGame->dInfo.logical_grave_count[logical_player] = gcount;
+			mainGame->dInfo.logical_banish_count[logical_player] = rcount;
+			mainGame->dField.ApplyBattleRoyaleLivePrivatePile(
+				logical_player, true);
+			return true;
+		}
 		if(mainGame->dInfo.isReplay
 				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
 			// Replay snapshots already carry exact logical Hand/Deck/Extra/GY/Banish.

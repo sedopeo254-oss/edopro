@@ -13,6 +13,7 @@
 #include "client_card.h"
 #include "duelclient.h"
 #include "multiplayer_replay_animation.h"
+#include "multiplayer_battle_royale_live.h"
 #include "data_manager.h"
 #include "image_manager.h"
 #include "game.h"
@@ -1072,6 +1073,105 @@ bool ClientField::ApplyBattleRoyaleReplayPrivateDraw(uint8_t logical_player,
 	RefreshHandHitboxes();
 	return true;
 }
+bool ClientField::ApplyBattleRoyaleLivePrivatePile(uint8_t logical_player,
+		bool clear_transient) {
+	if(mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			|| logical_player >= multiplayer_private_piles.size()
+			|| !multiplayer_private_piles_valid[logical_player])
+		return false;
+	const auto display_side =
+		mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player);
+	if(display_side > 1)
+		return false;
+	// Keep the authoritative cache intact, but project hidden opponent piles as
+	// card backs. ec2d962 never exposed another player's private card identity.
+	auto visible = multiplayer_private_piles[logical_player];
+	const bool local = logical_player == mainGame->dInfo.GetLocalLogicalPlayer();
+	if(!local) {
+		visible.top_code = 0;
+		for(auto& card : visible.hand) {
+			card.code = 0;
+			card.position = POS_FACEDOWN_DEFENSE;
+		}
+		for(auto& card : visible.extra)
+			if(!(card.position & POS_FACEUP))
+				card.code = 0;
+		for(auto& card : visible.removed)
+			if(!(card.position & POS_FACEUP))
+				card.code = 0;
+	}
+	const bool changed = ReplaceMultiplayerPrivatePiles(
+		display_side, visible, clear_transient);
+	multiplayer_displayed_field_logical[display_side] = logical_player;
+	multiplayer_displayed_hand_logical[display_side] = logical_player;
+	return changed;
+}
+
+bool ClientField::ApplyBattleRoyaleLivePrivateDraw(uint8_t logical_player,
+		const std::vector<MultiplayerPrivatePileCard>& drawn_cards) {
+	if(mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			|| logical_player >= multiplayer_private_piles.size()
+			|| !multiplayer_private_piles_valid[logical_player]
+			|| drawn_cards.empty())
+		return false;
+	const auto display_side =
+		mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player);
+	if(display_side > 1
+			|| mainGame->dInfo.GetBattleRoyaleDisplayLogical(display_side)
+				!= logical_player)
+		return false;
+	const auto& snapshot = multiplayer_private_piles[logical_player];
+	const auto count = drawn_cards.size();
+	if(snapshot.hand.size() < count
+			|| hand[display_side].size() + count != snapshot.hand.size()
+			|| deck[display_side].size() < count)
+		return false;
+	const bool local = logical_player == mainGame->dInfo.GetLocalLogicalPlayer();
+	for(size_t i = 0; i < hand[display_side].size(); ++i) {
+		const auto* pcard = hand[display_side][i];
+		const auto wanted_code = local ? snapshot.hand[i].code : 0u;
+		const auto wanted_position = local ? snapshot.hand[i].position
+			: static_cast<uint8_t>(POS_FACEDOWN_DEFENSE);
+		if(!pcard || pcard->code != wanted_code
+				|| static_cast<uint8_t>(pcard->position) != wanted_position)
+			return false;
+	}
+	for(const auto& drawn : drawn_cards) {
+		auto* pcard = deck[display_side].back();
+		deck[display_side].pop_back();
+		if(!pcard)
+			pcard = new ClientCard{};
+		const auto visible_code = local ? drawn.code : 0u;
+		const auto visible_position = local ? drawn.position
+			: static_cast<uint8_t>(POS_FACEDOWN_DEFENSE);
+		pcard->owner = display_side;
+		pcard->controler = display_side;
+		pcard->location = LOCATION_DECK;
+		if(pcard->code != visible_code)
+			pcard->SetCode(visible_code);
+		pcard->position = visible_position;
+		pcard->is_public = local && visible_code != 0;
+		pcard->is_fading = false;
+		pcard->is_moving = false;
+		pcard->refresh_on_stop = false;
+		pcard->aniFrame = 0;
+		pcard->curAlpha = 255;
+		pcard->draw_scale = 1.0f;
+		AddCard(pcard, display_side, LOCATION_HAND, 0);
+	}
+	for(auto* pcard : hand[display_side])
+		if(pcard)
+			MoveCard(pcard,
+				multiplayer_battle_royale_live::DrawMoveFrames(
+					mainGame->dInfo.isReplay,
+					mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)));
+	mainGame->should_refresh_hands = true;
+	RefreshHandHitboxes();
+	return true;
+}
+
 void ClientField::CaptureThreeVsOneReplayPrivatePiles() {
 	if(!mainGame->dInfo.isReplay
 			|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
