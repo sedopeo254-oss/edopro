@@ -137,6 +137,9 @@ public:
 	void CacheMultiplayerPrivatePiles(uint8_t logical_player, const MultiplayerPrivatePileSnapshot& snapshot);
 	void CaptureBattleRoyaleReplayPrivatePiles();
 	void ApplyBattleRoyaleReplayPrivatePiles();
+	bool ApplyBattleRoyaleReplayPrivatePile(uint8_t logical_player);
+	bool ApplyBattleRoyaleReplayPrivateDraw(uint8_t logical_player,
+		const std::vector<MultiplayerPrivatePileCard>& drawn_cards);
 	void CaptureThreeVsOneReplayPrivatePiles();
 	void ApplyThreeVsOneReplayPrivatePiles();
 	bool IsThreeVsOneReplayPrivatePileDisplayed(uint8_t logical_player) const;

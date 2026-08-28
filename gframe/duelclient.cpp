@@ -23,6 +23,7 @@
 #include "game.h"
 #include "multiplayer_attack_arrow.h"
 #include "multiplayer_replay_animation.h"
+#include "battle_royale_replay_smoothing.h"
 #include "replay.h"
 #include "replay_mode.h"
 #include "sound_manager.h"
@@ -1416,7 +1417,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		}
 		mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
 		if(perspective_changed || opponent_changed)
-			mainGame->dField.RefreshAllCards();
+			mainGame->dField.RefreshPublicFieldCards();
 		return perspective_changed || opponent_changed;
 	};
 	auto SetThreeVsOneView = [&](uint8_t perspective,
@@ -1875,7 +1876,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			const auto local_side = mainGame->LocalPlayer(field_side);
 			if(outgoing < 4
 					&& !(mainGame->dInfo.isReplay
-						&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {
+						&& (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+							|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)))) {
 				mainGame->dInfo.logical_deck_count[outgoing] = static_cast<uint32_t>(mainGame->dField.deck[local_side].size());
 				mainGame->dInfo.logical_hand_count[outgoing] = static_cast<uint32_t>(mainGame->dField.hand[local_side].size());
 				mainGame->dInfo.logical_extra_count[outgoing] = static_cast<uint32_t>(mainGame->dField.extra[local_side].size());
@@ -1896,6 +1898,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		if((mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 				&& active_seat_changed
+				&& battle_royale_replay_smoothing::NeedsSecondTurnRefresh(
+					mainGame->dInfo.isReplay,
+					mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 				&& !(mainGame->dInfo.isReplay
 					&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))
 			mainGame->dField.RefreshAllCards();
@@ -4454,6 +4459,23 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				Play(SoundManager::SFX::DRAW);
 			return true;
 		}
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+				&& logical_player < mainGame->dField.multiplayer_private_piles_valid.size()
+				&& mainGame->dField.multiplayer_private_piles_valid[logical_player]) {
+			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
+			const bool displayed =
+				mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2;
+			if(displayed
+					&& !mainGame->dField.ApplyBattleRoyaleReplayPrivateDraw(
+						logical_player, drawn_cards))
+				mainGame->dField.ApplyBattleRoyaleReplayPrivatePile(logical_player);
+			const auto sounds = battle_royale_replay_smoothing::DrawSoundCount(
+				true, true, displayed, count);
+			for(uint32_t i = 0; i < sounds; ++i)
+				Play(SoundManager::SFX::DRAW);
+			return true;
+		}
 		const bool hidden_battle_royale_pile =
 			mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) && private_display > 1;
 		if(hidden_battle_royale_pile)
@@ -4508,8 +4530,16 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
 				sounds = multiplayer_replay_animation::DrawSoundCount(
 					true, displayed, count);
-			} else if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
-				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+			} else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+				const bool displayed =
+					mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2;
+				if(displayed
+						&& !mainGame->dField.ApplyBattleRoyaleReplayPrivateDraw(
+							logical_player, drawn_cards))
+					mainGame->dField.ApplyBattleRoyaleReplayPrivatePile(logical_player);
+				sounds = battle_royale_replay_smoothing::DrawSoundCount(
+					true, true, displayed, count);
+			}
 		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
 			auto lock = LockIf();
 			const auto side = mainGame->LocalPlayer(mainGame->dInfo.GetLogicalCoreSide(logical_player));
@@ -4589,7 +4619,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				if(mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(logical_player))
 					mainGame->dField.ApplyThreeVsOneReplayPrivatePiles();
 			} else if(mainGame->dInfo.GetBattleRoyaleDisplaySide(logical_player) < 2)
-				mainGame->dField.ApplyBattleRoyaleReplayPrivatePiles();
+				mainGame->dField.ApplyBattleRoyaleReplayPrivatePile(logical_player);
 		} else if(logical_player == mainGame->dInfo.GetLocalLogicalPlayer()) {
 			auto lock = LockIf();
 			const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
@@ -5369,6 +5399,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			// the main source of flicker, stalls and P3 appearing during P4's turn.
 			return true;
 		}
+		if(battle_royale_replay_smoothing::ShouldSkipLegacyTagSwap(
+				mainGame->dInfo.isReplay,
+				mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE),
+				logical_player < mainGame->dField.multiplayer_private_piles_valid.size()
+					&& mainGame->dField.multiplayer_private_piles_valid[logical_player]))
+			return true;
 		const auto player = private_display < 2
 			? private_display : mainGame->LocalPlayer(core_player);
 		if((mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
