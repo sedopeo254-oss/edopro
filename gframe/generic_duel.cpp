@@ -3,6 +3,7 @@
 #include "netserver.h"
 #include "game.h"
 #include "core_utils.h"
+#include "multiplayer_battle_royale_private_snapshot.h"
 
 namespace ygo {
 
@@ -1366,8 +1367,33 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 	}
 	case MSG_MULTIPLAYER_PRIVATE_PILES: {
 		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
-		if(logical_player < players.home_size + players.opposing_size)
-			SEND(GetAtPos(logical_player).player);
+		if(logical_player >= players.home_size + players.opposing_size)
+			break;
+		auto* owner = GetAtPos(logical_player).player;
+		// The owner receives the complete private snapshot, exactly as before.
+		if(owner)
+			SEND(owner);
+
+		const uint64_t duel_flags =
+			static_cast<uint64_t>(host_info.duel_flag_low)
+			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+		const bool battle_royale = (duel_flags & DUEL_BATTLE_ROYALE) != 0;
+		const bool three_vs_one = (duel_flags & DUEL_3_V_1) != 0;
+		if(multiplayer_battle_royale_private_snapshot::
+				ShouldBroadcastMaskedSnapshot(battle_royale, three_vs_one)) {
+			auto public_packet = packet;
+			if(multiplayer_battle_royale_private_snapshot::
+					MaskForOpponent(public_packet.buffer)) {
+				// Prepare one privacy-safe network packet, then send it to all
+				// non-owners. This gives P1 a card-back Hand/Deck/Extra/GY/Banish
+				// snapshot for P3 without exposing any private card identity.
+				NetServer::SendCoreUtilsPacketToPlayer(
+					nullptr, STOC_GAME_MSG, public_packet);
+				ResendToAll(owner);
+				// Catch-up clients and observers must receive only the masked form.
+				packets_cache.push_back(public_packet);
+			}
+		}
 		break;
 	}
 	case MSG_PLAYER_ELIMINATED: {
