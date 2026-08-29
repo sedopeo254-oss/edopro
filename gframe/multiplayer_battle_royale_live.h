@@ -16,7 +16,7 @@ constexpr bool NeedsFullTurnRefresh(bool is_replay, bool is_battle_royale) {
 	return !Enabled(is_replay, is_battle_royale);
 }
 
-constexpr bool ShouldCacheSnapshot(bool is_replay, bool is_battle_royale) {
+constexpr bool ShouldCacheSnapshot([[maybe_unused]] bool is_replay, bool is_battle_royale) {
 	// Replay already caches snapshots. Live Battle Royale now uses the same
 	// authoritative cache only for the two displayed seats; hidden players stay
 	// off-screen until their logical field is selected.
