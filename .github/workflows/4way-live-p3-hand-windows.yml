@@ -1,0 +1,201 @@
+name: 4-Way Live P3 Hand Fix Windows
+
+on:
+  push:
+    branches:
+      - fix/4way-live-p3-hand-private-snapshot-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: 4way-live-p3-hand-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROTECTED_3V1_SHA: ef0b3f205cfd97b5fae6a181e1164c737affc896
+  PROTECTED_CORE_SHA: bb0c48e455857156b55a223d1766d416e16dbf10
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+
+jobs:
+  validate:
+    name: Validate masked live snapshots and protect 3v1
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify protected baselines
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$PROTECTED_CORE_SHA"
+          test "$(git ls-remote origin refs/heads/stable/3v1-replay-targeting-fixed | cut -f1)" = "$PROTECTED_3V1_SHA"
+          git diff --exit-code "$PROTECTED_3V1_SHA" -- \
+            gframe/multiplayer_replay_policy.h \
+            gframe/multiplayer_attack_arrow.h \
+            gframe/multiplayer_replay_animation.h \
+            multiplayer-deck-master \
+            multiplayer-effect-examples
+
+      - name: Apply isolated live Battle Royale server fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/apply-4way-live-p3-hand.py
+          git diff --check
+          git diff --exit-code HEAD -- \
+            gframe/multiplayer_replay_policy.h \
+            gframe/multiplayer_attack_arrow.h \
+            gframe/multiplayer_replay_animation.h \
+            multiplayer-deck-master \
+            multiplayer-effect-examples \
+            ocgcore
+
+      - name: Run privacy and mode-isolation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -Wall -Wextra -Werror -I. \
+            .github/tests/battle_royale_private_snapshot_test.cpp \
+            -o /tmp/battle-royale-private-snapshot-test
+          /tmp/battle-royale-private-snapshot-test
+          for test in \
+            battle_royale_live_ec2_test.cpp \
+            battle_royale_replay_smoothing_test.cpp \
+            multiplayer_replay_policy_test.cpp \
+            multiplayer_attack_arrow_test.cpp \
+            multiplayer_replay_animation_test.cpp; do
+            if test -f ".github/tests/$test"; then
+              c++ -std=c++17 -Wall -Wextra -Werror -I. \
+                ".github/tests/$test" -o "/tmp/${test%.cpp}"
+              "/tmp/${test%.cpp}"
+            fi
+          done
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+
+      - name: Verify server routing and privacy markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'ShouldBroadcastMaskedSnapshot(battle_royale, three_vs_one)' gframe/generic_duel.cpp
+          grep -Fq 'MaskForOpponent(public_packet.buffer)' gframe/generic_duel.cpp
+          grep -Fq 'ResendToAll(owner)' gframe/generic_duel.cpp
+          grep -Fq 'packets_cache.push_back(public_packet)' gframe/generic_duel.cpp
+          grep -Fq 'return is_battle_royale && !is_three_vs_one;' gframe/multiplayer_battle_royale_private_snapshot.h
+          test "$(git -C ocgcore rev-parse HEAD)" = "$PROTECTED_CORE_SHA"
+          git -C ocgcore diff --exit-code
+          git diff --check
+
+  windows:
+    name: Windows x86 live P3 hand client
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Apply isolated live Battle Royale server fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$PROTECTED_CORE_SHA"
+          python3 .github/scripts/apply-4way-live-p3-hand.py
+
+      - uses: microsoft/setup-msbuild@v3
+
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) {
+            throw "Visual Studio Installer exited with code $($process.ExitCode)"
+          }
+
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+
+      - name: Build bundled client/server
+        shell: bash
+        run: ./travis/build.sh
+
+      - name: Package no-UPX client
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures deploy/expansions/script
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/textures/field-3v1.png
+          test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/expansions/script/c511001152.lua
+          test -f deploy/expansions/script/c511000405.lua
+          test ! -f deploy/compressed-ygopro.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-4way-live-p3-hand-fixed-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
+
+  publish-source:
+    name: Publish tested stable source
+    runs-on: ubuntu-24.04
+    needs:
+      - validate
+      - windows
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/4way-live-p3-hand-private-snapshot-20260829
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Commit tested source and update stable Battle Royale refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$PROTECTED_CORE_SHA"
+          test "$(git ls-remote origin refs/heads/stable/3v1-replay-targeting-fixed | cut -f1)" = "$PROTECTED_3V1_SHA"
+          python3 .github/scripts/apply-4way-live-p3-hand.py
+          rm -f .github/scripts/apply-4way-live-p3-hand.py
+          rm -f .github/workflows/4way-live-p3-hand-windows.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix P3 hidden hand in live Battle Royale [skip ci]"
+          TESTED_SHA="$(git rev-parse HEAD)"
+          git push --force origin HEAD:stable/4way-live-p3-hand-fixed
+          git push --force origin HEAD:stable/4way-live-ec2d962-replay-preserved
+          echo "Published tested source at $TESTED_SHA"
