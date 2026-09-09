@@ -1,0 +1,145 @@
+name: 4-Way Anime Pre-Duel Turn Order Windows
+
+on:
+  push:
+    branches:
+      - fix/4way-anime-preduel-turn-order-20260910
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 4way-anime-preduel-turn-order-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROTECTED_3V1_SHA: ef0b3f205cfd97b5fae6a181e1164c737affc896
+  FEATURE_CORE_SHA: 48fc2f0de4a67766e9667f9669650c3f594a3255
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+
+jobs:
+  validate:
+    name: Validate anime turn order and protect 3v1 / 4-way
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify exact source baselines
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$FEATURE_CORE_SHA"
+          test "$(git ls-remote origin refs/heads/stable/3v1-replay-targeting-fixed | cut -f1)" = "$PROTECTED_3V1_SHA"
+          git merge-base --is-ancestor bb72d14487ea687e1fe296bf1ae874682fb75f49 HEAD
+          grep -Fq 'Fix P3 hidden hand in live Battle Royale' <(git log -1 --format=%B bb72d14487ea687e1fe296bf1ae874682fb75f49)
+
+      - name: Run Core feature and multiplayer tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          grep -Fq 'Kaiba 3300 must go first' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq 'Marik 1700 must go second' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq 'Yugi 1300 must go third' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq 'Joey 500 must go last' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq '3v1 must reject Battle Royale turn-order changes' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq 'TYPE_MONSTER' ocgcore/battle_royale_turn_order.cpp
+          grep -Fq 'LOCATION_REMOVED' ocgcore/battle_royale_turn_order.cpp
+          grep -Fq 'POS_FACEUP' ocgcore/battle_royale_turn_order.cpp
+          grep -Fq 'REASON_RULE' ocgcore/battle_royale_turn_order.cpp
+
+      - name: Run protected client regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in \
+            battle_royale_live_ec2_test.cpp \
+            battle_royale_replay_smoothing_test.cpp \
+            battle_royale_private_snapshot_test.cpp \
+            multiplayer_replay_policy_test.cpp \
+            multiplayer_attack_arrow_test.cpp \
+            multiplayer_replay_animation_test.cpp; do
+            if test -f ".github/tests/$test"; then
+              c++ -std=c++17 -Wall -Wextra -Werror -I. \
+                ".github/tests/$test" -o "/tmp/${test%.cpp}"
+              "/tmp/${test%.cpp}"
+            fi
+          done
+          grep -Fq 'SummonTiming{ 22, 8, 8 }' gframe/multiplayer_replay_animation.h
+          grep -Fq 'return is_replay && is_three_vs_one ? 12 : 8;' gframe/multiplayer_replay_animation.h
+          grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.FocusLogicalPlayer' multiplayer-deck-master/c153000012.lua
+          ! grep -Fq 'Duel.TagSwap(' multiplayer-deck-master/c153000012.lua
+          git diff --check
+
+  windows:
+    name: Windows x86 anime Battle Royale client
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Verify feature Core
+        shell: bash
+        run: test "$(git -C ocgcore rev-parse HEAD)" = "$FEATURE_CORE_SHA"
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+      - name: Build bundled client
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package no-UPX client and current custom scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures deploy/expansions/script
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/textures/field-3v1.png
+          test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/expansions/script/c511001152.lua
+          test -f deploy/expansions/script/c511000405.lua
+          test ! -f deploy/compressed-ygopro.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-4way-anime-preduel-turn-order-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
