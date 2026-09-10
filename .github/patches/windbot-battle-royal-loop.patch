@@ -1,7 +1,7 @@
 diff --git a/Game/GameBehavior.cs b/Game/GameBehavior.cs
 --- a/Game/GameBehavior.cs
 +++ b/Game/GameBehavior.cs
-@@ -31,6 +31,7 @@ namespace WindBot.Game
+@@ -28,6 +28,7 @@ namespace WindBot.Game
          private bool _debug;
          private long _select_hint;
          private GameMessage _lastMessage;
@@ -9,14 +9,14 @@ diff --git a/Game/GameBehavior.cs b/Game/GameBehavior.cs
          public class LocationInfo
          {
              public int controler;
-@@ -694,6 +695,7 @@ namespace WindBot.Game
+@@ -639,5 +640,6 @@ namespace WindBot.Game
          {
              _duel.Turn++;
              _duel.Player = GetLocalPlayer(packet.ReadByte());
 +            _multiplayerFacedownSpellActivations.Clear();
              _ai.OnNewTurn();
          }
-@@ -1085,10 +1087,67 @@ namespace WindBot.Game
+@@ -1487,9 +1489,67 @@ namespace WindBot.Game
              main.CanEndPhase = packet.ReadByte() != 0;
              packet.ReadByte(); // CanShuffle
  
