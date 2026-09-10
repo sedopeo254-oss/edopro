@@ -1,0 +1,87 @@
+diff --git a/Game/GameBehavior.cs b/Game/GameBehavior.cs
+--- a/Game/GameBehavior.cs
++++ b/Game/GameBehavior.cs
+@@ -31,6 +31,7 @@ namespace WindBot.Game
+         private bool _debug;
+         private long _select_hint;
+         private GameMessage _lastMessage;
++        private readonly IDictionary<string, int> _multiplayerFacedownSpellActivations = new Dictionary<string, int>();
+         public class LocationInfo
+         {
+             public int controler;
+@@ -694,6 +695,7 @@ namespace WindBot.Game
+         {
+             _duel.Turn++;
+             _duel.Player = GetLocalPlayer(packet.ReadByte());
++            _multiplayerFacedownSpellActivations.Clear();
+             _ai.OnNewTurn();
+         }
+@@ -1085,10 +1087,67 @@ namespace WindBot.Game
+             main.CanEndPhase = packet.ReadByte() != 0;
+             packet.ReadByte(); // CanShuffle
+ 
+-            Connection.Send(CtosMessage.Response, _ai.OnSelectIdleCmd(main).ToValue());
++            Connection.Send(CtosMessage.Response, SelectIdleActionWithoutMultiplayerSpellLoop(main).ToValue());
+         }
+ 
++        private MainPhaseAction SelectIdleActionWithoutMultiplayerSpellLoop(MainPhase main)
++        {
++            // Independent multiplayer can project several logical fields through the same
++            // physical core side. If a stale SET->ACTIVATE transition is mirrored back to
++            // WindBot, the exact same face-down Spell may be offered again forever.
++            // Guard only that multiplayer-only state: Standard duels are untouched and
++            // face-up Continuous/Field Spell effects remain repeatable when legal.
++            int safety = main.ActivableCards.Count + 1;
++            while (safety-- > 0)
++            {
++                MainPhaseAction action = _ai.OnSelectIdleCmd(main);
++                if (!_duel.IsIndependentMultiplayer || action.Action != MainPhaseAction.MainAction.Activate)
++                    return action;
++
++                int listIndex = -1;
++                long description = 0;
++                ClientCard selected = null;
++                for (int i = 0; i < main.ActivableCards.Count; ++i)
++                {
++                    ClientCard card = main.ActivableCards[i];
++                    long desc = i < main.ActivableDescs.Count ? main.ActivableDescs[i] : 0;
++                    int responseIndex;
++                    if (card != null && card.ActionActivateIndex.TryGetValue(desc, out responseIndex)
++                        && responseIndex == action.Index)
++                    {
++                        selected = card;
++                        description = desc;
++                        listIndex = i;
++                        break;
++                    }
++                }
++
++                if (selected == null || !selected.IsSpell()
++                    || selected.Location != CardLocation.SpellZone || !selected.IsFacedown())
++                    return action;
++
++                string key = selected.Id + ":" + selected.Controller + ":"
++                    + selected.Sequence + ":" + description;
++                int attempts;
++                _multiplayerFacedownSpellActivations.TryGetValue(key, out attempts);
++                if (attempts == 0)
++                {
++                    _multiplayerFacedownSpellActivations[key] = 1;
++                    return action;
++                }
++
++                Logger.WriteLine("WindBot multiplayer loop guard skipped a repeated face-down Spell activation: "
++                    + (selected.Name ?? selected.Id.ToString()) + ".");
++                main.ActivableCards.RemoveAt(listIndex);
++                if (listIndex < main.ActivableDescs.Count)
++                    main.ActivableDescs.RemoveAt(listIndex);
++            }
++
++            if (main.CanBattlePhase)
++                return new MainPhaseAction(MainPhaseAction.MainAction.ToBattlePhase);
++            return new MainPhaseAction(MainPhaseAction.MainAction.ToEndPhase);
++        }
++
+         private void OnSelectOption(BinaryReader packet)
+         {
+             IList<long> options = new List<long>();
