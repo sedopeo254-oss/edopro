@@ -52,6 +52,7 @@ jobs:
           git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
           git -C windbot apply --unidiff-zero ../.github/patches/windbot-king-learning.patch
           git -C windbot apply --unidiff-zero ../.github/patches/windbot-cad-fixes.patch
+          git -C windbot apply --unidiff-zero ../.github/patches/windbot-battle-royal-loop.patch
       - name: Validate multiplayer bot sources
         shell: bash
         run: |
@@ -62,6 +63,7 @@ jobs:
           grep -q '\[Deck("KingOfAnime", "AI_BlueEyes"' windbot/Game/AI/Decks/KingOfAnimeExecutor.cs
           grep -q 'LocalLogicalPlayer' windbot/Game/GameBehavior.cs
           grep -q 'SelectKingLearnedCards' windbot/ExecutorBase/Game/GameAI.cs
+          grep -q 'SelectIdleActionWithoutMultiplayerSpellLoop' windbot/Game/GameBehavior.cs
           ! grep -R '\[Deck("\(Lucky\|KingOfAnime\)", "AI_Test"' windbot/Game/AI/Decks
       - name: Pull Mono builder image
         shell: bash
@@ -129,10 +131,17 @@ jobs:
           cp CAD_MULTIPLAYER.md deploy/
           cp -r multiplayer-effect-examples deploy/
           cp -r multiplayer-deck-master deploy/
+          cp -r multiplayer-card-fixes deploy/
           mkdir -p deploy/expansions/script
           cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
           cp multiplayer-deck-master/c153999999.lua deploy/expansions/script/c153999999.lua
           cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
+          cp multiplayer-card-fixes/*.lua deploy/expansions/script/
+          test -f deploy/expansions/script/c199.lua
+          test -f deploy/expansions/script/c296499.lua
+          test -f deploy/expansions/script/c3819470.lua
+          test -f deploy/expansions/script/c412.lua
+          test -f deploy/expansions/script/c511001785.lua
           test -f deploy/expansions/script/c25880422.lua
           test -f deploy/expansions/script/c153999999.lua
           test -f deploy/expansions/script/c153000000.lua
@@ -196,10 +205,17 @@ jobs:
           cp CAD_MULTIPLAYER.md deploy/
           cp -r multiplayer-effect-examples deploy/
           cp -r multiplayer-deck-master deploy/
+          cp -r multiplayer-card-fixes deploy/
           mkdir -p deploy/expansions/script
           cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
           cp multiplayer-deck-master/c153999999.lua deploy/expansions/script/c153999999.lua
           cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
+          cp multiplayer-card-fixes/*.lua deploy/expansions/script/
+          test -f deploy/expansions/script/c199.lua
+          test -f deploy/expansions/script/c296499.lua
+          test -f deploy/expansions/script/c3819470.lua
+          test -f deploy/expansions/script/c412.lua
+          test -f deploy/expansions/script/c511001785.lua
           test -f deploy/expansions/script/c25880422.lua
           test -f deploy/expansions/script/c153999999.lua
           test -f deploy/expansions/script/c153000000.lua
