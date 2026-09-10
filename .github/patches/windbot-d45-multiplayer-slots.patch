@@ -1,0 +1,88 @@
+diff --git a/ExecutorBase/Game/ClientField.cs b/ExecutorBase/Game/ClientField.cs
+--- a/ExecutorBase/Game/ClientField.cs
++++ b/ExecutorBase/Game/ClientField.cs
+@@ -9,0 +10,7 @@ namespace WindBot.Game
++        public const int StandardMonsterZoneCount = 7;
++        public const int StandardSpellZoneCount = 8;
++        public const int ThreeVsOneMonsterZoneCount = StandardMonsterZoneCount * 3;
++        public const int ThreeVsOneSpellZoneCount = StandardSpellZoneCount * 3;
++        public const int BattleRoyaleMonsterZoneCount = StandardMonsterZoneCount * 2;
++        public const int BattleRoyaleSpellZoneCount = StandardSpellZoneCount * 2;
++
+@@ -27 +34 @@ namespace WindBot.Game
+-        public void Init(int deck, int extra)
++        public void Init(int deck, int extra, bool threeVsOne = false, bool battleRoyale = false)
+@@ -30,2 +37,4 @@ namespace WindBot.Game
+-            MonsterZone = new ClientCard[7];
+-            SpellZone = new ClientCard[8];
++            MonsterZone = new ClientCard[battleRoyale ? BattleRoyaleMonsterZoneCount
++                : threeVsOne ? ThreeVsOneMonsterZoneCount : StandardMonsterZoneCount];
++            SpellZone = new ClientCard[battleRoyale ? BattleRoyaleSpellZoneCount
++                : threeVsOne ? ThreeVsOneSpellZoneCount : StandardSpellZoneCount];
+@@ -52,2 +61,2 @@ namespace WindBot.Game
+-            MonsterZone = new ClientCard[7];
+-            SpellZone = new ClientCard[8];
++            MonsterZone = new ClientCard[MonsterZone.Length];
++            SpellZone = new ClientCard[SpellZone.Length];
+diff --git a/ExecutorBase/Game/Duel.cs b/ExecutorBase/Game/Duel.cs
+--- a/ExecutorBase/Game/Duel.cs
++++ b/ExecutorBase/Game/Duel.cs
+@@ -10,0 +11,2 @@ namespace WindBot.Game
++        public bool IsThreeVsOne { get; set; }
++        public bool IsBattleRoyale { get; set; }
+@@ -115 +117 @@ namespace WindBot.Game
+-            if (seq >= cards.Count)
++            if (seq < 0 || seq >= cards.Count)
+@@ -130,0 +133,2 @@ namespace WindBot.Game
++            if (!IsValidFieldSequence(loc, player, seq))
++                return;
+@@ -158,0 +163,2 @@ namespace WindBot.Game
++            if (!IsValidFieldSequence(loc, player, seq))
++                return;
+@@ -191,0 +198,2 @@ namespace WindBot.Game
++            if (!IsValidFieldSequence(loc, player, seq))
++                return;
+@@ -217,0 +226,11 @@ namespace WindBot.Game
++        private bool IsValidFieldSequence(CardLocation loc, int player, int seq)
++        {
++            if (player < 0 || player >= Fields.Length)
++                return false;
++            if (loc == CardLocation.MonsterZone)
++                return seq >= 0 && seq < Fields[player].MonsterZone.Length;
++            if (loc == CardLocation.SpellZone)
++                return seq >= 0 && seq < Fields[player].SpellZone.Length;
++            return true;
++        }
++
+diff --git a/Game/GameBehavior.cs b/Game/GameBehavior.cs
+--- a/Game/GameBehavior.cs
++++ b/Game/GameBehavior.cs
+@@ -195 +195 @@ namespace WindBot.Game
+-            /*align =*/ packet.ReadBytes(4);
++            uint duel_flag_high = packet.ReadUInt32();
+@@ -212,0 +213,2 @@ namespace WindBot.Game
++            const uint DUEL_BATTLE_ROYALE_HIGH = 0x20;
++            const uint DUEL_3_V_1_HIGH = 0x40;
+@@ -214,0 +217,2 @@ namespace WindBot.Game
++            _duel.IsBattleRoyale = (duel_flag_high & DUEL_BATTLE_ROYALE_HIGH) != 0;
++            _duel.IsThreeVsOne = (duel_flag_high & DUEL_3_V_1_HIGH) != 0;
+@@ -442 +447 @@ namespace WindBot.Game
+-            _duel.Fields[GetLocalPlayer(0)].Init(deck, extra);
++            _duel.Fields[GetLocalPlayer(0)].Init(deck, extra, _duel.IsThreeVsOne, _duel.IsBattleRoyale);
+@@ -445 +450 @@ namespace WindBot.Game
+-            _duel.Fields[GetLocalPlayer(1)].Init(deck, extra);
++            _duel.Fields[GetLocalPlayer(1)].Init(deck, extra, false, _duel.IsBattleRoyale);
+@@ -578 +583,9 @@ namespace WindBot.Game
+-                for (int seq = 0; seq < 7; ++seq)
++                int monsterZoneCount = _duel.IsBattleRoyale
++                    ? ClientField.BattleRoyaleMonsterZoneCount
++                    : _duel.IsThreeVsOne && player == 0 ? ClientField.ThreeVsOneMonsterZoneCount
++                    : ClientField.StandardMonsterZoneCount;
++                int spellZoneCount = _duel.IsBattleRoyale
++                    ? ClientField.BattleRoyaleSpellZoneCount
++                    : _duel.IsThreeVsOne && player == 0 ? ClientField.ThreeVsOneSpellZoneCount
++                    : ClientField.StandardSpellZoneCount;
++                for (int seq = 0; seq < monsterZoneCount; ++seq)
+@@ -591 +604 @@ namespace WindBot.Game
+-                for (int seq = 0; seq < 8; ++seq)
++                for (int seq = 0; seq < spellZoneCount; ++seq)
