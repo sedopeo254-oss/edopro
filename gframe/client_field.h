@@ -134,6 +134,7 @@ public:
 	void RefreshPublicFieldCards();
 	void RefreshLogicalDeckMasters();
 	void RefreshHandHitboxes();
+	void CycleBattleRoyaleOpponent();
 	void CycleTeamField();
 	bool ReplaceMultiplayerPrivatePiles(uint8_t player,
 		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient = true);
