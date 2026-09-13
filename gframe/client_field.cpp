@@ -767,6 +767,52 @@ void ClientField::RefreshPublicFieldCards() {
 	for(auto& chain : chains)
 		chain.UpdateDrawCoordinates();
 }
+void ClientField::CycleBattleRoyaleOpponent() {
+	if(mainGame->dInfo.isReplay
+			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+		return;
+	const auto player_count = static_cast<uint8_t>(
+		mainGame->dInfo.team1 + mainGame->dInfo.team2);
+	const auto local = mainGame->dInfo.GetLocalLogicalPlayer();
+	if(player_count < 2 || local >= player_count)
+		return;
+	uint8_t current = mainGame->dInfo.battle_royale_opponent_logical;
+	if(current >= player_count || current == local)
+		current = local;
+	uint8_t next = 0xff;
+	for(uint8_t step = 1; step <= player_count; ++step) {
+		const auto logical = static_cast<uint8_t>((current + step) % player_count);
+		if(logical != local
+				&& (mainGame->dInfo.active_player_mask & (1u << logical))) {
+			next = logical;
+			break;
+		}
+	}
+	if(next >= player_count || !mainGame->dInfo.SetBattleRoyaleOpponent(next))
+		return;
+	// Never leave the previous opponent's private cards under the new name.
+	// Normally the authoritative live snapshot already exists; placeholders are
+	// only a safe fallback until that snapshot arrives.
+	if(next < multiplayer_private_piles.size()
+			&& !multiplayer_private_piles_valid[next]) {
+		MultiplayerPrivatePileSnapshot snapshot;
+		snapshot.deck_count = mainGame->dInfo.logical_deck_count[next];
+		snapshot.hand.resize(mainGame->dInfo.logical_hand_count[next],
+			{ 0, POS_FACEDOWN_DEFENSE });
+		snapshot.extra.resize(mainGame->dInfo.logical_extra_count[next],
+			{ 0, POS_FACEDOWN_DEFENSE });
+		snapshot.grave.resize(mainGame->dInfo.logical_grave_count[next],
+			{ 0, POS_FACEUP });
+		snapshot.removed.resize(mainGame->dInfo.logical_banish_count[next],
+			{ 0, POS_FACEUP });
+		CacheMultiplayerPrivatePiles(next, snapshot);
+	}
+	hovered_card = nullptr;
+	hovered_location = 0;
+	hovered_sequence = 0;
+	ApplyBattleRoyaleLivePrivatePile(next, false);
+	RefreshAllCards();
+}
 bool ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,
 		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient) {
 	if(player > 1)

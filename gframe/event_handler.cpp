@@ -118,6 +118,8 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 			case BUTTON_REPLAY_SWAP: {
 				if(mainGame->dInfo.isReplay)
 					ReplayMode::SwapField();
+				else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+					mainGame->dField.CycleBattleRoyaleOpponent();
 				else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 					mainGame->dField.CycleTeamField();
 				else if(mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated)

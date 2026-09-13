@@ -1019,7 +1019,8 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 		} else {
 			mainGame->dInfo.isFirst = selftype < mainGame->dInfo.team1;
 			mainGame->dInfo.isTeam1 = mainGame->dInfo.isFirst;
-			mainGame->btnSpectatorSwap->setVisible(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
+			mainGame->btnSpectatorSwap->setVisible(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE));
 		}
 		mainGame->dInfo.current_player[0] = 0;
 		mainGame->dInfo.current_player[1] = 0;
@@ -1998,9 +1999,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		}
 		if(mainGame->dInfo.player_type < 7) {
 			mainGame->btnLeaveGame->setText(gDataManager->GetSysString(1351).data());
-			mainGame->btnSpectatorSwap->setVisible(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
+			mainGame->btnSpectatorSwap->setVisible(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE));
 			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 				mainGame->btnSpectatorSwap->setText(L"Swap the Team");
+			else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+				mainGame->btnSpectatorSwap->setText(L"Swap the player");
 		}
 		if(!mainGame->dInfo.isRelay) {
 			if(mainGame->dInfo.isFirst) {
