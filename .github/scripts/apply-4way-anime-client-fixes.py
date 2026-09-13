@@ -6,6 +6,8 @@ ROOT = Path(__file__).resolve().parents[2]
 def replace_once(path, old, new):
     p = ROOT / path
     text = p.read_text(encoding="utf-8")
+    if new in text:
+        return
     count = text.count(old)
     if count != 1:
         raise SystemExit(f"{path}: expected one replacement site, found {count}")
@@ -15,6 +17,8 @@ def replace_once(path, old, new):
 def replace_all(path, old, new, minimum=1):
     p = ROOT / path
     text = p.read_text(encoding="utf-8")
+    if old not in text and new in text:
+        return
     count = text.count(old)
     if count < minimum:
         raise SystemExit(f"{path}: expected at least {minimum} replacement sites, found {count}")
@@ -32,10 +36,12 @@ replace_once(
 # remains pinned to display side 0 by DuelInfo::SetBattleRoyaleOpponent().
 client_field = ROOT / "gframe/client_field.cpp"
 text = client_field.read_text(encoding="utf-8")
-marker = "bool ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,\n"
-if text.count(marker) != 1:
-    raise SystemExit("client_field.cpp: ReplaceMultiplayerPrivatePiles marker mismatch")
-method = r'''void ClientField::CycleBattleRoyaleOpponent() {
+method_name = "void ClientField::CycleBattleRoyaleOpponent() {"
+if method_name not in text:
+    marker = "bool ClientField::ReplaceMultiplayerPrivatePiles(uint8_t player,\n"
+    if text.count(marker) != 1:
+        raise SystemExit("client_field.cpp: ReplaceMultiplayerPrivatePiles marker mismatch")
+    method = r'''void ClientField::CycleBattleRoyaleOpponent() {
 	if(mainGame->dInfo.isReplay
 			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 		return;
@@ -82,7 +88,7 @@ method = r'''void ClientField::CycleBattleRoyaleOpponent() {
 	RefreshAllCards();
 }
 '''
-client_field.write_text(text.replace(marker, method + marker, 1), encoding="utf-8")
+    client_field.write_text(text.replace(marker, method + marker, 1), encoding="utf-8")
 
 # BUTTON_REPLAY_SWAP is already the small duel-side swap button. In live Battle
 # Royale it becomes "Swap the player" and cycles only active opponents.
