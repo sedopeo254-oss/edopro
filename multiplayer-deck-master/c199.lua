@@ -155,6 +155,11 @@ function s.target(e,tp,eg,ep,ev,re,r,rp,chk,chkc)
     chain=math.max(0,chain-1)
     local g=Duel.GetPlayerFieldGroup(logical,LOCATION_GRAVE)
     g=g:Filter(s.filter,nil,e,tp,eg,ep,ev,re,r,rp,chain)
+    -- The selected opponent's Graveyard is public information. In Battle Royale
+    -- the multiplayer client can otherwise keep non-focused private piles masked,
+    -- so reveal the available Graveyard cards to the activating player before
+    -- opening the selection window.
+    Duel.ConfirmCards(tp,g)
     Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_TARGET)
     local sg=g:Select(tp,1,1,nil)
     Duel.SetTargetCard(sg)
