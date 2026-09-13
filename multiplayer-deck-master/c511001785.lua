@@ -116,7 +116,7 @@ function s.transfer(e,tp,eg,ep,ev,re,r,rp)
 	if logical==nil or logical<0 or not total or total<=0 then return end
 	ce:SetLabel(cid,logical,0)
 	if Duel.IsLogicalPlayerActive(logical) then
-		Duel.DamagePlayer(logical,total,REASON_EFFECT)
+		Duel.DamagePlayer(logical,total,REASON_EFFECT,false,tp,false)
 	end
 end
 function s.condition(e,tp,eg,ep,ev,re,r,rp)
@@ -148,6 +148,6 @@ function s.operation2(e,tp,eg,ep,ev,re,r,rp)
 	if logical==nil or logical<0 or dam<=0 then return end
 	Duel.ChangeBattleDamage(tp,0)
 	if Duel.IsLogicalPlayerActive(logical) then
-		Duel.DamagePlayer(logical,dam,REASON_BATTLE)
+		Duel.DamagePlayer(logical,dam,REASON_BATTLE,false,tp,false)
 	end
 end
