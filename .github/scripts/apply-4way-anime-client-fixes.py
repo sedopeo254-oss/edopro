@@ -94,8 +94,8 @@ if method_name not in text:
 # Royale it becomes "Swap the player" and cycles only active opponents.
 replace_once(
     "gframe/event_handler.cpp",
-    "\t\t\telse if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n\t\t\t\tmainGame->dField.CycleTeamField();\n",
-    "\t\t\telse if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))\n\t\t\t\tmainGame->dField.CycleBattleRoyaleOpponent();\n\t\t\telse if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n\t\t\t\tmainGame->dField.CycleTeamField();\n",
+    "\t\t\t\telse if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n\t\t\t\t\tmainGame->dField.CycleTeamField();\n",
+    "\t\t\t\telse if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))\n\t\t\t\t\tmainGame->dField.CycleBattleRoyaleOpponent();\n\t\t\t\telse if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n\t\t\t\t\tmainGame->dField.CycleTeamField();\n",
 )
 
 # Show the button to actual Battle Royale players without changing spectators,
