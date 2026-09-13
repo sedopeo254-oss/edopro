@@ -1,16 +1,16 @@
-name: 4-Way Anime Battle Royale Cards + Swap Player Windows
+name: 4-Way Anime Battle Royale Cards Round 2 + Swap Player Windows
 
 on:
   push:
     branches:
-      - fix/4way-anime-cards-swap-player-20260913
+      - fix/4way-anime-cards-round2-20260914
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: 4way-anime-cards-swap-player-${{ github.ref }}
+  group: 4way-anime-cards-round2-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -63,14 +63,19 @@ jobs:
             multiplayer-deck-master/c296499.lua \
             multiplayer-deck-master/c3819470.lua \
             multiplayer-deck-master/c511001785.lua \
-            multiplayer-deck-master/c199.lua; do
+            multiplayer-deck-master/c199.lua \
+            multiplayer-deck-master/c83555666.lua; do
             luac5.4 -p "$script"
           done
           grep -Fq 'Duel.ChangeAttackTarget(tc,true)' multiplayer-deck-master/c412.lua
           grep -Fq 'Duel.GetPlayerFieldGroup(logical,LOCATION_MZONE)' multiplayer-deck-master/c412.lua
-          grep -Fq 'Duel.DamagePlayer(logical' multiplayer-deck-master/c511001785.lua
+          grep -Fq 'Duel.DamagePlayer(logical,total,REASON_EFFECT,false,tp,false)' multiplayer-deck-master/c511001785.lua
+          grep -Fq 'Duel.DamagePlayer(logical,dam,REASON_BATTLE,false,tp,false)' multiplayer-deck-master/c511001785.lua
           grep -Fq 'Duel.NegateActivation(ch)' multiplayer-deck-master/c3819470.lua
           grep -Fq 'Duel.GetPlayerFieldGroup(logical,LOCATION_GRAVE)' multiplayer-deck-master/c199.lua
+          grep -Fq 'Duel.ConfirmCards(tp,g)' multiplayer-deck-master/c199.lua
+          grep -Fq 'Duel.DamagePlayer(p,atk,REASON_EFFECT,true,tp,false)' multiplayer-deck-master/c83555666.lua
+          grep -Fq 'Duel.RDComplete()' multiplayer-deck-master/c83555666.lua
           grep -Fq 'EFFECT_CANNOT_ATTACK' multiplayer-deck-master/c296499.lua
           grep -Fq 'EVENT_ATTACK_ANNOUNCE' multiplayer-deck-master/c296499.lua
           grep -Fq 'Duel.NegateAttack()' multiplayer-deck-master/c296499.lua
@@ -231,6 +236,7 @@ jobs:
           test -f deploy/expansions/script/c3819470.lua
           test -f deploy/expansions/script/c511001785.lua
           test -f deploy/expansions/script/c199.lua
+          test -f deploy/expansions/script/c83555666.lua
           test -f deploy/expansions/script/c153000012.lua
           test -f deploy/expansions/script/c511001152.lua
           test -f deploy/expansions/script/c511000405.lua
@@ -241,7 +247,7 @@ jobs:
           path: deploy/
       - uses: actions/upload-artifact@v4
         with:
-          name: edopro-4way-anime-cards-swap-player-windows-x86-no-upx
+          name: edopro-4way-anime-cards-round2-windows-x86-no-upx
           path: deploy/
           if-no-files-found: error
 
@@ -252,7 +258,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/4way-anime-cards-swap-player-20260913
+          ref: fix/4way-anime-cards-round2-20260914
           submodules: recursive
           fetch-depth: 0
       - name: Apply tested generated source
@@ -277,5 +283,5 @@ jobs:
             gframe/duelclient.cpp
           if ! git diff --cached --quiet; then
             git commit -m "Add Battle Royale anime cards and Swap the player [skip ci]"
-            git push origin HEAD:fix/4way-anime-cards-swap-player-20260913
+            git push origin HEAD:fix/4way-anime-cards-round2-20260914
           fi
