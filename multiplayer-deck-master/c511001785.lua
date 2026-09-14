@@ -144,10 +144,30 @@ function s.operation2(e,tp,eg,ep,ev,re,r,rp)
 		return
 	end
 	local logical=e:GetLabel()
+	if logical==nil or logical<0 or not Duel.IsLogicalPlayerActive(logical) then return end
+	-- EVENT_PRE_DAMAGE_CALCULATE is still too early for Battle Royale's final
+	-- logical-player battle-damage packet. Defer the redirect until
+	-- EVENT_PRE_BATTLE_DAMAGE, when core.battle_damage contains the final amount.
+	local be=Effect.CreateEffect(e:GetHandler())
+	be:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
+	be:SetCode(EVENT_PRE_BATTLE_DAMAGE)
+	be:SetProperty(EFFECT_FLAG_DAMAGE_STEP+EFFECT_FLAG_DAMAGE_CAL)
+	be:SetLabel(logical)
+	be:SetCondition(s.bdcon)
+	be:SetOperation(s.bdop)
+	be:SetReset(RESET_PHASE+PHASE_DAMAGE)
+	Duel.RegisterEffect(be,tp)
+end
+function s.bdcon(e,tp,eg,ep,ev,re,r,rp)
+	return ep==tp and ev>0 and Duel.GetBattleDamage(tp)>0
+end
+function s.bdop(e,tp,eg,ep,ev,re,r,rp)
+	local logical=e:GetLabel()
+	if logical==nil or logical<0 or not Duel.IsLogicalPlayerActive(logical) then return end
 	local dam=Duel.GetBattleDamage(tp)
-	if logical==nil or logical<0 or dam<=0 then return end
+	if dam<=0 then return end
+	-- Cancel the original owner's final battle damage first, then create exactly
+	-- one logical-player damage packet for the opponent chosen by Spell of Pain.
 	Duel.ChangeBattleDamage(tp,0)
-	if Duel.IsLogicalPlayerActive(logical) then
-		Duel.DamagePlayer(logical,dam,REASON_BATTLE,false,tp,false)
-	end
+	Duel.DamagePlayer(logical,dam,REASON_BATTLE,false,tp,false)
 end
