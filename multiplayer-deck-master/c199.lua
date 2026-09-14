@@ -48,6 +48,43 @@ function s.initial_effect(c)
     e5:SetCode(511001408)
     c:RegisterEffect(e5)
 end
+-- Return the highest chain link that existed before this Graverobber.
+-- This is stable both while building the chain and while resolving it.
+function s.priorchain(e)
+    local cc=Duel.GetCurrentChain()
+    if cc<=0 then return 0 end
+    local te=Duel.GetChainInfo(cc,CHAININFO_TRIGGERING_EFFECT)
+    if te and te:GetHandler()==e:GetHandler() then
+        return cc-1
+    end
+    return cc
+end
+
+-- Test whether a stolen EVENT_CHAINING card could legally respond to a
+-- particular earlier chain link. This lets Graverobber reproduce the anime
+-- Ring of Destruction -> Ring of Defense -> Graverobber -> Spell of Pain line.
+function s.chaincheck(te,tp,chain)
+    if chain<=0 then return false end
+    local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
+    if not te2 then return false end
+    local tc=te2:GetHandler()
+    if not tc then return false end
+    local g=Group.FromCards(tc)
+    local p=tc:GetControler()
+    local condition=te:GetCondition()
+    local cost=te:GetCost()
+    local target=te:GetTarget()
+    return (not condition or condition(te,tp,g,p,chain,te2,REASON_EFFECT,p))
+        and (not cost or cost(te,tp,g,p,chain,te2,REASON_EFFECT,p,0))
+        and (not target or target(te,tp,g,p,chain,te2,REASON_EFFECT,p,0))
+end
+function s.findchainfor(te,tp,maxchain)
+    for ch=maxchain,1,-1 do
+        if s.chaincheck(te,tp,ch) then return ch end
+    end
+    return 0
+end
+
 function s.cfilter(c,e,tp,eg,ep,ev,re,r,rp,chain)
     if not c:IsMonster() and c:GetActivateEffect() and (c:IsHasEffect(511001283) or c:IsHasEffect(511001408)) then return false end
     return s.filter(c,e,tp,eg,ep,ev,re,r,rp,chain)
@@ -75,13 +112,7 @@ function s.filter(c,e,tp,eg,ep,ev,re,r,rp,chain)
             local cost=te:GetCost()
             local target=te:GetTarget()
             if te:GetCode()==EVENT_CHAINING then
-                if chain<=0 then return false end
-                local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
-                local tc=te2:GetHandler()
-                local g=Group.FromCards(tc)
-                local p=tc:GetControler()
-                return (not condition or condition(te,tp,g,p,chain,te2,REASON_EFFECT,p)) and (not cost or cost(te,tp,g,p,chain,te2,REASON_EFFECT,p,0))
-                    and (not target or target(te,tp,g,p,chain,te2,REASON_EFFECT,p,0))
+                return s.findchainfor(te,tp,chain)>0
             elseif te:GetCode()==EVENT_FREE_CHAIN then
                 return (not condition or condition(te,tp,eg,ep,ev,re,r,rp)) and (not cost or cost(te,tp,eg,ep,ev,re,r,rp,0))
                     and (not target or target(te,tp,eg,ep,ev,re,r,rp,0))
@@ -141,6 +172,7 @@ function s.target(e,tp,eg,ep,ev,re,r,rp,chk,chkc)
         end
         return
     end
+    chain=s.priorchain(e)
     local pmask=s.candidatemask(e,tp,eg,ep,ev,re,r,rp,chain)
     if chkc then
         local logical=chkc:GetLogicalControler()
@@ -152,13 +184,10 @@ function s.target(e,tp,eg,ep,ev,re,r,rp,chk,chkc)
     local logical=s.selectplayer(tp,pmask)
     if logical==nil then return end
     e:SetLabel(logical)
-    chain=math.max(0,chain-1)
     local g=Duel.GetPlayerFieldGroup(logical,LOCATION_GRAVE)
     g=g:Filter(s.filter,nil,e,tp,eg,ep,ev,re,r,rp,chain)
-    -- The selected opponent's Graveyard is public information. In Battle Royale
-    -- the multiplayer client can otherwise keep non-focused private piles masked,
-    -- so reveal the available Graveyard cards to the activating player before
-    -- opening the selection window.
+    -- Graveyards are public information; reveal the selected logical player's
+    -- Graveyard before the choice window so the cards are never masked.
     Duel.ConfirmCards(tp,g)
     Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_TARGET)
     local sg=g:Select(tp,1,1,nil)
@@ -169,7 +198,7 @@ function s.target(e,tp,eg,ep,ev,re,r,rp,chk,chkc)
     end
 end
 function s.operation(e,tp,eg,ep,ev,re,r,rp)
-    local chain=Duel.GetCurrentChain()-1
+    local chain=is_battle_royal() and s.priorchain(e) or Duel.GetCurrentChain()-1
     local tc=Duel.GetFirstTarget()
     if not tc or not tc:IsRelateToEffect(e) then return end
     local tpe=tc:GetType()
@@ -221,9 +250,11 @@ function s.operation(e,tp,eg,ep,ev,re,r,rp)
                 tc:CancelToGrave(false)
             end
             if te:GetCode()==EVENT_CHAINING then
-                local chain=Duel.GetCurrentChain()-1
+                local chain=is_battle_royal() and s.findchainfor(te,tp,s.priorchain(e)) or Duel.GetCurrentChain()-1
+                if chain<=0 then return end
                 local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
-                local tc=te2:GetHandler()
+                local tc=te2 and te2:GetHandler() or nil
+                if not te2 or not tc then return end
                 local g=Group.FromCards(tc)
                 local p=tc:GetControler()
                 if co then co(te,tp,g,p,chain,te2,REASON_EFFECT,p,1) end
@@ -248,9 +279,11 @@ function s.operation(e,tp,eg,ep,ev,re,r,rp)
             tc:SetStatus(STATUS_ACTIVATED,true)
             if not tc:IsDisabled() then
                 if te:GetCode()==EVENT_CHAINING then
-                    local chain=Duel.GetCurrentChain()-1
+                    local chain=is_battle_royal() and s.findchainfor(te,tp,s.priorchain(e)) or Duel.GetCurrentChain()-1
+                    if chain<=0 then return end
                     local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
-                    local tc=te2:GetHandler()
+                    local tc=te2 and te2:GetHandler() or nil
+                    if not te2 or not tc then return end
                     local g=Group.FromCards(tc)
                     local p=tc:GetControler()
                     if op then op(te,tp,g,p,chain,te2,REASON_EFFECT,p) end
