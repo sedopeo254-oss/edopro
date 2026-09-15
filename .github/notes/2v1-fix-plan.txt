@@ -1,0 +1,6 @@
+Implementation plan:
+1. Redefine DUEL_2_V_1_BIG5 as independent 0x8000000000ULL.
+2. Preserve Core topology via configure_two_vs_one_big5() without setting the public 3v1 flag.
+3. Add 2v1 explicitly only to shared logical-player field/private-pile/prompt paths that it needs.
+4. Render exactly 3 logical LP panels and never index player 3 for this mode.
+5. Keep Standard, Battle Royale and protected 3v1 behavior unchanged; run all protected regressions before packaging.
