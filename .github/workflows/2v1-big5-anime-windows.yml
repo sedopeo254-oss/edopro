@@ -144,7 +144,6 @@ jobs:
               "/tmp/${test%.cpp}"
             fi
           done
-          # Existing modes must retain their known markers.
           grep -Fq 'CycleBattleRoyaleOpponent' gframe/client_field.cpp
           grep -Fq 'Swap the player' gframe/duelclient.cpp
           grep -Fq 'Swap the Team' gframe/duelclient.cpp
@@ -155,7 +154,7 @@ jobs:
           git diff --check
 
   windbot:
-    name: Build protected existing WindBot
+    name: Build protected existing WindBot + isolated 2v1 support
     runs-on: ubuntu-24.04
     needs: validate
     steps:
@@ -166,14 +165,20 @@ jobs:
           ref: ${{ env.WINDBOT_SHA }}
           path: windbot
           submodules: recursive
-      - name: Apply existing 3v1 and Battle Royale guards
+      - name: Apply existing guards and isolated 2v1 field model
         shell: bash
         run: |
           set -euo pipefail
           git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
           python3 .github/scripts/apply-windbot-battle-royale-loop.py windbot
+          python3 .github/scripts/apply-windbot-2v1-big5.py windbot
           grep -Fq 'public bool IsThreeVsOne' windbot/ExecutorBase/Game/Duel.cs
           grep -Fq 'public bool IsBattleRoyale' windbot/ExecutorBase/Game/Duel.cs
+          grep -Fq 'public bool IsTwoVsOneBig5' windbot/ExecutorBase/Game/Duel.cs
+          grep -Fq 'DUEL_2_V_1_BIG5_HIGH = 0x80' windbot/Game/GameBehavior.cs
+          grep -Fq 'TwoVsOneMonsterZoneCount' windbot/ExecutorBase/Game/ClientField.cs
+          grep -Fq 'TwoVsOneSpellZoneCount' windbot/ExecutorBase/Game/ClientField.cs
+          grep -Fq '_duel.IsThreeVsOne, _duel.IsTwoVsOneBig5' windbot/Game/GameBehavior.cs
           git -C windbot diff --check
       - name: Build WindBot
         shell: bash
@@ -278,6 +283,7 @@ jobs:
           Big Five use one shared player/deck resource set.
           Joey and Yugi retain independent Hand/Deck/Extra/GY/Banish/Field/LP.
           Public 2v1 flag is independent from Standard, Battle Royale and 3v1.
+          WindBot recognizes 2v1 independently with 14 MZ / 16 S/T allied slots.
           EOF
           rm -f deploy/compressed-ygopro.exe
           test -f deploy/ygopro.exe
