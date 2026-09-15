@@ -1,0 +1,16 @@
+2v1 crash analysis (2026-09-16)
+
+Observed runtime symptoms:
+- 2v1 is rendered as 3v1.
+- A fourth logical LP panel is drawn with garbage data.
+- A selection prompt can crash after the duel starts.
+
+Root cause:
+DUEL_2_V_1_BIG5 was initially defined as (DUEL_3_V_1 | 0x8000000000ULL). Any code using HasFieldFlag(DUEL_3_V_1) therefore also classified the 2v1 scenario as protected 3v1, including UI/replay/prompt paths that assume four logical players.
+
+Fix direction:
+- Make DUEL_2_V_1_BIG5 an independent flag (0x8000000000ULL).
+- Keep the Core multiplayer topology explicit through configure_two_vs_one_big5().
+- Add 2v1 only to the shared logical-player plumbing it actually needs.
+- Never broaden Standard, Battle Royale, or protected 3v1 semantics.
+- Add regression checks that 2v1 does not satisfy DUEL_3_V_1 and that only 3 logical players are active.
