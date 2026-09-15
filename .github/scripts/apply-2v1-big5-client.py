@@ -14,6 +14,15 @@ def replace_once(path, old, new):
     p.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+# EDOPro carries a client-side copy of the public Core constants. Keep the new
+# composite flag mirrored here as well as in ocgcore/ocgapi_constants.h so the
+# GUI/server translation units compile against the same duel flag value.
+replace_once(
+    "gframe/ocgapi_constants.h",
+    "#define DUEL_BATTLE_ROYALE     0x2000000000\n#define DUEL_3_V_1             0x4000000000\n",
+    "#define DUEL_BATTLE_ROYALE     0x2000000000\n#define DUEL_3_V_1             0x4000000000\n#define DUEL_2_V_1_BIG5        (DUEL_3_V_1 | 0x8000000000ULL)\n",
+)
+
 # Add scenario 1 as its own host option. The composite high bit is checked
 # before the inherited 3v1 bit so the existing 3v1 entry remains unchanged.
 replace_once(
