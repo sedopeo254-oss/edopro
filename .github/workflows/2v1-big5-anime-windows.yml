@@ -1,0 +1,279 @@
+name: 2v1 Yugi Joey vs Big Five Anime Windows
+
+on:
+  push:
+    branches:
+      - feature/2v1-big5-anime-20260916
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 2v1-big5-anime-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROTECTED_3V1_SHA: ef0b3f205cfd97b5fae6a181e1164c737affc896
+  FEATURE_CORE_SHA: 48fc2f0de4a67766e9667f9669650c3f594a3255
+  WINDBOT_SHA: fa0ae767967afc6a820784837f11cd3fabb9c47c
+  DEPENDENCIES_BASE_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download
+  DEPLOY_DIR: deploy
+
+jobs:
+  validate:
+    name: Validate isolated Big Five 2v1 and protect existing modes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify exact protected baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$FEATURE_CORE_SHA"
+          test "$(git ls-remote origin refs/heads/stable/3v1-replay-targeting-fixed | cut -f1)" = "$PROTECTED_3V1_SHA"
+          git merge-base --is-ancestor 137c63b1977b4cdd3165747cbdf00c892116e9d0 HEAD
+          grep -Fq 'Kaiba 3300 must go first' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq '3v1 must reject Battle Royale turn-order changes' ocgcore/tests/multiplayer_state_tests.cpp
+
+      - name: Materialize protected previous features and new 2v1 mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/install-4way-attack-guidance-armor.py
+          python3 .github/scripts/apply-4way-anime-client-fixes.py
+          python3 .github/scripts/apply-2v1-big5-core.py
+          python3 .github/scripts/apply-2v1-big5-client.py
+          grep -Fq '#define DUEL_2_V_1_BIG5' ocgcore/ocgapi_constants.h
+          grep -Fq 'configure_two_vs_one_big5' ocgcore/multiplayer.cpp
+          grep -Fq 'turn_order = { 2, 0, 1, 3 };' ocgcore/multiplayer.cpp
+          grep -Fq 'players_mask = 0x07;' ocgcore/multiplayer.cpp
+          grep -Fq 'player[0].list_mzone.resize(7 * 2, nullptr);' ocgcore/field.cpp
+          grep -Fq 'player[0].lp = player[0].start_lp = 4000;' ocgcore/field.cpp
+          grep -Fq 'player[1].lp = player[1].start_lp = 8000;' ocgcore/field.cpp
+          grep -Fq '2 vs 1 - Yugi & Joey vs Big Five' gframe/game.cpp
+          grep -Fq 'Swap Yugi / Joey' gframe/duelclient.cpp
+          grep -Fq 'home_start_lp = two_vs_one_big5 ? 4000u' gframe/generic_duel.cpp
+          grep -Fq 'opposing_start_lp = two_vs_one_big5 ? 8000u' gframe/generic_duel.cpp
+          git diff --check
+          git -C ocgcore diff --check
+
+      - name: Run new Big Five state test
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -Wall -Wextra -Werror -Iocgcore \
+            .github/tests/two_vs_one_big5_state_test.cpp \
+            ocgcore/multiplayer.cpp -o /tmp/two_vs_one_big5_state_test
+          /tmp/two_vs_one_big5_state_test
+
+      - name: Verify independent resources and team cooperation architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Independent Deck/Hand/Extra/GY/Banish are the protected logical-pile system.
+          grep -Fq 'extra_lists_main' ocgcore/field.h
+          grep -Fq 'extra_lists_hand' ocgcore/field.h
+          grep -Fq 'extra_lists_extra' ocgcore/field.h
+          grep -Fq 'extra_lists_grave' ocgcore/field.h
+          grep -Fq 'extra_lists_remove' ocgcore/field.h
+          grep -Fq 'extra_lps' ocgcore/field.h
+          # Fusion scans the full flattened allied field, so Joey/Yugi materials can combine.
+          grep -Fq 'void field::get_fusion_material(uint8_t playerid, card_set* material)' ocgcore/field.cpp
+          grep -Fq 'for(auto& pcard : player[playerid].list_mzone)' ocgcore/field.cpp
+          # Team-effect expansion remains the protected THREE_V_ONE path inherited by this scenario.
+          grep -Fq 'GetEffectPlayerMasks' ocgcore/libduel.cpp
+          grep -Fq 'multiplayer.team_of(origin)' ocgcore/libduel.cpp
+
+      - name: Run protected Core multiplayer regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+          grep -Fq 'Kaiba 3300 must go first' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq 'Marik 1700 must go second' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq 'Yugi 1300 must go third' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq 'Joey 500 must go last' ocgcore/tests/multiplayer_state_tests.cpp
+          grep -Fq '3v1 must reject Battle Royale turn-order changes' ocgcore/tests/multiplayer_state_tests.cpp
+          git -C ocgcore diff --check
+
+      - name: Run protected client and anime-card regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.4
+          for script in \
+            multiplayer-deck-master/c199.lua \
+            multiplayer-deck-master/c296499.lua \
+            multiplayer-deck-master/c3819470.lua \
+            multiplayer-deck-master/c412.lua \
+            multiplayer-deck-master/c511001785.lua \
+            multiplayer-deck-master/c58641905.lua \
+            multiplayer-deck-master/c83555666.lua; do
+            luac5.4 -p "$script"
+          done
+          for test in \
+            battle_royale_live_ec2_test.cpp \
+            battle_royale_replay_smoothing_test.cpp \
+            battle_royale_private_snapshot_test.cpp \
+            multiplayer_replay_policy_test.cpp \
+            multiplayer_attack_arrow_test.cpp \
+            multiplayer_replay_animation_test.cpp; do
+            if test -f ".github/tests/$test"; then
+              c++ -std=c++17 -Wall -Wextra -Werror -I. \
+                ".github/tests/$test" -o "/tmp/${test%.cpp}"
+              "/tmp/${test%.cpp}"
+            fi
+          done
+          grep -Fq 'CycleBattleRoyaleOpponent' gframe/client_field.cpp
+          grep -Fq 'Swap the player' gframe/duelclient.cpp
+          grep -Fq 'Duel.ChangeAttackTarget(c,true)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'eboost:SetValue(1000)' multiplayer-deck-master/c153000012.lua
+          grep -Fq 'EVENT_PRE_BATTLE_DAMAGE' multiplayer-deck-master/c511001785.lua
+          grep -Fq 'function s.findchainfor' multiplayer-deck-master/c199.lua
+          git diff --check
+
+  windbot:
+    name: Build protected existing WindBot
+    runs-on: ubuntu-24.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ProjectIgnis/windbot
+          ref: ${{ env.WINDBOT_SHA }}
+          path: windbot
+          submodules: recursive
+      - name: Apply existing 3v1 and Battle Royale guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C windbot apply --unidiff-zero ../.github/patches/windbot-3v1.patch
+          python3 .github/scripts/apply-windbot-battle-royale-loop.py windbot
+          grep -Fq 'public bool IsThreeVsOne' windbot/ExecutorBase/Game/Duel.cs
+          grep -Fq 'public bool IsBattleRoyale' windbot/ExecutorBase/Game/Duel.cs
+          git -C windbot diff --check
+      - name: Build WindBot
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull ghcr.io/projectignis/mono_xamarin_builder_monodroid:master
+          docker image tag ghcr.io/projectignis/mono_xamarin_builder_monodroid:master monodroid
+          cd windbot
+          docker run --rm --volume "$PWD:/project" monodroid -t:restore -p:RestorePackagesPath=./.nuget WindBot.sln
+          ./ci/install-patched-mono-runtime.sh
+          docker run --rm --volume "$PWD:/project" monodroid -m -p:Configuration=Release WindBot.sln -p:Posix=true
+      - name: Package WindBot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p windbot-package/WindBot
+          cp -r windbot/bin/Release/. windbot-package/WindBot/
+          rm -f windbot-package/WindBot/mscorlib* windbot-package/WindBot/libWindbot*
+          cp windbot/COPYING windbot/LICENSE windbot/bots.json windbot-package/WindBot/
+          cp -r windbot/Decks windbot/Dialogs windbot-package/WindBot/
+          test -f windbot-package/WindBot/WindBot.exe
+          test -f windbot-package/WindBot/ExecutorBase.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windbot-protected-multiplayer
+          path: windbot-package/
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86 Yugi Joey vs Big Five
+    runs-on: windows-2022
+    needs: [validate, windbot]
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply protected previous features and Big Five 2v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$FEATURE_CORE_SHA"
+          python3 .github/scripts/install-4way-attack-guidance-armor.py
+          python3 .github/scripts/apply-4way-anime-client-fixes.py
+          python3 .github/scripts/apply-2v1-big5-core.py
+          python3 .github/scripts/apply-2v1-big5-client.py
+          grep -Fq 'DUEL_2_V_1_BIG5' ocgcore/ocgapi_constants.h
+          grep -Fq '2 vs 1 - Yugi & Joey vs Big Five' gframe/game.cpp
+          git diff --check
+          git -C ocgcore diff --check
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+      - name: Build bundled client
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package client, protected anime cards and mode metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/textures deploy/expansions/script deploy/mode-info
+          cp textures/field-3v1.png deploy/textures/field-3v1.png
+          cp -r multiplayer-effect-examples deploy/
+          cp -r multiplayer-deck-master deploy/
+          cp multiplayer-effect-examples/c25880422.lua deploy/expansions/script/c25880422.lua
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          cat > deploy/mode-info/2v1-big5.txt <<'EOF'
+          Yugi & Joey vs Big Five
+          Logical players: Joey=0, Yugi=1, Big Five=2
+          Turn order: Big Five -> Joey -> Yugi
+          LP: Joey 4000, Yugi 4000, Big Five 8000
+          Team 0: Joey + Yugi; Team 1: Big Five
+          Big Five use one shared player/deck resource set.
+          Joey and Yugi retain independent Hand/Deck/Extra/GY/Banish/Field/LP.
+          EOF
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+          test -f deploy/expansions/script/c199.lua
+          test -f deploy/expansions/script/c511001785.lua
+          test -f deploy/expansions/script/c58641905.lua
+          test -f deploy/expansions/script/c83555666.lua
+          test -f deploy/expansions/script/c412.lua
+          test -f deploy/expansions/script/c153000012.lua
+          test -f deploy/mode-info/2v1-big5.txt
+          test ! -f deploy/compressed-ygopro.exe
+      - uses: actions/download-artifact@v4
+        with:
+          name: windbot-protected-multiplayer
+          path: deploy/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-2v1-yugi-joey-vs-big5-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
