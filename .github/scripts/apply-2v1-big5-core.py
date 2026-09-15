@@ -15,14 +15,11 @@ def replace_once(path, old, new):
     p.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-# The high bit uniquely identifies this scenario. It intentionally carries the
-# protected DUEL_3_V_1 bit too, so the already-tested team/private-pile/replay
-# plumbing is reused without changing Standard, Battle Royale or the existing
-# 3-vs-1 mode. Code that needs the new scenario checks the complete composite.
+# Independent public flag. The mode must never satisfy DUEL_3_V_1 in the UI.
 replace_once(
     "ocgapi_constants.h",
     "#define DUEL_BATTLE_ROYALE     0x2000000000\n#define DUEL_3_V_1             0x4000000000\n",
-    "#define DUEL_BATTLE_ROYALE     0x2000000000\n#define DUEL_3_V_1             0x4000000000\n#define DUEL_2_V_1_BIG5        (DUEL_3_V_1 | 0x8000000000ULL)\n",
+    "#define DUEL_BATTLE_ROYALE     0x2000000000\n#define DUEL_3_V_1             0x4000000000\n#define DUEL_2_V_1_BIG5        0x8000000000ULL\n",
 )
 
 replace_once(
@@ -46,13 +43,13 @@ replace_once(
     "}\n\nvoid MultiplayerState::reset() {\n",
     "}\n\nvoid MultiplayerState::configure_two_vs_one_big5() {\n"
     "\treset();\n"
-    "\t// Reuse the protected team-vs-one engine paths while exposing only\n"
-    "\t// three logical duelists: Joey (0), Yugi (1), Big Five (2).\n"
+    "\t// Reuse the tested team-vs-one Core mechanics internally, but expose\n"
+    "\t// exactly three logical duelists: Joey (0), Yugi (1), Big Five (2).\n"
     "\tduel_mode = MultiplayerMode::THREE_V_ONE;\n"
     "\ttwo_vs_one_big5 = true;\n"
     "\tplayers_mask = 0x07;\n"
     "\tteams = { 0, 0, 1, NO_TEAM };\n"
-    "\t// Anime turn order: Big Five -> Joey -> Yugi. Slot 3 stays inactive.\n"
+    "\t// Anime order: Big Five -> Joey -> Yugi. Slot 3 is permanently inactive.\n"
     "\tturn_order = { 2, 0, 1, 3 };\n"
     "\tturn_player = 2;\n"
     "}\n\nvoid MultiplayerState::reset() {\n",
@@ -139,15 +136,14 @@ replace_once(
     "\t\tplayer[0].extra_used_location.resize(2, 0);\n"
     "\t\tplayer[0].extra_disabled_location.resize(2, 0);\n"
     "\t}\n",
-    "\t} else if((options.flags & DUEL_2_V_1_BIG5) == DUEL_2_V_1_BIG5) {\n"
+    "\t} else if(options.flags & DUEL_2_V_1_BIG5) {\n"
     "\t\tmultiplayer.configure_two_vs_one_big5();\n"
-    "\t\t// Yugi and Joey own two simultaneous but independent fields/piles.\n"
-    "\t\t// Big Five are one logical player on side 1 with one shared deck.\n"
+    "\t\t// Joey and Yugi: two independent fields/piles on side 0.\n"
+    "\t\t// Big Five: one logical player, one field and one shared deck on side 1.\n"
     "\t\tplayer[0].list_mzone.resize(7 * 2, nullptr);\n"
     "\t\tplayer[0].list_szone.resize(8 * 2, nullptr);\n"
     "\t\tplayer[0].extra_used_location.resize(1, 0);\n"
     "\t\tplayer[0].extra_disabled_location.resize(1, 0);\n"
-    "\t\t// Episode 111 starts Joey/Yugi at 4000 each and Big Five at 8000.\n"
     "\t\tplayer[0].lp = player[0].start_lp = 4000;\n"
     "\t\tplayer[1].lp = player[1].start_lp = 8000;\n"
     "\t} else if(options.flags & DUEL_3_V_1) {\n"
