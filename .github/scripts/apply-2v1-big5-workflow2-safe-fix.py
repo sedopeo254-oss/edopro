@@ -50,10 +50,10 @@ replace_once(
 )
 
 # 4) Core logical-turn snapshots use a fixed four-slot wire format so existing
-# clients/replays stay compatible. In 2v1 slot 3 is inactive. Never translate
-# that inactive slot to side/duelist 0xff and then index player[0xff]; write six
-# zero uint32 values instead. This removes the out-of-bounds read which produced
-# the garbage P4 LP seen in the reported screenshot and could corrupt memory.
+# clients/replays stay compatible. Big Five 2v1 alone has an intentionally
+# inactive fourth slot. Zero ONLY that mode's inactive slot before translating
+# side/duelist IDs. This deliberately leaves eliminated-player snapshots in
+# Battle Royale and protected 3v1 on their exact pre-existing behavior.
 # In this Core revision Turn/phase processing lives in processor.cpp.
 replace_once(
     "ocgcore/processor.cpp",
@@ -61,10 +61,12 @@ replace_once(
     "\t\t\t\t\tconst auto side = multiplayer.field_side_of(logical);\n"
     "\t\t\t\t\tconst auto duelist = multiplayer.duelist_index_of(logical);\n",
     "\t\t\t\tfor(uint8_t logical = 0; logical < MultiplayerState::MAX_PLAYERS; ++logical) {\n"
-    "\t\t\t\t\tif(!multiplayer.is_active(logical)) {\n"
-    "\t\t\t\t\t\tfor(uint8_t value = 0; value < 6; ++value)\n"
-    "\t\t\t\t\t\t\tlogical_message->write<uint32_t>(0);\n"
-    "\t\t\t\t\t\tcontinue;\n"
+    "\t\t\t\t\tif(multiplayer.is_two_vs_one_big5()) {\n"
+    "\t\t\t\t\t\tif(!multiplayer.is_active(logical)) {\n"
+    "\t\t\t\t\t\t\tfor(uint8_t value = 0; value < 6; ++value)\n"
+    "\t\t\t\t\t\t\t\tlogical_message->write<uint32_t>(0);\n"
+    "\t\t\t\t\t\t\tcontinue;\n"
+    "\t\t\t\t\t\t}\n"
     "\t\t\t\t\t}\n"
     "\t\t\t\t\tconst auto side = multiplayer.field_side_of(logical);\n"
     "\t\t\t\t\tconst auto duelist = multiplayer.duelist_index_of(logical);\n",
