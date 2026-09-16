@@ -54,8 +54,9 @@ replace_once(
 # that inactive slot to side/duelist 0xff and then index player[0xff]; write six
 # zero uint32 values instead. This removes the out-of-bounds read which produced
 # the garbage P4 LP seen in the reported screenshot and could corrupt memory.
+# In this Core revision Turn/phase processing lives in processor.cpp.
 replace_once(
-    "ocgcore/operations.cpp",
+    "ocgcore/processor.cpp",
     "\t\t\t\tfor(uint8_t logical = 0; logical < MultiplayerState::MAX_PLAYERS; ++logical) {\n"
     "\t\t\t\t\tconst auto side = multiplayer.field_side_of(logical);\n"
     "\t\t\t\t\tconst auto duelist = multiplayer.duelist_index_of(logical);\n",
