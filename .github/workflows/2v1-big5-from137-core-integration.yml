@@ -1,0 +1,74 @@
+name: 2v1 Big Five Core Integration from 137c63b
+
+on:
+  push:
+    branches:
+      - feature/2v1-big5-from-137c63b-20260917
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-integration:
+    name: Full Core Joey Yugi Big Five integration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Materialize isolated 2v1 Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "48fc2f0de4a67766e9667f9669650c3f594a3255"
+          python3 .github/scripts/apply-2v1-big5-from137-core.py
+          grep -Fq 'TWO_V_ONE_BIG5' ocgcore/multiplayer.h
+          grep -Fq 'if(!multiplayer.is_active(logical)) {' ocgcore/processor.cpp
+          git -C ocgcore diff --check
+      - name: Compile and run full Core field integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$PWD/ocgcore"
+          BUILD="${TMPDIR:-/tmp}/two-v-one-big5-full-core"
+          LUA="$ROOT/lua/src"
+          mkdir -p "$BUILD"
+          lua_objects=""
+          for source in "$LUA"/*.c; do
+            case "$(basename "$source")" in
+              lua.c|ltests.c|onelua.c) continue ;;
+            esac
+            object="$BUILD/$(basename "${source%.c}").o"
+            c++ -x c++ -std=c++20 -I"$LUA" -c "$source" -o "$object"
+            lua_objects="$lua_objects $object"
+          done
+          c++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers \
+            -I"$ROOT" -I"$LUA" \
+            "$ROOT/card.cpp" \
+            "$ROOT/duel.cpp" \
+            "$ROOT/effect.cpp" \
+            "$ROOT/field.cpp" \
+            "$ROOT/interpreter.cpp" \
+            "$ROOT/libcard.cpp" \
+            "$ROOT/libdebug.cpp" \
+            "$ROOT/libduel.cpp" \
+            "$ROOT/libeffect.cpp" \
+            "$ROOT/libgroup.cpp" \
+            "$ROOT/multiplayer.cpp" \
+            "$ROOT/ocgapi.cpp" \
+            "$ROOT/operations.cpp" \
+            "$ROOT/playerop.cpp" \
+            "$ROOT/processor.cpp" \
+            "$ROOT/battle_royale_turn_order.cpp" \
+            "$ROOT/processor_visit.cpp" \
+            "$ROOT/scriptlib.cpp" \
+            .github/tests/two_vs_one_big5_from137_field_test.cpp \
+            $lua_objects -ldl -lm -o "$BUILD/two-v-one-big5-full-core"
+          "$BUILD/two-v-one-big5-full-core"
+      - name: Re-run protected BR and 3v1 tests after integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
