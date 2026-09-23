@@ -93,6 +93,17 @@ int main() {
         && materials.find(yugi) != materials.end(),
         "Fusion material pool must include monsters from both allied fields");
 
+    // Generic releases/tributes on the allied physical side must also see both
+    // logical fields. This is what lets Joey tribute Yugi's monster and vice versa.
+    card_set releases;
+    card_set extra_releases;
+    card_set oneof_releases;
+    field.get_release_list(0, &releases, &extra_releases, &oneof_releases,
+        0, 0, 0, nullptr, nullptr, false, REASON_COST);
+    expect(releases.find(joey) != releases.end()
+        && releases.find(yugi) != releases.end(),
+        "release/tribute pool must include monsters from both allied fields");
+
     // Prompt routing must follow the logical owner rather than the current screen.
     auto* yugi_effect = game.new_effect();
     yugi_effect->owner = yugi;
