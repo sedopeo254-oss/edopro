@@ -199,6 +199,22 @@ jobs:
           python3 .github/scripts/apply-2v1-big5-from137-client-server.py
           python3 .github/scripts/fix-2v1-big5-mdmp-null-ui.py
           python3 .github/scripts/apply-2v1-big5-runtime-round2.py
+          # GitHub's updated Windows image now builds Irrlicht sources containing
+          # C++17 init-statements. Set the language level only for Irrlicht; this
+          # changes no EDOPro/Core multiplayer behavior.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('irrlicht/premake5.lua')
+          s = p.read_text(encoding='utf-8')
+          marker = 'project "Irrlicht"\n\tkind "StaticLib"\n'
+          replacement = 'project "Irrlicht"\n\tkind "StaticLib"\n\tcppdialect "C++17"\n'
+          if replacement not in s:
+              if marker not in s:
+                  raise SystemExit('Irrlicht premake marker not found')
+              s = s.replace(marker, replacement, 1)
+              p.write_text(s, encoding='utf-8')
+          PY
+          grep -Fq 'cppdialect "C++17"' irrlicht/premake5.lua
           git diff --check
           git -C ocgcore diff --check
       - uses: microsoft/setup-msbuild@v3
