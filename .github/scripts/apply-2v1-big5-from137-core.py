@@ -219,4 +219,56 @@ replace_once(
     "\t\treturn TRUE;\n\t}\n\tcase 2: {\n",
 )
 
+# 2v1 battle targeting mirrors the protected team-target routing, but only for
+# this dedicated mode. Big Five may choose Joey/Yugi as the attacked field;
+# allied attackers always target the Big Five logical player.
+replace_once(
+    "processor.cpp",
+    "\t\tif(multiplayer.mode() == MultiplayerMode::BATTLE_ROYALE) {\n"
+    "\t\t\targ.attack_target_duelists.clear();\n",
+    "\t\tif(multiplayer.mode() == MultiplayerMode::TWO_V_ONE_BIG5 && infos.turn_player == 0) {\n"
+    "\t\t\tcore.attack_target_logical = 2;\n"
+    "\t\t\tcore.attack_target_duelist = 0;\n"
+    "\t\t}\n"
+    "\t\tif(multiplayer.mode() == MultiplayerMode::BATTLE_ROYALE) {\n"
+    "\t\t\targ.attack_target_duelists.clear();\n",
+)
+replace_once(
+    "processor.cpp",
+    "\t\t} else if(multiplayer.mode() == MultiplayerMode::THREE_V_ONE && infos.turn_player == 1) {\n"
+    "\t\t\targ.attack_target_duelists.clear();\n",
+    "\t\t} else if((multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE_BIG5)\n"
+    "\t\t\t\t&& infos.turn_player == 1) {\n"
+    "\t\t\targ.attack_target_duelists.clear();\n",
+)
+replace_once(
+    "processor.cpp",
+    "\t\t} else if(multiplayer.mode() == MultiplayerMode::THREE_V_ONE && infos.turn_player == 1\n"
+    "\t\t\t\t&& arg.attack_target_duelists.size() > 1) {\n",
+    "\t\t} else if((multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE_BIG5)\n"
+    "\t\t\t\t&& infos.turn_player == 1\n"
+    "\t\t\t\t&& arg.attack_target_duelists.size() > 1) {\n",
+)
+replace_once(
+    "processor.cpp",
+    "\t\t\t} else if(multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t\t&& core.attack_target->current.controler == 0) {\n"
+    "\t\t\t\tcore.attack_target_duelist = core.attack_target->current.duelist;\n"
+    "\t\t\t\tcore.attack_target_logical = multiplayer.logical_player(\n"
+    "\t\t\t\t\t0, core.attack_target_duelist);\n"
+    "\t\t\t}\n",
+    "\t\t\t} else if(multiplayer.mode() == MultiplayerMode::TWO_V_ONE_BIG5) {\n"
+    "\t\t\t\tcore.attack_target_duelist = core.attack_target->current.duelist;\n"
+    "\t\t\t\tcore.attack_target_logical = multiplayer.logical_player(\n"
+    "\t\t\t\t\tcore.attack_target->current.controler, core.attack_target_duelist);\n"
+    "\t\t\t} else if(multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t\t&& core.attack_target->current.controler == 0) {\n"
+    "\t\t\t\tcore.attack_target_duelist = core.attack_target->current.duelist;\n"
+    "\t\t\t\tcore.attack_target_logical = multiplayer.logical_player(\n"
+    "\t\t\t\t\t0, core.attack_target_duelist);\n"
+    "\t\t\t}\n",
+)
+
 print("Applied isolated 2v1 Big Five Core on top of 137c63b baseline")
