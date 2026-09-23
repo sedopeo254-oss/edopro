@@ -192,8 +192,8 @@ duel = read("gframe/duelclient.cpp")
 needle = r'''        uint32_t sounds = count;
         if(mainGame->dInfo.isReplay) {'''
 if needle not in duel:
-    needle = "		uint32_t sounds = count;
-		if(mainGame->dInfo.isReplay) {"
+    needle = """\t\tuint32_t sounds = count;
+\t\tif(mainGame->dInfo.isReplay) {"""
 replacement = "		uint32_t sounds = count;\n"     "\t\tif(!mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_2_V_1_BIG5)) {\n"     "\t\t\tif(logical_player < mainGame->dField.multiplayer_private_piles_valid.size()\n"     "\t\t\t\t\t&& mainGame->dField.multiplayer_private_piles_valid[logical_player]) {\n"     "\t\t\t\tmainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);\n"     "\t\t\t\tconst auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);\n"     "\t\t\t\tif(core_side < 2\n"     "\t\t\t\t\t\t&& mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player)\n"     "\t\t\t\t\tmainGame->dField.ApplyTwoVsOnePrivatePile(logical_player, false);\n"     "\t\t\t}\n"     "\t\t} else if(mainGame->dInfo.isReplay) {"
 if replacement not in duel:
     if needle not in duel:
