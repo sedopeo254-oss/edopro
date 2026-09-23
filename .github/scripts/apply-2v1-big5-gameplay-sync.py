@@ -287,7 +287,7 @@ replace_once(
     "\tconst bool two_vs_one_big5_mode = (active_duel_flags & DUEL_2_V_1_BIG5) != 0;\n"
     "\tuint8_t& message = packet.message;\n",
 )
-replace_all(
+replace_once(
     "gframe/generic_duel.cpp",
     "\t\t\tif(info.controler != visible_side\n"
     "\t\t\t\t\t|| (logical_selector && info_logical != logical_player))\n"
@@ -300,7 +300,21 @@ replace_all(
     "\t\t\t\t\t|| (logical_selector && info_logical != logical_player\n"
     "\t\t\t\t\t\t&& !shared_allied_field))\n"
     "\t\t\t\tBufferIO::Write<uint32_t>(pbufw, 0);\n",
-    minimum=3,
+)
+replace_all(
+    "gframe/generic_duel.cpp",
+    "\t\t\t\tif(info.controler != visible_side\n"
+    "\t\t\t\t\t\t|| (logical_selector && info_logical != logical_player))\n"
+    "\t\t\t\t\tBufferIO::Write<uint32_t>(pbufw, 0);\n",
+    "\t\t\t\tconst bool shared_allied_field = two_vs_one_big5_mode\n"
+    "\t\t\t\t\t&& visible_side == 0 && info.controler == 0\n"
+    "\t\t\t\t\t&& (info.location & LOCATION_ONFIELD)\n"
+    "\t\t\t\t\t&& info_logical < players.home_size;\n"
+    "\t\t\t\tif(info.controler != visible_side\n"
+    "\t\t\t\t\t\t|| (logical_selector && info_logical != logical_player\n"
+    "\t\t\t\t\t\t\t&& !shared_allied_field))\n"
+    "\t\t\t\t\tBufferIO::Write<uint32_t>(pbufw, 0);\n",
+    minimum=2,
 )
 
 replace_once(
