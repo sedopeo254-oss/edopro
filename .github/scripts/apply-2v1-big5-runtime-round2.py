@@ -288,8 +288,7 @@ if count < 3:
 # Apply only first and third by block-local modification below.
 for signature in ["case MSG_SELECT_CARD: {", "case MSG_SELECT_UNSELECT_CARD: {"]:
     st = generic.index(signature)
-    en = generic.index("
-	case ", st + len(signature))
+    en = generic.index("\\n\\tcase ", st + len(signature))
     block = generic[st:en]
     if "shared_two_v_one_field" not in block:
         block = block.replace(visible, with_flag, 1)
