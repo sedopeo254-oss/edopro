@@ -203,4 +203,20 @@ replace_once(
     "\t\t\t\t? game_field.multiplayer.winner_team()\n",
 )
 
+# The first real Core turn must follow the logical order. 2v1 starts with Big Five
+# (logical 2 / physical side 1), while Standard and protected 3v1 keep their
+# existing startup behavior unchanged.
+replace_once(
+    "processor.cpp",
+    "\t\t}\n\t\templace_process<Processors::Turn>(0);\n\t\treturn TRUE;\n\t}\n\tcase 2: {\n",
+    "\t\t}\n"
+    "\t\tif(multiplayer.mode() == MultiplayerMode::TWO_V_ONE_BIG5) {\n"
+    "\t\t\tconst auto first_logical = multiplayer.current_player();\n"
+    "\t\t\templace_process<Processors::Turn>(multiplayer.field_side_of(first_logical));\n"
+    "\t\t} else {\n"
+    "\t\t\templace_process<Processors::Turn>(0);\n"
+    "\t\t}\n"
+    "\t\treturn TRUE;\n\t}\n\tcase 2: {\n",
+)
+
 print("Applied isolated 2v1 Big Five Core on top of 137c63b baseline")
