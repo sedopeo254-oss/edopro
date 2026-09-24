@@ -239,10 +239,11 @@ if not DeckMaster then
 			for p=0,3 do
 				if Duel.IsLogicalPlayerActive(p) then
 					local has_dm=Duel.GetDeckMasterPlayer(p)~=nil
-					if p<3 then
+					local side=player_side(p)
+					if side==0 then
 						active_allies=active_allies+1
 						if has_dm then surviving_allies=surviving_allies+1 end
-					else
+					elseif side==1 then
 						active_solo=active_solo+1
 						if has_dm then surviving_solo=surviving_solo+1 end
 					end
@@ -260,12 +261,12 @@ if not DeckMaster then
 			--Resolve the solo player's loss first. If an ally still owns a Deck
 			--Master this ends the duel immediately in the allied team's favor.
 			for _,p in ipairs(lost) do
-				if p==3 then
+				if player_side(p)==1 then
 					Duel.EliminatePlayer(p,4,WIN_REASON_DECK_MASTER)
 				end
 			end
 			for _,p in ipairs(lost) do
-				if p<3 then
+				if player_side(p)==0 then
 					Duel.EliminatePlayer(p,4,WIN_REASON_DECK_MASTER)
 				end
 			end
