@@ -482,4 +482,47 @@ replace_once(
 )
 
 
+
+# add_card must validate an explicitly requested logical duelist's encoded zone.
+# Previously it checked the current teammate's local slot first and encoded the
+# requested P2/P3 duelist only afterward, so an occupied P1 slot could
+# incorrectly reject an otherwise free P2 slot.
+replace_once(
+    "field.cpp",
+    '''void field::add_card(uint8_t playerid, card* pcard, uint8_t location, uint8_t sequence, bool pzone, uint8_t duelist) {
+	if (pcard->current.location != 0)
+		return;
+	if (!is_location_useable(playerid, location, sequence))
+		return;
+	// explicitly allow fusion spell cards to start in the extra
+''',
+    '''void field::add_card(uint8_t playerid, card* pcard, uint8_t location, uint8_t sequence, bool pzone, uint8_t duelist) {
+	if (pcard->current.location != 0)
+		return;
+	const auto logical_duelist = duelist != 0xff ? duelist : static_cast<uint8_t>((location & LOCATION_ONFIELD)
+		? player[playerid].current_duelist
+		: (playerid == pcard->owner ? pcard->owner_duelist : player[playerid].current_duelist));
+	const auto availability_sequence = (location & LOCATION_ONFIELD)
+		? get_zone_sequence(playerid, location, sequence, logical_duelist) : sequence;
+	if (!is_location_useable(playerid, location, availability_sequence))
+		return;
+	// explicitly allow fusion spell cards to start in the extra
+''',
+)
+replace_once(
+    "field.cpp",
+    '''	pcard->current.controler = playerid;
+	pcard->current.location = location;
+	const auto logical_duelist = duelist != 0xff ? duelist : static_cast<uint8_t>((location & LOCATION_ONFIELD)
+		? player[playerid].current_duelist
+		: (playerid == pcard->owner ? pcard->owner_duelist : player[playerid].current_duelist));
+	pcard->current.duelist = logical_duelist;
+''',
+    '''	pcard->current.controler = playerid;
+	pcard->current.location = location;
+	pcard->current.duelist = logical_duelist;
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 Core mode")
