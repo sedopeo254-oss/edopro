@@ -293,7 +293,7 @@ struct DuelInfo {
 		return SetThreeVsOneReplayHandPolicy(0xff);
 	}
 	uint8_t GetPromptCoreSide(uint8_t selecting_player) const {
-		if((duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1))
+		if((duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1))
 				&& selecting_player >= 2 && selecting_player < 6) {
 			const auto logical = static_cast<uint8_t>(selecting_player - 2);
 			if(logical < team1 + team2)
