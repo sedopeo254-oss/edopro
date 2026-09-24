@@ -293,6 +293,21 @@ replace_once(
     "\t\t\t|| multiplayer.mode() == MultiplayerMode::BATTLE_ROYALE);\n",
 )
 
+
+# An OUT allied player still owns optional chain prompts from cards/effects that
+# remain legally usable. OUT removes turns/damage participation, not card
+# ownership. Keep BR/3v1 behavior unchanged and relax only the new 2v1 mode.
+replace_once(
+    "playerop.cpp",
+    "\t\t\t\t\tif(!multiplayer.is_active(logical_player)\n"
+    "\t\t\t\t\t\t\t|| multiplayer.field_side_of(logical_player) != playerid)\n"
+    "\t\t\t\t\t\tcontinue;\n",
+    "\t\t\t\t\tif((multiplayer.mode() != MultiplayerMode::TWO_V_ONE\n"
+    "\t\t\t\t\t\t\t&& !multiplayer.is_active(logical_player))\n"
+    "\t\t\t\t\t\t\t|| multiplayer.field_side_of(logical_player) != playerid)\n"
+    "\t\t\t\t\t\tcontinue;\n",
+)
+
 # Team winner messages use winner_team just like 3v1.
 replace_once(
     "processor.cpp",
