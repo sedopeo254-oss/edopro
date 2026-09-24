@@ -223,6 +223,30 @@ replace_once(
 
 
 
+
+# Cross-field team attacks must keep an authoritative solo logical target.
+# The supplied replay contains P2 using a monster from P1's field. Without this,
+# MSG_ATTACK encoded 0xff for the target and replay stayed focused on P2 instead
+# of switching to the actual P1 attacker field. P3 is the only solo opponent.
+replace_once(
+    "processor.cpp",
+    "\t\tif(arg.forced_attack) {\n"
+    "\t\t\targ.step = 6;\n"
+    "\t\t\treturn FALSE;\n"
+    "\t\t}\n"
+    "\t\tif(multiplayer.mode() == MultiplayerMode::BATTLE_ROYALE) {\n",
+    "\t\tif(multiplayer.mode() == MultiplayerMode::TWO_V_ONE && infos.turn_player == 0\n"
+    "\t\t\t\t&& multiplayer.is_active(2)) {\n"
+    "\t\t\tcore.attack_target_logical = 2;\n"
+    "\t\t\tcore.attack_target_duelist = multiplayer.duelist_index_of(2);\n"
+    "\t\t}\n"
+    "\t\tif(arg.forced_attack) {\n"
+    "\t\t\targ.step = 6;\n"
+    "\t\t\treturn FALSE;\n"
+    "\t\t}\n"
+    "\t\tif(multiplayer.mode() == MultiplayerMode::BATTLE_ROYALE) {\n",
+)
+
 # The solo opponent must choose which allied logical field to attack.
 replace_once(
     "processor.cpp",
