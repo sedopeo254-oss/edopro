@@ -149,6 +149,16 @@ jobs:
           select_start = duelclient.index('case MSG_SELECT_CARD:')
           select_end = duelclient.index('case MSG_SELECT_UNSELECT_CARD:', select_start)
           assert 'DUEL_2_V_1' in duelclient[select_start:select_end]
+
+          # OUT teammate monster attack routing must keep its logical owner so
+          # the camera/arrow originates from the persistent P1/P2 field.
+          attack_start = duelclient.index('case MSG_ATTACK:')
+          attack_end = duelclient.index('case MSG_BATTLE:', attack_start)
+          attack_block = duelclient[attack_start:attack_end]
+          assert 'shared_out_attacker' in attack_block
+          assert 'logical_turn_player' in attack_block
+          assert 'DUEL_2_V_1' in attack_block
+
           chain_start = duelclient.index('case MSG_SELECT_CHAIN:')
           chain_end = duelclient.index('case MSG_SELECT_PLACE:', chain_start)
           assert 'DUEL_2_V_1' in duelclient[chain_start:chain_end]
