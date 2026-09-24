@@ -143,6 +143,50 @@ int main() {
         "inactive P4 must not map to a field");
     field.publish_multiplayer_private_piles(3);
 
+    // Replay-derived regression: the supplied 2v1 replay starts P3 -> P1 -> P2.
+    // P2 is later eliminated with EFFECT reason, changing the active mask from
+    // 0x07 to 0x05. The next turns must then alternate P3 -> P1 without ever
+    // visiting the inactive P2/P4 seats.
+    MultiplayerState replay_sequence;
+    replay_sequence.configure(MultiplayerMode::TWO_V_ONE);
+    expect(replay_sequence.current_player() == 2,
+        "replay sequence must start with P3");
+    expect(replay_sequence.advance_turn() == 0,
+        "replay sequence after P3 must move to P1");
+    expect(replay_sequence.advance_turn() == 1,
+        "replay sequence after P1 must move to P2");
+    expect(replay_sequence.eliminate(1, PlayerEliminationReason::EFFECT),
+        "P2 elimination from the replay must be accepted");
+    expect(replay_sequence.active_mask() == 0x05,
+        "P2 elimination must reproduce replay active mask 0x05");
+    expect(replay_sequence.elimination_reason(1) == PlayerEliminationReason::EFFECT,
+        "P2 replay elimination reason must remain EFFECT");
+    expect(!replay_sequence.has_winner(),
+        "P1 must be allowed to continue after P2 is eliminated");
+    expect(replay_sequence.advance_turn() == 2,
+        "after eliminated P2 the next active turn must be P3");
+    expect(replay_sequence.advance_turn() == 0,
+        "after P3 the remaining allied P1 must take the next turn");
+
+    MultiplayerState solo_win;
+    solo_win.configure(MultiplayerMode::TWO_V_ONE);
+    expect(solo_win.eliminate(0, PlayerEliminationReason::LP),
+        "P1 can be eliminated independently");
+    expect(!solo_win.has_winner(),
+        "P2 must keep the allied team alive after P1 is out");
+    expect(solo_win.eliminate(1, PlayerEliminationReason::LP),
+        "P2 can then be eliminated independently");
+    expect(solo_win.has_winner() && solo_win.winner_team() == 1
+        && solo_win.winner_player() == 2,
+        "P3 must win only after both allied players are out");
+
+    MultiplayerState team_win;
+    team_win.configure(MultiplayerMode::TWO_V_ONE);
+    expect(team_win.eliminate(2, PlayerEliminationReason::LP),
+        "solo P3 can be eliminated independently");
+    expect(team_win.has_winner() && team_win.winner_team() == 0,
+        "allied team must win when solo P3 is eliminated");
+
     MultiplayerState br;
     br.configure(MultiplayerMode::BATTLE_ROYALE);
     expect(br.active_mask() == 0x0f && br.field_count(0) == 2 && br.field_count(1) == 2,
