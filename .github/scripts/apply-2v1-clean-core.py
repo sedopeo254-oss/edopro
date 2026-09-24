@@ -373,4 +373,84 @@ replace_once(
     "\t\t\t\t\t&& (multiplayer.mode() != MultiplayerMode::TWO_V_ONE || eliminated)) {\n",
 )
 
+
+# Preserve logical owner when an unplaced multiplayer card (notably a Deck
+# Master in the virtual Deck Master zone, location 0) enters the field.
+# CreateToken now records the logical/effect owner too, so ordinary generated
+# cards still follow the correct logical teammate instead of being pinned to P1.
+replace_once(
+    "libduel.cpp",
+    '''	auto code = lua_get<uint32_t>(L, 2);
+	card* pcard = pduel->new_card(code);
+	pcard->owner = playerid;
+	pcard->current.location = 0;
+	pcard->current.controler = playerid;
+	interpreter::pushobject(L, pcard);
+''',
+    '''	auto code = lua_get<uint32_t>(L, 2);
+	card* pcard = pduel->new_card(code);
+	pcard->owner = playerid;
+	if(pduel->game_field->multiplayer.enabled() && playerid < 2) {
+		const auto duelist = pduel->game_field->get_effect_duelist(playerid);
+		pcard->owner_duelist = duelist;
+		pcard->current.duelist = duelist;
+	}
+	pcard->current.location = 0;
+	pcard->current.controler = playerid;
+	interpreter::pushobject(L, pcard);
+''',
+)
+
+replace_once(
+    "field.cpp",
+    '''	const bool preserve_private_duelist = multiplayer.enabled() && preplayer == playerid
+		&& (pcard->current.location & (LOCATION_DECK | LOCATION_HAND | LOCATION_GRAVE
+			| LOCATION_REMOVED | LOCATION_EXTRA))
+		&& pcard->current.duelist < multiplayer.field_count(playerid);
+	const auto target_duelist = static_cast<uint8_t>((location & LOCATION_ONFIELD)
+		? ((((pcard->current.location & LOCATION_ONFIELD) && preplayer == playerid)
+			|| preserve_private_duelist)
+			? pcard->current.duelist : player[playerid].current_duelist)
+''',
+    '''	const bool preserve_private_duelist = multiplayer.enabled() && preplayer == playerid
+		&& (pcard->current.location & (LOCATION_DECK | LOCATION_HAND | LOCATION_GRAVE
+			| LOCATION_REMOVED | LOCATION_EXTRA))
+		&& pcard->current.duelist < multiplayer.field_count(playerid);
+	const bool preserve_unplaced_duelist = multiplayer.enabled()
+		&& preplayer == playerid && pcard->current.location == 0
+		&& pcard->owner == playerid
+		&& pcard->current.duelist == pcard->owner_duelist
+		&& pcard->current.duelist < multiplayer.field_count(playerid);
+	const auto target_duelist = static_cast<uint8_t>((location & LOCATION_ONFIELD)
+		? ((((pcard->current.location & LOCATION_ONFIELD) && preplayer == playerid)
+			|| preserve_private_duelist || preserve_unplaced_duelist)
+			? pcard->current.duelist : player[playerid].current_duelist)
+''',
+)
+
+# Cards/effects owned by an OUT 2v1 teammate remain legal shared-field resources.
+# Replay camera hints must therefore preserve that logical source/target field
+# even though the player no longer receives turns or LP damage.
+replace_once(
+    "field.cpp",
+    '''	if(source_logical == MultiplayerState::NO_PLAYER
+			|| target_logical == MultiplayerState::NO_PLAYER
+			|| source_logical == target_logical
+			|| !multiplayer.is_active(source_logical)
+			|| !multiplayer.is_active(target_logical))
+		return;
+''',
+    '''	const bool allow_inactive_shared_cards =
+		multiplayer.mode() == MultiplayerMode::TWO_V_ONE;
+	if(source_logical == MultiplayerState::NO_PLAYER
+			|| target_logical == MultiplayerState::NO_PLAYER
+			|| source_logical == target_logical
+			|| (!allow_inactive_shared_cards
+				&& (!multiplayer.is_active(source_logical)
+					|| !multiplayer.is_active(target_logical))))
+		return;
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 Core mode")
