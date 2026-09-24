@@ -698,6 +698,22 @@ replace_once(
     "\t\t\t\t\tmainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player);\n",
 )
 
+
+# Legacy 2v1 direct attacks in the supplied replay encode 0xff as their logical
+# target. With no target card, the all-zero loc_info misleadingly derives P1.
+# Infer the one solo opponent (P3) for allied direct attacks so old replays
+# switch to the actual attacker's P1/P2 field and draw the arrow correctly.
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tconst auto derived_attack_target_logical =\n"
+    "\t\t\tmainGame->dInfo.GetLogicalPlayer(target_core_side, info2.duelist);\n",
+    "\t\tconst auto derived_attack_target_logical =\n"
+    "\t\t\tis_direct && mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t&& attacker_core_side == 0\n"
+    "\t\t\t? static_cast<uint8_t>(mainGame->dInfo.team1)\n"
+    "\t\t\t: mainGame->dInfo.GetLogicalPlayer(target_core_side, info2.duelist);\n",
+)
+
 # Damage/attack/target view changes use the same Team-vs-Solo camera policy.
 replace_once(
     "gframe/duelclient.cpp",
