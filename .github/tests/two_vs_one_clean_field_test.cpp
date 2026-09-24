@@ -115,6 +115,36 @@ int main() {
     expect(p2_dm->current.duelist == 1 && p2_dm->current.sequence == 8,
         "P2 Deck Master-style summon must stay in P2 field, not P1 field");
 
+    // Deck Master zone is location 0 in the real replay, not a normal
+    // Hand/Deck private pile. Preserve the explicit logical owner from that
+    // unplaced state when the Deck Master is summoned.
+    auto* p2_dm_zone = game.new_card(13003);
+    p2_dm_zone->owner = 0;
+    p2_dm_zone->owner_duelist = 1;
+    p2_dm_zone->current.controler = 0;
+    p2_dm_zone->current.duelist = 1;
+    p2_dm_zone->current.location = 0;
+    expect(field.move_card(0, p2_dm_zone, LOCATION_MZONE, 2, false),
+        "P2 Deck Master zone card must enter the field");
+    expect(p2_dm_zone->current.duelist == 1
+        && p2_dm_zone->current.sequence == 9,
+        "P2 Deck Master zone summon must stay on P2 encoded field");
+
+    expect(field.tag_swap_to(0, 1),
+        "test can project P2 while checking P1 Deck Master ownership");
+    auto* p1_dm_zone = game.new_card(13004);
+    p1_dm_zone->owner = 0;
+    p1_dm_zone->owner_duelist = 0;
+    p1_dm_zone->current.controler = 0;
+    p1_dm_zone->current.duelist = 0;
+    p1_dm_zone->current.location = 0;
+    expect(field.move_card(0, p1_dm_zone, LOCATION_MZONE, 4, false),
+        "P1 Deck Master zone card must enter the field during P2 projection");
+    expect(p1_dm_zone->current.duelist == 0
+        && p1_dm_zone->current.sequence == 4,
+        "P1 Deck Master must not leak into P2 field when P2 is projected");
+    expect(field.tag_swap_to(0, 0), "test returns projection to P1");
+
     expect(field.move_card(0, p2, LOCATION_GRAVE, 0),
         "P2 monster must move to P2 Graveyard");
     expect(field.get_logical_list(0, LOCATION_GRAVE, 1).front() == p2,
