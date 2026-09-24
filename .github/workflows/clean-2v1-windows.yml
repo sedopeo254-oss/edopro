@@ -1,0 +1,170 @@
+name: Clean 2v1 Windows
+
+on:
+  push:
+    branches:
+      - feature/2v1-clean-20260924
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clean-2v1-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASELINE_SHA: 137c63b1977b4cdd3165747cbdf00c892116e9d0
+  CLEAN_CORE_SHA: cc49848e0d040b6461d72a34a80f2312e91e03eb
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Verify clean ancestry and core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASELINE_SHA" HEAD
+          test "$(git -C ocgcore rev-parse HEAD)" = "$CLEAN_CORE_SHA"
+          git diff --check
+          git -C ocgcore diff --check
+      - name: Run clean core and protected mode tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ocgcore/tests/run_two_vs_one_clean_tests.sh
+          sh ocgcore/tests/run_multiplayer_field_tests.sh
+      - name: Guard clean 2v1 isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          const = Path('gframe/ocgapi_constants.h').read_text(encoding='utf-8')
+          assert '#define DUEL_2_V_1             0x8000000000' in const
+          assert '#define MSG_MULTIPLAYER_TEAM_PUBLIC_PILES 197' in const
+
+          game = Path('gframe/game.cpp').read_text(encoding='utf-8')
+          assert 'cbMultiplayerMode->addItem(L"2 vs 1")' in game
+          assert 'duel_param |= DUEL_2_V_1' in game
+          assert 'ebTeam1->setText(L"2")' in game
+          assert 'ebTeam2->setText(L"1")' in game
+
+          client = Path('gframe/duelclient.cpp').read_text(encoding='utf-8')
+          assert 'L"Swap Team"' in client
+          assert 'active_player_mask = mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)' in client
+          assert 'MSG_MULTIPLAYER_TEAM_PUBLIC_PILES' in client
+          assert 'UpdateTwoVsOneTeamPublicMove' in client
+          assert 'DUEL_2_V_1' in client[client.index('case MSG_ATTACK:'):client.index('case MSG_BATTLE:', client.index('case MSG_ATTACK:'))]
+
+          field = Path('gframe/client_field.cpp').read_text(encoding='utf-8')
+          assert 'CycleTwoVsOneTeamField' in field
+          assert 'ApplyTwoVsOneTeamPublicPiles' in field
+          assert 'RefreshLogicalDeckMasters' in field
+          assert 'DUEL_2_V_1' in field[field.index('void ClientField::RefreshLogicalDeckMasters()'):field.index('void ClientField::CycleTeamField()')]
+
+          server = Path('gframe/generic_duel.cpp').read_text(encoding='utf-8')
+          assert 'MSG_MULTIPLAYER_TEAM_PUBLIC_PILES' in server
+          assert 'clean_two_v_one_allied' in server
+          assert 'DUEL_2_V_1' in server
+          print('Clean 2v1 client/server guards passed')
+          PY
+
+  windows:
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Verify exact clean core
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$CLEAN_CORE_SHA"
+          git diff --check
+          git -C ocgcore diff --check
+      - name: Enable C++17 only for Irrlicht on current runner
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('irrlicht/premake5.lua')
+          s = p.read_text(encoding='utf-8')
+          marker = 'project "Irrlicht"\n\tkind "StaticLib"\n'
+          replacement = 'project "Irrlicht"\n\tkind "StaticLib"\n\tcppdialect "C++17"\n'
+          if replacement not in s:
+              if marker not in s:
+                  raise SystemExit('Irrlicht premake marker not found')
+              p.write_text(s.replace(marker, replacement, 1), encoding='utf-8')
+          PY
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+      - name: Build bundled client
+        shell: bash
+        run: ./travis/build.sh
+      - name: Package clean 2v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/mode-info
+          cat > deploy/mode-info/clean-2v1.txt <<'EOF'
+          Clean 2 vs 1
+          Stable client base: 137c63b1977b4cdd3165747cbdf00c892116e9d0
+          Clean core: cc49848e0d040b6461d72a34a80f2312e91e03eb
+          Turn order: P3 -> P1 -> P2
+          P1/P2/P3 have independent LP, field, Hand, Deck, Extra Deck, GY and Banish.
+          P1/P2 can use allied on-field cards and public GY/Banish resources.
+          Swap Team changes allied Field/GY/Banish/Deck Master view without replacing private Hand/Deck/Extra.
+          Standard, Battle Royale and 3v1 remain separate protected modes.
+          EOF
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+      - name: Windows startup smoke test
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "deploy\ygopro.exe").Path
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Resolve-Path ".").Path -ArgumentList "-r" -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) {
+            if ($p.ExitCode -ne 0) { throw "ygopro.exe exited during startup with code $($p.ExitCode)" }
+          } else {
+            Stop-Process -Id $p.Id -Force
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-clean-2v1-windows-x86-no-upx
+          path: deploy/
+          if-no-files-found: error
