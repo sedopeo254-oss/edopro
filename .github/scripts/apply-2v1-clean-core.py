@@ -453,4 +453,33 @@ replace_once(
 )
 
 
+
+# Multiplayer to-field availability must be checked against the card's logical
+# field, not whichever teammate is currently active on the shared physical side.
+# This matters for Deck Masters/free-chain summons outside their owner's turn.
+replace_once(
+    "field.cpp",
+    '''int32_t field::get_tofield_count(card* pcard, uint8_t playerid, uint8_t location, uint32_t uplayer, uint32_t reason, uint32_t zone, uint32_t* list) {
+	if (location != LOCATION_MZONE && location != LOCATION_SZONE)
+		return 0;
+	uint32_t flag = player[playerid].disabled_location | player[playerid].used_location;
+''',
+    '''int32_t field::get_tofield_count(card* pcard, uint8_t playerid, uint8_t location, uint32_t uplayer, uint32_t reason, uint32_t zone, uint32_t* list) {
+	if (location != LOCATION_MZONE && location != LOCATION_SZONE)
+		return 0;
+	uint8_t logical_duelist = player[playerid].current_duelist;
+	if(multiplayer.enabled() && pcard && playerid < 2) {
+		if(pcard->current.controler == playerid
+				&& pcard->current.duelist < multiplayer.field_count(playerid))
+			logical_duelist = pcard->current.duelist;
+		else if(pcard->owner == playerid
+				&& pcard->owner_duelist < multiplayer.field_count(playerid))
+			logical_duelist = pcard->owner_duelist;
+	}
+	uint32_t flag = get_logical_disabled_location(playerid, logical_duelist)
+		| get_logical_used_location(playerid, logical_duelist);
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 Core mode")
