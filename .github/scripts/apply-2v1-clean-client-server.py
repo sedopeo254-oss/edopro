@@ -257,10 +257,12 @@ replace_once(
 			else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 ''',
     '''			mainGame->btnSpectatorSwap->setVisible(
-				mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					&& selftype < mainGame->dInfo.team1)
 				|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE));
-			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1))
+			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					&& selftype < mainGame->dInfo.team1)
 				mainGame->btnSpectatorSwap->setText(L"Swap Team");
 			else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 				mainGame->btnSpectatorSwap->setText(L"Swap the Team");
