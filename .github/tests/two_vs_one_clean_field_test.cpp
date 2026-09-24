@@ -161,6 +161,12 @@ int main() {
         "P2 elimination must reproduce replay active mask 0x05");
     expect(replay_sequence.elimination_reason(1) == PlayerEliminationReason::EFFECT,
         "P2 replay elimination reason must remain EFFECT");
+    expect(replay_sequence.field_side_of(1) == 0
+        && replay_sequence.duelist_index_of(1) == 1,
+        "eliminated P2 must retain its field/resource mapping");
+    expect(replay_sequence.field_side_of(3) == MultiplayerState::NO_PLAYER
+        && replay_sequence.duelist_index_of(3) == MultiplayerState::NO_PLAYER,
+        "nonexistent P4 must remain the only unmapped 2v1 slot");
     expect(!replay_sequence.has_winner(),
         "P1 must be allowed to continue after P2 is eliminated");
     expect(replay_sequence.advance_turn() == 2,
