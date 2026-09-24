@@ -1892,6 +1892,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			active_seat_changed = outgoing != logical_player;
 			const auto local_side = mainGame->LocalPlayer(field_side);
 			if(outgoing < 4
+					&& !mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
 					&& !(mainGame->dInfo.isReplay
 						&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 					&& !multiplayer_battle_royale_live::Enabled(
@@ -2093,6 +2094,16 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			| LOCATION_GRAVE | LOCATION_REMOVED | LOCATION_EXTRA;
 		auto player = mainGame->LocalPlayer(core_player);
 		if((location & PRIVATE_LOCATIONS)
+				&& mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& core_player == 0) {
+			const auto local = mainGame->dInfo.GetLocalLogicalPlayer();
+			if(location == LOCATION_GRAVE || location == LOCATION_REMOVED)
+				return true;
+			if(local >= mainGame->dInfo.team1
+					|| mainGame->dInfo.logical_active[0] != local)
+				return true;
+		}
+		if((location & PRIVATE_LOCATIONS)
 				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				&& !IsThreeVsOneReplayPrivateVisible(core_player, location,
 					mainGame->dInfo.GetLogicalPlayer(core_player)))
@@ -2116,6 +2127,16 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		constexpr uint8_t PRIVATE_LOCATIONS = LOCATION_DECK | LOCATION_HAND
 			| LOCATION_GRAVE | LOCATION_REMOVED | LOCATION_EXTRA;
 		auto player = mainGame->LocalPlayer(core_player);
+		if((loc & PRIVATE_LOCATIONS)
+				&& mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& core_player == 0) {
+			const auto local = mainGame->dInfo.GetLocalLogicalPlayer();
+			if(loc == LOCATION_GRAVE || loc == LOCATION_REMOVED)
+				break;
+			if(local >= mainGame->dInfo.team1
+					|| mainGame->dInfo.logical_active[0] != local)
+				break;
+		}
 		if((loc & PRIVATE_LOCATIONS)
 				&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				&& !IsThreeVsOneReplayPrivateVisible(core_player, loc,
@@ -2562,9 +2583,18 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				selection_focused = FocusBattleRoyaleSelection(
 					core_controler, info.location, info.sequence);
 			info.controler = mainGame->LocalPlayer(info.controler);
-			if (info.location == 0) {
+			const bool clean_two_v_one_hidden_public =
+				mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& core_controler == 0
+				&& (info.location == LOCATION_GRAVE
+					|| info.location == LOCATION_REMOVED)
+				&& info.duelist != mainGame->dInfo.field_focus[0];
+			if (info.location == 0 || clean_two_v_one_hidden_public) {
 				pcard = new ClientCard{};
-				pcard->sequence = static_cast<uint32_t>(mainGame->dField.limbo_temp.size());
+				pcard->controler = info.controler;
+				pcard->location = info.location;
+				pcard->sequence = info.sequence;
+				pcard->position = info.position;
 				mainGame->dField.limbo_temp.push_back(pcard);
 				panelmode = true;
 			} else
@@ -2594,9 +2624,18 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				selection_focused = FocusBattleRoyaleSelection(
 					core_controler, info.location, info.sequence);
 			info.controler = mainGame->LocalPlayer(info.controler);
-			if (info.location == 0) {
+			const bool clean_two_v_one_hidden_public =
+				mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& core_controler == 0
+				&& (info.location == LOCATION_GRAVE
+					|| info.location == LOCATION_REMOVED)
+				&& info.duelist != mainGame->dInfo.field_focus[0];
+			if (info.location == 0 || clean_two_v_one_hidden_public) {
 				pcard = new ClientCard{};
-				pcard->sequence = static_cast<uint32_t>(mainGame->dField.limbo_temp.size());
+				pcard->controler = info.controler;
+				pcard->location = info.location;
+				pcard->sequence = info.sequence;
+				pcard->position = info.position;
 				mainGame->dField.limbo_temp.push_back(pcard);
 				panelmode = true;
 			} else
@@ -2687,9 +2726,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			pcard = mainGame->dField.GetCard(info.controler, info.location, info.sequence, info.position);
 			if(!pcard) {
 				pcard = new ClientCard{};
-				pcard->code = code;
+				pcard->SetCode(code);
 				pcard->controler = info.controler;
-				pcard->sequence = static_cast<uint32_t>(mainGame->dField.limbo_temp.size());
+				pcard->location = info.location;
+				pcard->sequence = info.sequence;
+				pcard->position = info.position;
 				mainGame->dField.limbo_temp.push_back(pcard);
 			}
 			mainGame->dField.activatable_cards.push_back(pcard);
@@ -5263,7 +5304,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			};
 		};
 		auto GetAttackDisplaySide = [&](uint8_t logical) {
-			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					|| mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
 				if(logical >= player_count)
 					return static_cast<uint8_t>(0xff);
 				return mainGame->LocalPlayer(
