@@ -113,6 +113,8 @@ void ClientField::Clear() {
 	for(size_t logical = 0; logical < multiplayer_private_piles.size(); ++logical) {
 		multiplayer_private_piles[logical] = {};
 		multiplayer_private_piles_valid[logical] = false;
+		two_vs_one_team_public_piles[logical] = {};
+		two_vs_one_team_public_piles_valid[logical] = false;
 	}
 	multiplayer_displayed_field_logical = { 0xff, 0xff };
 	multiplayer_displayed_hand_logical = { 0xff, 0xff };
@@ -1003,6 +1005,86 @@ void ClientField::CacheMultiplayerPrivatePiles(uint8_t logical_player,
 	multiplayer_private_piles[logical_player] = snapshot;
 	multiplayer_private_piles_valid[logical_player] = true;
 }
+void ClientField::CacheTwoVsOneTeamPublicPiles(uint8_t logical_player,
+		const MultiplayerTeamPublicPileSnapshot& snapshot) {
+	if(logical_player >= two_vs_one_team_public_piles.size())
+		return;
+	two_vs_one_team_public_piles[logical_player] = snapshot;
+	two_vs_one_team_public_piles_valid[logical_player] = true;
+}
+bool ClientField::ApplyTwoVsOneTeamPublicPiles(uint8_t logical_player) {
+	if(!mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+			|| logical_player >= mainGame->dInfo.team1
+			|| logical_player >= two_vs_one_team_public_piles.size()
+			|| !two_vs_one_team_public_piles_valid[logical_player])
+		return false;
+	const auto display_side = mainGame->LocalPlayer(0);
+	MultiplayerPrivatePileSnapshot projected;
+	projected.deck_count = static_cast<uint32_t>(deck[display_side].size());
+	projected.extra_p_count = extra_p_count[display_side] > 0
+		? static_cast<uint32_t>(std::min<size_t>(
+			extra_p_count[display_side], extra[display_side].size())) : 0u;
+	projected.top_code = deck[display_side].empty() || !deck[display_side].back()
+		? 0u : deck[display_side].back()->code;
+	auto capture = [](const auto& source, auto& destination) {
+		destination.reserve(source.size());
+		for(const auto* pcard : source) {
+			if(pcard)
+				destination.push_back({
+					pcard->code, static_cast<uint8_t>(pcard->position)
+				});
+		}
+	};
+	capture(hand[display_side], projected.hand);
+	capture(extra[display_side], projected.extra);
+	projected.grave = two_vs_one_team_public_piles[logical_player].grave;
+	projected.removed = two_vs_one_team_public_piles[logical_player].removed;
+	const bool changed = ReplaceMultiplayerPrivatePiles(
+		display_side, projected, false);
+	multiplayer_displayed_field_logical[display_side] = logical_player;
+	return changed;
+}
+void ClientField::UpdateTwoVsOneTeamPublicMove(uint8_t previous_logical,
+		uint8_t previous_location, uint32_t previous_sequence,
+		uint8_t current_logical, uint8_t current_location,
+		uint32_t current_sequence, uint32_t code, uint8_t position) {
+	if(!mainGame->dInfo.HasFieldFlag(DUEL_2_V_1))
+		return;
+	auto public_cards = [](MultiplayerTeamPublicPileSnapshot& snapshot,
+			uint8_t location) -> std::vector<MultiplayerPrivatePileCard>* {
+		if(location == LOCATION_GRAVE)
+			return &snapshot.grave;
+		if(location == LOCATION_REMOVED)
+			return &snapshot.removed;
+		return nullptr;
+	};
+	MultiplayerPrivatePileCard moved{ code, position };
+	if(previous_logical < two_vs_one_team_public_piles.size()
+			&& two_vs_one_team_public_piles_valid[previous_logical]) {
+		auto& snapshot = two_vs_one_team_public_piles[previous_logical];
+		if(auto* cards = public_cards(snapshot, previous_location)) {
+			if(previous_sequence < cards->size()) {
+				moved = (*cards)[previous_sequence];
+				cards->erase(cards->begin() + previous_sequence);
+			}
+		}
+	}
+	if(current_logical < two_vs_one_team_public_piles.size()
+			&& two_vs_one_team_public_piles_valid[current_logical]) {
+		auto& snapshot = two_vs_one_team_public_piles[current_logical];
+		if(auto* cards = public_cards(snapshot, current_location)) {
+			moved.code = code ? code : moved.code;
+			moved.position = position;
+			const auto destination =
+				std::min<size_t>(current_sequence, cards->size());
+			cards->insert(cards->begin() + destination, moved);
+		}
+	}
+	const auto focused = mainGame->dInfo.GetFocusedLogicalPlayer(0);
+	if(focused < mainGame->dInfo.team1
+			&& (focused == previous_logical || focused == current_logical))
+		ApplyTwoVsOneTeamPublicPiles(focused);
+}
 void ClientField::CaptureBattleRoyaleReplayPrivatePiles() {
 	if(!mainGame->dInfo.isReplay
 			|| !mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
@@ -1472,7 +1554,8 @@ void ClientField::UpdateMultiplayerPrivateMove(uint8_t previous_logical,
 	}
 }
 void ClientField::RefreshLogicalDeckMasters() {
-	if(!mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+	if(!(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| mainGame->dInfo.HasFieldFlag(DUEL_2_V_1))
 			|| !mainGame->dInfo.logical_deck_master_enabled)
 		return;
 	for(uint8_t field_side = 0; field_side < 2; ++field_side) {
@@ -1509,6 +1592,26 @@ void ClientField::CycleTeamField() {
 	hovered_sequence = 0;
 	RefreshAllCards();
 }
+void ClientField::CycleTwoVsOneTeamField() {
+	if(!mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+			|| mainGame->dInfo.team1 != 2)
+		return;
+	const auto local = mainGame->dInfo.GetLocalLogicalPlayer();
+	if(local >= mainGame->dInfo.team1)
+		return;
+	const auto current = mainGame->dInfo.field_focus[0] < 2
+		? mainGame->dInfo.field_focus[0] : local;
+	const auto next = static_cast<uint8_t>(current == 0 ? 1 : 0);
+	mainGame->dInfo.field_focus[0] = next;
+	hovered_card = nullptr;
+	clicked_card = nullptr;
+	hovered_location = 0;
+	hovered_sequence = 0;
+	ApplyTwoVsOneTeamPublicPiles(next);
+	RefreshLogicalDeckMasters();
+	RefreshAllCards();
+	RefreshHandHitboxes();
+}
 void ClientField::GetChainDrawCoordinates(uint8_t controler, uint8_t location, uint32_t sequence, irr::core::vector3df* t) {
 	if ((location & (~LOCATION_OVERLAY)) == LOCATION_HAND) {
 		t->X = 2.95f;
@@ -1517,6 +1620,7 @@ void ClientField::GetChainDrawCoordinates(uint8_t controler, uint8_t location, u
 		return;
 	}
 	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
 			|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 		const auto base_location = location & (~LOCATION_OVERLAY);
 		const uint32_t stride = base_location == LOCATION_MZONE ? 7u
@@ -1654,6 +1758,7 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 	const int& location = pcard->location;
 	pcard->draw_scale = 1.0f;
 	if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
 			|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 		const auto base_location = location == LOCATION_OVERLAY && pcard->overlayTarget
 			? pcard->overlayTarget->location : location;
