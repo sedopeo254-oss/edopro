@@ -1036,6 +1036,11 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			&& logical_player < players.home_size + players.opposing_size;
 		const uint8_t visible_side = logical_selector
 			? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : player;
+		const uint64_t select_flags =
+			static_cast<uint64_t>(host_info.duel_flag_low)
+			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+		const bool clean_two_v_one_allied =
+			(select_flags & DUEL_2_V_1) && visible_side == 0;
 		pbuf += 9;
 		count = BufferIO::Read<uint32_t>(pbuf);
 		for(uint32_t i = 0; i < count; ++i) {
@@ -1044,8 +1049,14 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
 			const auto info_logical = static_cast<uint8_t>(
 				info.controler == 0 ? info.duelist : players.home_size + info.duelist);
+			const bool shared_team_resource = clean_two_v_one_allied
+				&& info.controler == 0
+				&& ((info.location & LOCATION_ONFIELD)
+					|| info.location == LOCATION_GRAVE
+					|| info.location == LOCATION_REMOVED);
 			if(info.controler != visible_side
-					|| (logical_selector && info_logical != logical_player))
+					|| (logical_selector && info_logical != logical_player
+						&& !shared_team_resource))
 				BufferIO::Write<uint32_t>(pbufw, 0);
 		}
 		SEND(WaitforResponse(player, packet));
@@ -1084,6 +1095,11 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			&& logical_player < players.home_size + players.opposing_size;
 		const uint8_t visible_side = logical_selector
 			? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : player;
+		const uint64_t select_flags =
+			static_cast<uint64_t>(host_info.duel_flag_low)
+			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+		const bool clean_two_v_one_allied =
+			(select_flags & DUEL_2_V_1) && visible_side == 0;
 		pbuf += 10;
 		count = BufferIO::Read<uint32_t>(pbuf);
 			for(uint32_t i = 0; i < count; ++i) {
@@ -1092,8 +1108,14 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 				CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
 				const auto info_logical = static_cast<uint8_t>(
 					info.controler == 0 ? info.duelist : players.home_size + info.duelist);
+				const bool shared_team_resource = clean_two_v_one_allied
+					&& info.controler == 0
+					&& ((info.location & LOCATION_ONFIELD)
+						|| info.location == LOCATION_GRAVE
+						|| info.location == LOCATION_REMOVED);
 				if(info.controler != visible_side
-						|| (logical_selector && info_logical != logical_player))
+						|| (logical_selector && info_logical != logical_player
+							&& !shared_team_resource))
 					BufferIO::Write<uint32_t>(pbufw, 0);
 			}
 		count = BufferIO::Read<uint32_t>(pbuf);
@@ -1103,8 +1125,14 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 				CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, false);
 				const auto info_logical = static_cast<uint8_t>(
 					info.controler == 0 ? info.duelist : players.home_size + info.duelist);
+				const bool shared_team_resource = clean_two_v_one_allied
+					&& info.controler == 0
+					&& ((info.location & LOCATION_ONFIELD)
+						|| info.location == LOCATION_GRAVE
+						|| info.location == LOCATION_REMOVED);
 				if(info.controler != visible_side
-						|| (logical_selector && info_logical != logical_player))
+						|| (logical_selector && info_logical != logical_player
+							&& !shared_team_resource))
 					BufferIO::Write<uint32_t>(pbufw, 0);
 			}
 		SEND(WaitforResponse(player, packet));
