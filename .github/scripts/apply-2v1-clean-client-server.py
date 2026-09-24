@@ -1027,4 +1027,54 @@ replace_once(
 )
 
 
+
+# OUT 2v1 teammate cards remain addressable by camera/view projection.
+# Elimination removes turns/LP participation, not ownership of legal cards
+# already left on the shared team fields. Explicit attack/target/chain events
+# may therefore focus an inactive allied logical field in 2v1 only.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''		for(const auto logical : { perspective, opponent }) {
+			if(logical < mainGame->dInfo.team1
+					&& (mainGame->dInfo.active_player_mask & (1u << logical))) {
+				allied_logical = logical;
+				break;
+			}
+		}
+''',
+    '''		for(const auto logical : { perspective, opponent }) {
+			if(logical < mainGame->dInfo.team1
+					&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						|| (mainGame->dInfo.active_player_mask & (1u << logical)))) {
+				allied_logical = logical;
+				break;
+			}
+		}
+''',
+)
+
+# Selection and optional-chain prompts originating from a concrete P1/P2
+# on-field card must focus that encoded field in 2v1 just like 3v1.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''			if(selection_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+''',
+    '''			if(selection_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+''',
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    '''			if(chain_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+''',
+    '''			if(chain_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 client/server mode")
