@@ -64,6 +64,10 @@ jobs:
 
           proc = Path('ocgcore/processor.cpp').read_text(encoding='utf-8')
           assert 'Processors::Turn>(multiplayer.field_side_of(first_logical))' in proc
+          # Replay showed two identical MSG_WIN packets at the end. The
+          # duplicate 2v1 win guard requires a fresh elimination in later
+          # Adjust passes while leaving BR/3v1 behavior unchanged.
+          assert 'multiplayer.mode() != MultiplayerMode::TWO_V_ONE || eliminated' in proc
 
           game = Path('gframe/game.cpp').read_text(encoding='utf-8')
           assert 'addItem(L"2 vs 1")' in game
