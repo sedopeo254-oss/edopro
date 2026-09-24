@@ -1923,7 +1923,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)))
 				mainGame->dField.RefreshPublicFieldCards();
 			else if(!(mainGame->dInfo.isReplay
-					&& (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))))
 				mainGame->dField.RefreshAllCards();
 		}
@@ -2461,16 +2462,26 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				battle_royale_selection_focused = FocusBattleRoyaleSelection(
 					core_controler, info.location, info.sequence);
 			info.controler = mainGame->LocalPlayer(info.controler);
-			if(selection_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			if(selection_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 					&& (info.location == LOCATION_MZONE || info.location == LOCATION_SZONE)) {
 				const uint32_t stride = info.location == LOCATION_MZONE ? 7u : 8u;
 				selection_focus = static_cast<int>(info.sequence / stride);
 				selection_focus_side = core_controler;
 			}
-			if (info.location == 0) {
+			const bool clean_two_v_one_hidden_public =
+				mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& core_controler == 0
+				&& (info.location == LOCATION_GRAVE
+					|| info.location == LOCATION_REMOVED)
+				&& info.duelist != mainGame->dInfo.field_focus[0];
+			if (info.location == 0 || clean_two_v_one_hidden_public) {
 				pcard = new ClientCard{};
-				pcard->sequence = static_cast<uint32_t>(mainGame->dField.limbo_temp.size());
+				pcard->controler = info.controler;
+				pcard->location = info.location;
+				pcard->sequence = info.sequence;
+				pcard->position = info.position;
 				mainGame->dField.limbo_temp.push_back(pcard);
 				panelmode = true;
 			} else
@@ -2497,6 +2508,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(mainGame->dInfo.SetFieldFocus(
 					static_cast<uint8_t>(selection_focus_side),
 					static_cast<uint8_t>(selection_focus))) {
+				if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						&& selection_focus_side == 0)
+					mainGame->dField.ApplyTwoVsOneTeamPublicPiles(
+						static_cast<uint8_t>(selection_focus));
 				mainGame->dField.RefreshAllCards();
 			} else {
 				panelmode = true;
@@ -2658,7 +2673,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
 			const auto core_controler = info.controler;
 			info.controler = mainGame->LocalPlayer(info.controler);
-			if(chain_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			if(chain_focus < 0 && (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 					&& (info.location == LOCATION_MZONE || info.location == LOCATION_SZONE)) {
 				const uint32_t stride = info.location == LOCATION_MZONE ? 7u : 8u;
@@ -2714,6 +2730,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			} else if(mainGame->dInfo.SetFieldFocus(
 					static_cast<uint8_t>(chain_focus_side),
 					static_cast<uint8_t>(chain_focus))) {
+				if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						&& chain_focus_side == 0)
+					mainGame->dField.ApplyTwoVsOneTeamPublicPiles(
+						static_cast<uint8_t>(chain_focus));
 				mainGame->dField.RefreshAllCards();
 			} else {
 				panelmode = true;
