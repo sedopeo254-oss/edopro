@@ -1126,4 +1126,200 @@ replace_once(
 )
 
 
+
+# Cross-private-pile selections must never bind P2 Grave/Banish entries to a
+# same-index card currently projected from P1. Use temporary panel cards for
+# non-displayed logical private piles; select_seq still returns the exact core
+# choice index.
+dc = read("gframe/duelclient.cpp")
+select_start = dc.index("case MSG_SELECT_CARD: {")
+select_end = dc.index("case MSG_SELECT_UNSELECT_CARD: {", select_start)
+select_block = dc[select_start:select_end]
+if "use_two_v_one_private_limbo" not in select_block:
+    old = '''			const auto core_controler = info.controler;
+			if(!battle_royale_selection_focused)
+'''
+    new = '''			const auto core_controler = info.controler;
+			const auto info_logical = mainGame->dInfo.GetLogicalPlayer(
+				core_controler, info.duelist);
+			const bool use_two_v_one_private_limbo =
+				mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& core_controler == 0
+				&& IsPrivatePileLocation(info.location)
+				&& info_logical < mainGame->dInfo.team1
+				&& info_logical
+					!= mainGame->dInfo.GetFocusedLogicalPlayer(0);
+			if(!battle_royale_selection_focused)
+'''
+    if old not in select_block:
+        raise SystemExit("MSG_SELECT_CARD logical-private anchor missing")
+    select_block = select_block.replace(old, new, 1)
+    select_block = select_block.replace(
+        "			if (info.location == 0) {\n",
+        "			if (info.location == 0 || use_two_v_one_private_limbo) {\n",
+        1)
+    select_block = select_block.replace(
+        '''				pcard->sequence = static_cast<uint32_t>(mainGame->dField.limbo_temp.size());
+				mainGame->dField.limbo_temp.push_back(pcard);
+				panelmode = true;
+''',
+        '''				pcard->controler = mainGame->LocalPlayer(core_controler);
+				pcard->location = info.location;
+				pcard->position = info.position;
+				pcard->sequence = static_cast<uint32_t>(mainGame->dField.limbo_temp.size());
+				mainGame->dField.limbo_temp.push_back(pcard);
+				panelmode = true;
+''',
+        1)
+    dc = dc[:select_start] + select_block + dc[select_end:]
+
+unselect_start = dc.index("case MSG_SELECT_UNSELECT_CARD: {")
+unselect_end = dc.index("case MSG_SELECT_CHAIN: {", unselect_start)
+unselect_block = dc[unselect_start:unselect_end]
+if "use_two_v_one_private_limbo" not in unselect_block:
+    old = '''			const auto core_controler = info.controler;
+			if(!selection_focused)
+'''
+    new = '''			const auto core_controler = info.controler;
+			const auto info_logical = mainGame->dInfo.GetLogicalPlayer(
+				core_controler, info.duelist);
+			const bool use_two_v_one_private_limbo =
+				mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& core_controler == 0
+				&& IsPrivatePileLocation(info.location)
+				&& info_logical < mainGame->dInfo.team1
+				&& info_logical
+					!= mainGame->dInfo.GetFocusedLogicalPlayer(0);
+			if(!selection_focused)
+'''
+    if unselect_block.count(old) != 2:
+        raise SystemExit("MSG_SELECT_UNSELECT_CARD expected two private anchors")
+    unselect_block = unselect_block.replace(old, new)
+    if unselect_block.count("			if (info.location == 0) {\n") != 2:
+        raise SystemExit("MSG_SELECT_UNSELECT_CARD expected two limbo anchors")
+    unselect_block = unselect_block.replace(
+        "			if (info.location == 0) {\n",
+        "			if (info.location == 0 || use_two_v_one_private_limbo) {\n")
+    # Both branches receive enough logical location metadata for the panel.
+    old_limbo = '''				pcard->sequence = static_cast<uint32_t>(mainGame->dField.limbo_temp.size());
+				mainGame->dField.limbo_temp.push_back(pcard);
+				panelmode = true;
+'''
+    new_limbo = '''				pcard->controler = mainGame->LocalPlayer(core_controler);
+				pcard->location = info.location;
+				pcard->position = info.position;
+				pcard->sequence = static_cast<uint32_t>(mainGame->dField.limbo_temp.size());
+				mainGame->dField.limbo_temp.push_back(pcard);
+				panelmode = true;
+'''
+    unselect_block = unselect_block.replace(old_limbo, new_limbo)
+    dc = dc[:unselect_start] + unselect_block + dc[unselect_end:]
+
+# Optional chain/effect prompts belong to one logical owner. If that owner is
+# P1/P2 and the source is in a private/public pile such as GY, project that
+# owner's private piles before resolving ClientCard pointers.
+chain_start = dc.index("case MSG_SELECT_CHAIN: {")
+chain_end = dc.index("case MSG_SELECT_PLACE:", chain_start)
+chain_block = dc[chain_start:chain_end]
+if "focus_two_v_one_private_chain" not in chain_block:
+    old = '''			const auto core_controler = info.controler;
+			info.controler = mainGame->LocalPlayer(info.controler);
+'''
+    new = '''			const auto core_controler = info.controler;
+			const bool focus_two_v_one_private_chain =
+				mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& core_controler == 0
+				&& IsPrivatePileLocation(info.location)
+				&& info.duelist < mainGame->dInfo.team1;
+			if(focus_two_v_one_private_chain) {
+				const auto source_logical = mainGame->dInfo.GetLogicalPlayer(
+					core_controler, info.duelist);
+				if(source_logical < mainGame->dInfo.team1
+						&& source_logical
+							!= mainGame->dInfo.GetFocusedLogicalPlayer(0)) {
+					if(mainGame->dInfo.isReplay)
+						SetThreeVsOneView(source_logical);
+					else {
+						mainGame->dInfo.SetFieldFocus(0, info.duelist);
+						mainGame->dField.ApplyTwoVsOnePrivatePile(
+							source_logical, true);
+						mainGame->dField.RefreshAllCards();
+					}
+				}
+			}
+			info.controler = mainGame->LocalPlayer(info.controler);
+'''
+    if old not in chain_block:
+        raise SystemExit("MSG_SELECT_CHAIN private focus anchor missing")
+    chain_block = chain_block.replace(old, new, 1)
+    dc = dc[:chain_start] + chain_block + dc[chain_end:]
+
+# A single Effect-Yes/No prompt from a P2 Grave/Banish/Extra card needs the same
+# projection before highlighting the source.
+effect_start = dc.index("case MSG_SELECT_EFFECTYN: {")
+effect_end = dc.index("case MSG_SELECT_YESNO: {", effect_start)
+effect_block = dc[effect_start:effect_end]
+if "focus_two_v_one_private_effect" not in effect_block:
+    old = '''		CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
+		info.controler = mainGame->LocalPlayer(info.controler);
+'''
+    new = '''		CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
+		const auto core_controler = info.controler;
+		const bool focus_two_v_one_private_effect =
+			mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+			&& core_controler == 0
+			&& IsPrivatePileLocation(info.location)
+			&& info.duelist < mainGame->dInfo.team1;
+		if(focus_two_v_one_private_effect) {
+			const auto source_logical = mainGame->dInfo.GetLogicalPlayer(
+				core_controler, info.duelist);
+			if(source_logical < mainGame->dInfo.team1
+					&& source_logical
+						!= mainGame->dInfo.GetFocusedLogicalPlayer(0)) {
+				if(mainGame->dInfo.isReplay)
+					SetThreeVsOneView(source_logical);
+				else {
+					mainGame->dInfo.SetFieldFocus(0, info.duelist);
+					mainGame->dField.ApplyTwoVsOnePrivatePile(
+						source_logical, true);
+					mainGame->dField.RefreshAllCards();
+				}
+			}
+		}
+		info.controler = mainGame->LocalPlayer(info.controler);
+'''
+    if old not in effect_block:
+        raise SystemExit("MSG_SELECT_EFFECTYN private focus anchor missing")
+    effect_block = effect_block.replace(old, new, 1)
+    dc = dc[:effect_start] + effect_block + dc[effect_end:]
+
+write("gframe/duelclient.cpp", dc)
+
+# Generic location mapping must never accidentally map a hidden P2 private
+# sequence onto P1's currently displayed private pile.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''		} else
+			info.controler = mainGame->LocalPlayer(core_controler);
+		return true;
+	};
+''',
+    '''		} else {
+			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					&& IsPrivatePileLocation(info.location)) {
+				const auto logical = mainGame->dInfo.GetLogicalPlayer(
+					core_controler, info.duelist);
+				if(logical < mainGame->dInfo.team1 + mainGame->dInfo.team2
+						&& logical
+							!= mainGame->dInfo.GetFocusedLogicalPlayer(core_controler))
+					return false;
+			}
+			info.controler = mainGame->LocalPlayer(core_controler);
+		}
+		return true;
+	};
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 client/server mode")
