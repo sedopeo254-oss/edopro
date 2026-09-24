@@ -193,7 +193,9 @@ replace_once(
     "\t\t\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE) && playerid == 0\n",
 )
 
-# Fixed four-slot resource message: P4 is inactive and must never be dereferenced.
+# Fixed four-slot resource message: only an unmapped slot (P4 in 2v1)
+# is zeroed. Eliminated real players keep their exact LP/Deck/Hand/Extra/GY/
+# Banish snapshot so OUT does not erase their cards from replay/Swap Team.
 replace_once(
     "processor.cpp",
     "\t\t\t\tfor(uint8_t logical = 0; logical < MultiplayerState::MAX_PLAYERS; ++logical) {\n"
@@ -201,12 +203,12 @@ replace_once(
     "\t\t\t\t\tconst auto duelist = multiplayer.duelist_index_of(logical);\n"
     "\t\t\t\t\tconst auto logical_lp = get_logical_lp(side, duelist);\n",
     "\t\t\t\tfor(uint8_t logical = 0; logical < MultiplayerState::MAX_PLAYERS; ++logical) {\n"
-    "\t\t\t\t\tif(!multiplayer.is_active(logical)) {\n"
+    "\t\t\t\t\tconst auto side = multiplayer.field_side_of(logical);\n"
+    "\t\t\t\t\tconst auto duelist = multiplayer.duelist_index_of(logical);\n"
+    "\t\t\t\t\tif(side == MultiplayerState::NO_PLAYER || duelist == MultiplayerState::NO_PLAYER) {\n"
     "\t\t\t\t\t\tfor(uint8_t field = 0; field < 6; ++field) logical_message->write<uint32_t>(0);\n"
     "\t\t\t\t\t\tcontinue;\n"
     "\t\t\t\t\t}\n"
-    "\t\t\t\t\tconst auto side = multiplayer.field_side_of(logical);\n"
-    "\t\t\t\t\tconst auto duelist = multiplayer.duelist_index_of(logical);\n"
     "\t\t\t\t\tconst auto logical_lp = get_logical_lp(side, duelist);\n",
 )
 
