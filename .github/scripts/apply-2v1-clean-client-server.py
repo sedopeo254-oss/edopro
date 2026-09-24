@@ -496,4 +496,311 @@ for signature in ["case MSG_SELECT_CARD: {", "case MSG_SELECT_UNSELECT_CARD: {"]
     gd = gd[:start] + block + gd[end:]
 write("gframe/generic_duel.cpp", gd)
 
+
+# ---------------------------------------------------------------------------
+# Inherit the mature 3v1 Team-vs-Solo presentation/replay behavior.
+# 2v1 differs only in topology (P1+P2 vs P3), not in these interaction rules.
+# ---------------------------------------------------------------------------
+
+# Keep the 2v1 mode bit when duel-rule UI controls are changed.
+replace_once(
+    "gframe/menu_handler.cpp",
+    "\t\t\t\t\tconst auto retained_flags = mainGame->duel_param\n"
+    "\t\t\t\t\t\t& (DUEL_TCG_SEGOC_NONPUBLIC | DUEL_BATTLE_ROYALE | DUEL_3_V_1);\n",
+    "\t\t\t\t\tconst auto retained_flags = mainGame->duel_param\n"
+    "\t\t\t\t\t\t& (DUEL_TCG_SEGOC_NONPUBLIC | DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1);\n",
+)
+replace_once(
+    "gframe/menu_handler.cpp",
+    "\t\t\t\tconst auto multiplayer_mode = mainGame->duel_param & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);\n",
+    "\t\t\t\tconst auto multiplayer_mode = mainGame->duel_param & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1);\n",
+)
+
+# The replay hand-visibility policy is topology-generic: team side + solo side.
+replace_once(
+    "gframe/game.h",
+    "\t\tif(!isReplay || !HasFieldFlag(DUEL_3_V_1) || core_side > 1)\n",
+    "\t\tif(!isReplay || !(HasFieldFlag(DUEL_2_V_1) || HasFieldFlag(DUEL_3_V_1)) || core_side > 1)\n",
+)
+replace_once(
+    "gframe/game.h",
+    "\t\tif(!isReplay || !HasFieldFlag(DUEL_3_V_1))\n",
+    "\t\tif(!isReplay || !(HasFieldFlag(DUEL_2_V_1) || HasFieldFlag(DUEL_3_V_1)))\n",
+)
+
+# Reuse the exact 3v1 replay private-pile machinery for 2v1.
+cf = read("gframe/client_field.cpp")
+for signature in [
+    "void ClientField::CaptureThreeVsOneReplayPrivatePiles()",
+    "bool ClientField::IsThreeVsOneReplayPrivatePileDisplayed(",
+    "bool ClientField::IsThreeVsOneReplayHandDisplayed(",
+    "void ClientField::ApplyThreeVsOneReplayPrivatePiles()",
+    "bool ClientField::ApplyThreeVsOneReplayPrivateDraw(",
+    "void ClientField::UpdateMultiplayerPrivateMove(",
+]:
+    start, end = function_block(cf, signature)
+    part = cf[start:end]
+    old_flag = "mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)"
+    new_flag = "(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))"
+    if "DUEL_2_V_1" not in part:
+        part = part.replace(old_flag, new_flag)
+    cf = cf[:start] + part + cf[end:]
+write("gframe/client_field.cpp", cf)
+
+# Replay movement/summon animations should have the same stable timing as 3v1.
+replace_all(
+    "gframe/client_field.cpp",
+    "mainGame->dInfo.isReplay,\n\t\t\t\t\tmainGame->dInfo.HasFieldFlag(DUEL_3_V_1))",
+    "mainGame->dInfo.isReplay,\n\t\t\t\t\t(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))",
+    minimum=1,
+)
+replace_all(
+    "gframe/duelclient.cpp",
+    "mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))",
+    "mainGame->dInfo.isReplay, (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))",
+    minimum=3,
+)
+
+# Selecting/placing cards on the projected allied field must map back to the
+# encoded P1/P2 field exactly like 3v1.
+replace_once(
+    "gframe/event_handler.cpp",
+    "\t\t\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {\n",
+    "\t\t\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {\n",
+)
+eh = read("gframe/event_handler.cpp")
+start, end = function_block(eh, "void ClientField::SetResponseSelectedOption() const")
+part = eh[start:end]
+old = "mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)"
+new = "(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))"
+if "DUEL_2_V_1" not in part:
+    part = part.replace(old, new)
+eh = eh[:start] + part + eh[end:]
+write("gframe/event_handler.cpp", eh)
+
+# Extend the existing 3v1 replay camera/private-resource policy to 2v1.
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tif(!mainGame->dInfo.isReplay\n"
+    "\t\t\t\t|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t|| core_side > 1\n",
+    "\t\tif(!mainGame->dInfo.isReplay\n"
+    "\t\t\t\t|| !(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n"
+    "\t\t\t\t|| core_side > 1\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tif(!mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t|| mainGame->dInfo.team1 == 0\n",
+    "\t\tif(!(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n"
+    "\t\t\t\t|| mainGame->dInfo.team1 == 0\n",
+)
+replace_all(
+    "gframe/duelclient.cpp",
+    "\t\tif(!mainGame->dInfo.isReplay\n\t\t\t\t|| !mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)",
+    "\t\tif(!mainGame->dInfo.isReplay\n\t\t\t\t|| !(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))",
+    minimum=2,
+)
+
+# New-turn replay projection and public/private refresh suppression.
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\t\t} else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n"
+    "\t\t\t\tSetThreeVsOneView(logical_player);\n",
+    "\t\t\t} else if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n"
+    "\t\t\t\tSetThreeVsOneView(logical_player);\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\t\t\t\t&& !(mainGame->dInfo.isReplay\n"
+    "\t\t\t\t\t\t&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n",
+    "\t\t\t\t\t&& !(mainGame->dInfo.isReplay\n"
+    "\t\t\t\t\t\t&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\t\telse if(!(mainGame->dInfo.isReplay\n"
+    "\t\t\t\t\t&& (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))))\n",
+    "\t\t\telse if(!(mainGame->dInfo.isReplay\n"
+    "\t\t\t\t\t&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))))\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\telse if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t&& !mainGame->dInfo.isReplay)\n"
+    "\t\t\tSetThreeVsOneView(perspective, opponent);\n",
+    "\t\telse if((mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n"
+    "\t\t\t\t&& !mainGame->dInfo.isReplay)\n"
+    "\t\t\tSetThreeVsOneView(perspective, opponent);\n",
+)
+
+# UPDATE/selection/chain/private-location paths use the same projected encoded field.
+replace_all(
+    "gframe/duelclient.cpp",
+    "(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))",
+    "(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))",
+    minimum=2,
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\t\tif(!(mainGame->dInfo.duel_params\n"
+    "\t\t\t\t\t& (DUEL_BATTLE_ROYALE | DUEL_3_V_1))\n",
+    "\t\t\tif(!(mainGame->dInfo.duel_params\n"
+    "\t\t\t\t\t& (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1))\n",
+)
+
+# All replay-only 3v1 private-pile guards are valid for 2v1 as well.
+replace_all(
+    "gframe/duelclient.cpp",
+    "mainGame->dInfo.isReplay\n\t\t\t\t\t&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)",
+    "mainGame->dInfo.isReplay\n\t\t\t\t\t&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))",
+    minimum=5,
+)
+
+# The streamed replay carries authoritative snapshots for 2v1 too.
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tif(mainGame->dInfo.isReplay\n"
+    "\t\t\t\t&& (mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)\n"
+    "\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {\n",
+    "\t\tif(mainGame->dInfo.isReplay\n"
+    "\t\t\t\t&& (mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)\n"
+    "\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_2_V_1))) {\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {\n"
+    "\t\t\t\tif(mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(logical_player))\n",
+    "\t\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {\n"
+    "\t\t\t\tif(mainGame->dField.IsThreeVsOneReplayPrivatePileDisplayed(logical_player))\n",
+)
+
+# Draws in a replay update the exact logical hand for 2v1.
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {\n"
+    "\t\t\t\tconst bool displayed =\n"
+    "\t\t\t\t\tmainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player);\n",
+    "\t\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {\n"
+    "\t\t\t\tconst bool displayed =\n"
+    "\t\t\t\t\tmainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player);\n",
+)
+
+# Damage/attack/target view changes use the same Team-vs-Solo camera policy.
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\telse if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t&& logical_player < mainGame->dInfo.team1 + mainGame->dInfo.team2)\n"
+    "\t\t\tSetThreeVsOneView(mainGame->dInfo.logical_turn_player, logical_player);\n",
+    "\t\telse if((mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n"
+    "\t\t\t\t&& logical_player < mainGame->dInfo.team1 + mainGame->dInfo.team2)\n"
+    "\t\t\tSetThreeVsOneView(mainGame->dInfo.logical_turn_player, logical_player);\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tconst bool has_three_vs_one_target =\n"
+    "\t\t\t!mainGame->dInfo.compat_mode\n"
+    "\t\t\t&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t&& len >= 21;\n",
+    "\t\tconst bool has_three_vs_one_target =\n"
+    "\t\t\t!mainGame->dInfo.compat_mode\n"
+    "\t\t\t&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n"
+    "\t\t\t&& len >= 21;\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t&& valid_logical_attack) {\n",
+    "\t\tif((mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n"
+    "\t\t\t\t&& valid_logical_attack) {\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {\n"
+    "\t\t\t\tif(logical >= player_count)\n",
+    "\t\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {\n"
+    "\t\t\t\tif(logical >= player_count)\n",
+)
+
+# Target effects in replay switch to the affected logical field just like 3v1.
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\t\tif(mainGame->dInfo.curMsg == MSG_BECOME_TARGET\n"
+    "\t\t\t\t\t&& mainGame->dInfo.isReplay\n"
+    "\t\t\t\t\t&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n",
+    "\t\t\tif(mainGame->dInfo.curMsg == MSG_BECOME_TARGET\n"
+    "\t\t\t\t\t&& mainGame->dInfo.isReplay\n"
+    "\t\t\t\t\t&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))\n",
+)
+
+# TAG_SWAP is only a transport detail in Team-vs-Solo replay. Authoritative
+# logical snapshots own Hand/Deck/Extra/GY/Banish and must not be overwritten.
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tconst bool is_multiplayer =\n"
+    "\t\t\t(mainGame->dInfo.duel_params\n"
+    "\t\t\t\t& (DUEL_BATTLE_ROYALE | DUEL_3_V_1)) != 0;\n",
+    "\t\tconst bool is_multiplayer =\n"
+    "\t\t\t(mainGame->dInfo.duel_params\n"
+    "\t\t\t\t& (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1)) != 0;\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tif(mainGame->dInfo.isReplay\n"
+    "\t\t\t\t&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {\n"
+    "\t\t\t// Replay snapshots already carry exact logical Hand/Deck/Extra/GY/Banish.\n",
+    "\t\tif(mainGame->dInfo.isReplay\n"
+    "\t\t\t\t&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {\n"
+    "\t\t\t// Replay snapshots already carry exact logical Hand/Deck/Extra/GY/Banish.\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {\n"
+    "\t\t\tmainGame->dField.ClearSelect();\n",
+    "\t\tif(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)\n"
+    "\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)\n"
+    "\t\t\t\t|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {\n"
+    "\t\t\tmainGame->dField.ClearSelect();\n",
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\tif(!(mainGame->dInfo.duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1))) {\n",
+    "\t\tif(!(mainGame->dInfo.duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1))) {\n",
+)
+
+# RELOAD_FIELD must allocate the encoded two-field allied side (14/16), not the
+# normal 7/8 field and not the 3v1 21/24 field.
+replace_once(
+    "gframe/duelclient.cpp",
+    "\t\t\tconst int mzone_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)\n"
+    "\t\t\t\t? 14 : (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && i == 0 ? 21 : 7);\n"
+    "\t\t\tconst int szone_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)\n"
+    "\t\t\t\t? 16 : (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && i == 0 ? 24 : 8);\n",
+    "\t\t\tconst int mzone_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)\n"
+    "\t\t\t\t? 14 : (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) && i == 0 ? 14\n"
+    "\t\t\t\t\t: (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && i == 0 ? 21 : 7));\n"
+    "\t\t\tconst int szone_count = mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)\n"
+    "\t\t\t\t? 16 : (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) && i == 0 ? 16\n"
+    "\t\t\t\t\t: (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && i == 0 ? 24 : 8));\n",
+)
+
 print("Applied clean generic 2 vs 1 client/server mode")
