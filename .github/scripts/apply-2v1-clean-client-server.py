@@ -246,7 +246,8 @@ replace_once(
 ''',
 )
 
-# Swap Team button is visible only to the two allied players.
+# Swap Team mirrors 3v1: every participant/spectator may cycle the allied
+# public fields. Only P1/P2 receive/apply their private-pile snapshots.
 replace_once(
     "gframe/duelclient.cpp",
     '''			mainGame->btnSpectatorSwap->setVisible(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
@@ -256,8 +257,7 @@ replace_once(
 			else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 ''',
     '''			mainGame->btnSpectatorSwap->setVisible(
-				(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
-					&& mainGame->dInfo.GetLocalLogicalPlayer() < 2)
+				mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
 				|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE));
 			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1))
@@ -321,8 +321,10 @@ cf = read("gframe/client_field.cpp")
 s,e = function_block(cf, "void ClientField::CycleTeamField()")
 new_cycle = r'''void ClientField::CycleTeamField() {
 	if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
-		if(mainGame->dInfo.team1 != 2 || mainGame->dInfo.GetLocalLogicalPlayer() >= 2)
+		if(mainGame->dInfo.team1 != 2)
 			return;
+		if(mainGame->dInfo.isReplay)
+			CaptureThreeVsOneReplayPrivatePiles();
 		mainGame->dInfo.field_focus[0] = static_cast<uint8_t>(
 			(mainGame->dInfo.field_focus[0] + 1) % 2);
 		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(0);
@@ -336,7 +338,12 @@ new_cycle = r'''void ClientField::CycleTeamField() {
 		ClearCommandFlag();
 		selectable_cards.clear();
 		selected_cards.clear();
-		ApplyTwoVsOnePrivatePile(logical, false);
+		if(mainGame->dInfo.isReplay) {
+			mainGame->dInfo.SetThreeVsOneReplayHandPolicy(logical);
+			ApplyThreeVsOneReplayPrivatePiles();
+		} else if(mainGame->dInfo.GetLocalLogicalPlayer() < 2) {
+			ApplyTwoVsOnePrivatePile(logical, false);
+		}
 		RefreshLogicalDeckMasters();
 		RefreshAllCards();
 		RefreshHandHitboxes();
@@ -836,12 +843,10 @@ replace_once(
 		mainGame->dInfo.current_player[0] = 0;
 ''',
     '''			mainGame->btnSpectatorSwap->setVisible(
-				(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
-					&& selftype < mainGame->dInfo.team1)
+				mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
 				|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE));
-			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
-					&& selftype < mainGame->dInfo.team1)
+			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1))
 				mainGame->btnSpectatorSwap->setText(L"Swap Team");
 		}
 		mainGame->dInfo.current_player[0] = 0;
