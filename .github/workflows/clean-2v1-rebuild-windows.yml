@@ -77,8 +77,22 @@ jobs:
 
           client = Path('gframe/client_field.cpp').read_text(encoding='utf-8')
           assert 'ApplyTwoVsOnePrivatePile' in client
-          assert 'Swap Team' in Path('gframe/duelclient.cpp').read_text(encoding='utf-8')
+          duelclient = Path('gframe/duelclient.cpp').read_text(encoding='utf-8')
+          assert 'Swap Team' in duelclient
           assert 'DUEL_2_V_1' in client[client.index('void ClientField::RefreshLogicalDeckMasters()'):]
+
+          # 2v1 HUD must render the real three-player topology rather than a
+          # four-player 3v1 panel with a phantom OUT P4.
+          drawing = Path('gframe/drawing.cpp').read_text(encoding='utf-8')
+          assert 'HasFieldFlag(DUEL_2_V_1)' in drawing
+          assert 'std::clamp<int>(dInfo.team1 + dInfo.team2, 1, 4)' in drawing
+          assert 'logical < player_count' in drawing
+          assert 'panel_start' in drawing
+          assert '(dInfo.HasFieldFlag(DUEL_2_V_1) || dInfo.HasFieldFlag(DUEL_3_V_1))' in drawing
+
+          # Logical LP packets and replay attack/view paths must accept 2v1.
+          assert '(DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1)) && len >= 6' in duelclient
+          assert 'HasFieldFlag(DUEL_2_V_1)' in duelclient[duelclient.index('case MSG_ATTACK:'):]
 
           server = Path('gframe/generic_duel.cpp').read_text(encoding='utf-8')
           assert 'shared_two_v_one_field' in server
