@@ -79,7 +79,7 @@ bool GenericDuel::CheckReady() {
 bool GenericDuel::IsMultiplayerMode() const {
 	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
 		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-	return duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+	return duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1);
 }
 void GenericDuel::StartMultiplayerDuel() {
 	IteratePlayers([](DuelPlayer* dueler) {
@@ -813,7 +813,7 @@ void GenericDuel::Surrender(DuelPlayer* dp) {
 	if(pduel) {
 		const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
 			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
-		if(duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1)) {
+		if(duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1)) {
 			const auto logical_player = GetPos(dp);
 			if(logical_player >= 4)
 				return;
@@ -1365,6 +1365,22 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		packets_cache.push_back(packet);
 		break;
 	}
+	case MSG_MULTIPLAYER_TEAM_PUBLIC_PILES: {
+		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
+		const uint64_t duel_flags =
+			static_cast<uint64_t>(host_info.duel_flag_low)
+			| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+		if(!(duel_flags & DUEL_2_V_1)
+				|| logical_player >= players.home_size)
+			break;
+		// The clean 2v1 Swap Team view may expose a teammate's public GY and
+		// banished cards. Route this exact packet only inside the allied home
+		// team; never send it to the solo opponent or global catch-up cache.
+		SEND(nullptr);
+		for(auto& dueler : players.home)
+			NetServer::ReSendToPlayer(dueler);
+		break;
+	}
 	case MSG_MULTIPLAYER_PRIVATE_PILES: {
 		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
 		if(logical_player >= players.home_size + players.opposing_size)
@@ -1633,7 +1649,8 @@ DuelPlayer* GenericDuel::WaitforResponse(uint8_t playerid, const CoreUtils::Pack
 	const uint8_t logical_player = playerid >= 2 ? static_cast<uint8_t>(playerid - 2) : 0xff;
 	const bool logical_selector = playerid >= 2 && logical_player < players.home_size + players.opposing_size
 		&& (((duel_flags & DUEL_3_V_1) && playerid < 5)
-			|| ((duel_flags & DUEL_BATTLE_ROYALE) && playerid < 6));
+			|| ((duel_flags & DUEL_BATTLE_ROYALE) && playerid < 6)
+			|| ((duel_flags & DUEL_2_V_1) && playerid < 4));
 	const uint8_t response_side = logical_selector
 		? static_cast<uint8_t>(logical_player < players.home_size ? 0 : 1) : playerid;
 	DuelPlayer* responder = logical_selector ? GetAtPos(logical_player).player
