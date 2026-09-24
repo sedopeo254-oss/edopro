@@ -157,6 +157,13 @@ jobs:
           assert 'shared_two_v_one_field' in server
           assert 'ally_on_field' in server
 
+          # Deck Master loss logic must derive teams from logical side. P3 is
+          # solo in 2v1 while P4 is solo in 3v1, so hard-coded p==3 is invalid.
+          dm = Path('multiplayer-deck-master/c153000000.lua').read_text(encoding='utf-8')
+          assert 'local side=player_side(p)' in dm
+          assert 'if player_side(p)==1 then' in dm
+          assert 'if player_side(p)==0 then' in dm
+
           # No legacy Big Five mode is part of the clean implementation.
           for p in ['.github/scripts/apply-2v1-clean-core.py',
                     '.github/scripts/apply-2v1-clean-client-server.py']:
