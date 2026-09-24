@@ -494,11 +494,13 @@ for signature in ["case MSG_SELECT_CARD: {", "case MSG_SELECT_UNSELECT_CARD: {"]
         )
     old = '''if(info.controler != visible_side
 					|| (logical_selector && info_logical != logical_player))'''
-    new = '''const bool ally_on_field = shared_two_v_one_field
+    new = '''const bool ally_visible_card = shared_two_v_one_field
 					&& info.controler == 0
-					&& (info.location & LOCATION_ONFIELD);
+					&& ((info.location & (LOCATION_ONFIELD | LOCATION_GRAVE))
+						|| ((info.location & LOCATION_REMOVED)
+							&& (info.position & POS_FACEUP)));
 				if(info.controler != visible_side
-					|| (logical_selector && info_logical != logical_player && !ally_on_field))'''
+					|| (logical_selector && info_logical != logical_player && !ally_visible_card))'''
     block = block.replace(old, new)
     gd = gd[:start] + block + gd[end:]
 write("gframe/generic_duel.cpp", gd)
