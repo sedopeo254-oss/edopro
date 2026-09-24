@@ -139,6 +139,20 @@ jobs:
           assert 'code == 153000012' in sp_block
           assert 'DUEL_2_V_1' in sp_block
 
+          # OUT teammate cards must still drive the 2v1 camera and optional
+          # selection/chain focus. 3v1 keeps its existing active-only policy.
+          view_start = duelclient.index('auto SetThreeVsOneView =')
+          view_end = duelclient.index('auto RestoreThreeVsOneReplayTurnView', view_start)
+          view_block = duelclient[view_start:view_end]
+          assert 'HasFieldFlag(DUEL_2_V_1)' in view_block
+          assert 'active_player_mask' in view_block
+          select_start = duelclient.index('case MSG_SELECT_CARD:')
+          select_end = duelclient.index('case MSG_SELECT_UNSELECT_CARD:', select_start)
+          assert 'DUEL_2_V_1' in duelclient[select_start:select_end]
+          chain_start = duelclient.index('case MSG_SELECT_CHAIN:')
+          chain_end = duelclient.index('case MSG_SELECT_PLACE:', chain_start)
+          assert 'DUEL_2_V_1' in duelclient[chain_start:chain_end]
+
           server = Path('gframe/generic_duel.cpp').read_text(encoding='utf-8')
           assert 'shared_two_v_one_field' in server
           assert 'ally_on_field' in server
