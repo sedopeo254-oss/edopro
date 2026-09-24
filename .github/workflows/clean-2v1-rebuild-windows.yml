@@ -260,7 +260,15 @@ jobs:
         run: |
           set -euo pipefail
           ./travis/predeploy.sh
-          mkdir -p deploy/mode-info
+
+          # Package multiplayer Deck Master scripts used by 2v1. Keeping these
+          # beside the executable avoids silently loading an older local copy.
+          mkdir -p deploy/mode-info deploy/expansions/script
+          cp multiplayer-deck-master/c153999999.lua deploy/expansions/script/c153999999.lua
+          cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
+          test -f deploy/expansions/script/c153999999.lua
+          test -f deploy/expansions/script/c153000000.lua
+
           cat > deploy/mode-info/2-vs-1-clean.txt <<'EOF'
           Clean 2 vs 1 mode
           Base: 137c63b1977b4cdd3165747cbdf00c892116e9d0
