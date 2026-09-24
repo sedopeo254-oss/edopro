@@ -120,6 +120,8 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					ReplayMode::SwapField();
 				else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 					mainGame->dField.CycleBattleRoyaleOpponent();
+				else if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1))
+					mainGame->dField.CycleTwoVsOneTeamField();
 				else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 					mainGame->dField.CycleTeamField();
 				else if(mainGame->dInfo.player_type == 7 || mainGame->dInfo.local_player_eliminated)
@@ -1349,7 +1351,8 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 				if (!(hovered_location & LOCATION_ONFIELD))
 					break;
 				uint32_t response_sequence = hovered_sequence;
-				if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 						|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
 					const uint32_t stride = hovered_location == LOCATION_MZONE ? 7u : 8u;
 					const auto field_duelist = static_cast<uint8_t>(hovered_sequence / stride);
@@ -2520,7 +2523,7 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 				return storage_sequence < mzone[storage_controler].size()
 					? mzone[storage_controler][storage_sequence] : nullptr;
 			}
-			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+			if((mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {
 				const auto core_side = mainGame->LocalPlayer(controler);
 				const auto field_count = core_side == 0
 					? static_cast<uint32_t>(mainGame->dInfo.team1) : 1u;
@@ -2688,7 +2691,7 @@ void ClientField::GetHoverField(const irr::core::vector2d<irr::s32>& mouse) {
 			} else {
 				hovered_location = 0;
 			}
-		} else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+		} else if((mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
 				&& (hovered_location == LOCATION_MZONE || hovered_location == LOCATION_SZONE)) {
 			const uint32_t stride = hovered_location == LOCATION_MZONE ? 7u : 8u;
 			const auto core_side = mainGame->LocalPlayer(hovered_controler);
