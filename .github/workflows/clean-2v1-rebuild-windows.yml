@@ -123,6 +123,22 @@ jobs:
           assert '(DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1)) && len >= 6' in duelclient
           assert 'HasFieldFlag(DUEL_2_V_1)' in duelclient[duelclient.index('case MSG_ATTACK:'):]
 
+          # CONFIRM_CARDS/SHUFFLE_HAND/Deck Master replay paths must inherit
+          # the same private-pile and logical-owner behavior as 3v1.
+          confirm_start = duelclient.index('case MSG_CONFIRM_CARDS:')
+          confirm_end = duelclient.index('case MSG_SHUFFLE_DECK:', confirm_start)
+          assert 'DUEL_2_V_1' in duelclient[confirm_start:confirm_end]
+          shuffle_start = duelclient.index('case MSG_SHUFFLE_HAND:')
+          shuffle_end = duelclient.index('case MSG_REFRESH_DECK:', shuffle_start)
+          shuffle_block = duelclient[shuffle_start:shuffle_end]
+          assert 'DUEL_2_V_1' in shuffle_block
+          assert 'instant_replay_hand' in shuffle_block
+          sp_start = duelclient.index('case MSG_SPSUMMONING:')
+          sp_end = duelclient.index('case MSG_SPSUMMONED:', sp_start)
+          sp_block = duelclient[sp_start:sp_end]
+          assert 'code == 153000012' in sp_block
+          assert 'DUEL_2_V_1' in sp_block
+
           server = Path('gframe/generic_duel.cpp').read_text(encoding='utf-8')
           assert 'shared_two_v_one_field' in server
           assert 'ally_on_field' in server
