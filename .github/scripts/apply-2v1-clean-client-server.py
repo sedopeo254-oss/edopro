@@ -1077,4 +1077,33 @@ replace_once(
 )
 
 
+
+# A surviving ally may attack with a monster that still belongs to an OUT
+# teammate's persistent field. The attack target must still be active, but the
+# card's logical owner is allowed to be inactive in 2v1 so camera/arrow routing
+# follows the actual monster instead of the turn player's field.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''		const bool valid_logical_attack = attacker_logical < player_count
+			&& attack_target_logical < player_count
+			&& attacker_logical != attack_target_logical
+			&& (mainGame->dInfo.active_player_mask & (1u << attacker_logical))
+			&& (mainGame->dInfo.active_player_mask & (1u << attack_target_logical));
+''',
+    '''		const bool shared_out_attacker =
+			mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+			&& attacker_logical < mainGame->dInfo.team1
+			&& mainGame->dInfo.logical_turn_player < mainGame->dInfo.team1
+			&& (mainGame->dInfo.active_player_mask
+				& (1u << mainGame->dInfo.logical_turn_player));
+		const bool valid_logical_attack = attacker_logical < player_count
+			&& attack_target_logical < player_count
+			&& attacker_logical != attack_target_logical
+			&& ((mainGame->dInfo.active_player_mask & (1u << attacker_logical))
+				|| shared_out_attacker)
+			&& (mainGame->dInfo.active_player_mask & (1u << attack_target_logical));
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 client/server mode")
