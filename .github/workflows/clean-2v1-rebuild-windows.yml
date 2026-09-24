@@ -1,0 +1,223 @@
+name: Clean 2 vs 1 Rebuild Windows
+
+on:
+  push:
+    branches:
+      - feature/2v1-clean-rebuild-20260924
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clean-2v1-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASELINE_SHA: 137c63b1977b4cdd3165747cbdf00c892116e9d0
+  FEATURE_CORE_SHA: 48fc2f0de4a67766e9667f9669650c3f594a3255
+
+jobs:
+  validate:
+    name: Validate clean 2v1 and protect existing modes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify exact clean baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASELINE_SHA" HEAD
+          test "$(git -C ocgcore rev-parse HEAD)" = "$FEATURE_CORE_SHA"
+
+      - name: Apply only clean 2v1 implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/apply-2v1-clean-core.py
+          python3 -m py_compile .github/scripts/apply-2v1-clean-client-server.py
+          python3 .github/scripts/apply-2v1-clean-core.py
+          python3 .github/scripts/apply-2v1-clean-client-server.py
+          git diff --check
+          git -C ocgcore diff --check
+
+      - name: Guard clean architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          mp = Path('ocgcore/multiplayer.cpp').read_text(encoding='utf-8')
+          assert 'MultiplayerMode::TWO_V_ONE' in mp
+          assert 'turn_order = { 2, 0, 1, 3 };' in mp
+          assert 'players_mask = 0x07;' in mp
+
+          field = Path('ocgcore/field.cpp').read_text(encoding='utf-8')
+          assert 'options.flags & DUEL_2_V_1' in field
+          assert 'list_mzone.resize(14, nullptr)' in field
+          assert 'list_szone.resize(16, nullptr)' in field
+
+          proc = Path('ocgcore/processor.cpp').read_text(encoding='utf-8')
+          assert 'Processors::Turn>(multiplayer.field_side_of(first_logical))' in proc
+
+          game = Path('gframe/game.cpp').read_text(encoding='utf-8')
+          assert 'addItem(L"2 vs 1")' in game
+          start = game.index('void Game::UpdateMultiplayerMode()')
+          end = game.index('\n}', start)
+          block = game[start:end+2]
+          assert 'DUEL_2_V_1' in block
+          assert 'ebTeam1->setText(L"2")' in block
+          assert 'ebTeam2->setText(L"1")' in block
+          assert 'ebStartLP' not in block
+
+          client = Path('gframe/client_field.cpp').read_text(encoding='utf-8')
+          assert 'ApplyTwoVsOnePrivatePile' in client
+          assert 'Swap Team' in Path('gframe/duelclient.cpp').read_text(encoding='utf-8')
+          assert 'DUEL_2_V_1' in client[client.index('void ClientField::RefreshLogicalDeckMasters()'):]
+
+          server = Path('gframe/generic_duel.cpp').read_text(encoding='utf-8')
+          assert 'shared_two_v_one_field' in server
+          assert 'ally_on_field' in server
+
+          # No legacy Big Five mode is part of the clean implementation.
+          for p in ['.github/scripts/apply-2v1-clean-core.py',
+                    '.github/scripts/apply-2v1-clean-client-server.py']:
+              assert 'DUEL_2_V_1_BIG5' not in Path(p).read_text(encoding='utf-8')
+          print('clean 2v1 architecture guards passed')
+          PY
+
+      - name: Compile and run clean 2v1 Core integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$PWD/ocgcore"
+          BUILD="${TMPDIR:-/tmp}/clean-two-v-one"
+          LUA="$ROOT/lua/src"
+          mkdir -p "$BUILD"
+          lua_objects=""
+          for source in "$LUA"/*.c; do
+            case "$(basename "$source")" in
+              lua.c|ltests.c|onelua.c) continue ;;
+            esac
+            object="$BUILD/$(basename "${source%.c}").o"
+            c++ -x c++ -std=c++20 -I"$LUA" -c "$source" -o "$object"
+            lua_objects="$lua_objects $object"
+          done
+          c++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers             -I"$ROOT" -I"$LUA"             "$ROOT/card.cpp" "$ROOT/duel.cpp" "$ROOT/effect.cpp" "$ROOT/field.cpp"             "$ROOT/interpreter.cpp" "$ROOT/libcard.cpp" "$ROOT/libdebug.cpp"             "$ROOT/libduel.cpp" "$ROOT/libeffect.cpp" "$ROOT/libgroup.cpp"             "$ROOT/multiplayer.cpp" "$ROOT/ocgapi.cpp" "$ROOT/operations.cpp"             "$ROOT/playerop.cpp" "$ROOT/processor.cpp" "$ROOT/battle_royale_turn_order.cpp"             "$ROOT/processor_visit.cpp" "$ROOT/scriptlib.cpp"             .github/tests/two_vs_one_clean_field_test.cpp             $lua_objects -ldl -lm -o "$BUILD/two-v-one-clean"
+          "$BUILD/two-v-one-clean"
+
+      - name: Re-run protected Battle Royale and 3v1 tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ./ocgcore/tests/run_multiplayer_field_tests.sh
+
+  windows:
+    name: Windows x86 clean 2v1
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Materialize clean 2v1 only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ocgcore rev-parse HEAD)" = "$FEATURE_CORE_SHA"
+          python3 .github/scripts/apply-2v1-clean-core.py
+          python3 .github/scripts/apply-2v1-clean-client-server.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('irrlicht/premake5.lua')
+          s = p.read_text(encoding='utf-8')
+          marker = 'project "Irrlicht"\n\tkind "StaticLib"\n'
+          replacement = 'project "Irrlicht"\n\tkind "StaticLib"\n\tcppdialect "C++17"\n'
+          if replacement not in s:
+              if marker not in s:
+                  raise SystemExit('Irrlicht premake marker not found')
+              p.write_text(s.replace(marker, replacement, 1), encoding='utf-8')
+          PY
+          git diff --check
+          git -C ocgcore diff --check
+
+      - uses: microsoft/setup-msbuild@v3
+
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+
+      - name: Build bundled client
+        shell: bash
+        run: ./travis/build.sh
+
+      - name: Package clean 2v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/mode-info
+          cat > deploy/mode-info/2-vs-1-clean.txt <<'EOF'
+          Clean 2 vs 1 mode
+          Base: 137c63b1977b4cdd3165747cbdf00c892116e9d0
+
+          P3 -> P1 -> P2 turn order.
+          Three independent LP/Hand/Deck/Extra/GY/Banish resource sets.
+          P1 and P2 own independent simultaneous fields.
+          Team may use each other's on-field cards.
+          Swap Team changes the viewed P1/P2 field and private piles.
+          Deck Master display follows the logical owner; cards leaving a logical
+          private pile for the field preserve that owner's field.
+          Standard, Battle Royale and 3v1 are unchanged and regression-tested.
+          EOF
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+
+      - name: Windows startup smoke test
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "deploy\ygopro.exe").Path
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Resolve-Path ".").Path -ArgumentList "-r" -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) {
+            if ($p.ExitCode -ne 0) { throw "ygopro.exe exited during startup with code $($p.ExitCode)" }
+          } else {
+            Stop-Process -Id $p.Id -Force
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-clean-2-vs-1-windows-x86
+          path: deploy/
+          if-no-files-found: error
