@@ -174,7 +174,9 @@ jobs:
 
           server = Path('gframe/generic_duel.cpp').read_text(encoding='utf-8')
           assert 'shared_two_v_one_field' in server
-          assert 'ally_on_field' in server
+          assert 'ally_visible_card' in server
+          assert 'LOCATION_ONFIELD | LOCATION_GRAVE' in server
+          assert 'info.position & POS_FACEUP' in server
 
           # Deck Master loss logic must derive teams from logical side. P3 is
           # solo in 2v1 while P4 is solo in 3v1, so hard-coded p==3 is invalid.
