@@ -803,4 +803,139 @@ replace_once(
     "\t\t\t\t\t: (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1) && i == 0 ? 24 : 8));\n",
 )
 
+
+# ---------------------------------------------------------------------------
+# Accurate 2v1 rendering/HUD parity with 3v1.
+# The topology differs (3 players rather than 4), but field projection,
+# hover/selection geometry and per-player LP presentation use the same rules.
+# ---------------------------------------------------------------------------
+
+# Show Swap Team as soon as a 2v1 duel starts for P1/P2, not only after the
+# first core MSG_START packet. The solo P3 never gets this control.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''			mainGame->btnSpectatorSwap->setVisible(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE));
+		}
+		mainGame->dInfo.current_player[0] = 0;
+''',
+    '''			mainGame->btnSpectatorSwap->setVisible(
+				(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					&& selftype < mainGame->dInfo.team1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE));
+			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					&& selftype < mainGame->dInfo.team1)
+				mainGame->btnSpectatorSwap->setText(L"Swap Team");
+		}
+		mainGame->dInfo.current_player[0] = 0;
+''',
+)
+
+# Field Spell, hover geometry and linked-zone projection must use the focused
+# encoded allied field just like 3v1.
+replace_once(
+    "gframe/drawing.cpp",
+    '''			} else if(dInfo.HasFieldFlag(DUEL_3_V_1)) {
+''',
+    '''			} else if(dInfo.HasFieldFlag(DUEL_2_V_1)
+					|| dInfo.HasFieldFlag(DUEL_3_V_1)) {
+''',
+)
+
+# Draw exactly three LP panels in 2v1. Do not render an inactive phantom P4.
+# Four-player modes retain their current layout; the three-player layout is
+# re-centered horizontally.
+replace_once(
+    "gframe/drawing.cpp",
+    '''	// Multiplayer modes have four independent LP panels. Reusing the normal
+	// two-team HUD stacked three names under one LP bar, which made inactive
+	// players look disabled and hid whose LP belonged to whom.
+	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+		const auto& team1_names = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
+		const auto& team2_names = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
+		const std::array<irr::video::SColor, 4> player_colors{
+			irr::video::SColor{ 0xff4f7dff }, irr::video::SColor{ 0xffffd34f },
+			irr::video::SColor{ 0xff57e389 }, irr::video::SColor{ 0xffff5555 }
+		};
+''',
+    '''	// Team-vs-Solo and Battle Royale use independent LP panels. 2v1 has
+	// exactly three logical players; 3v1/BR keep all four.
+	if(dInfo.HasFieldFlag(DUEL_2_V_1)
+			|| dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+		const auto& team1_names = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
+		const auto& team2_names = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
+		const std::array<irr::video::SColor, 4> player_colors{
+			irr::video::SColor{ 0xff4f7dff }, irr::video::SColor{ 0xffffd34f },
+			irr::video::SColor{ 0xff57e389 }, irr::video::SColor{ 0xffff5555 }
+		};
+''',
+)
+replace_once(
+    "gframe/drawing.cpp",
+    '''		for(uint8_t logical = 0; logical < 4; ++logical) {
+			const irr::s32 left = 330 + logical * 165;
+''',
+    '''		const auto player_count = static_cast<uint8_t>(
+			std::clamp<int>(dInfo.team1 + dInfo.team2, 1, 4));
+		const irr::s32 panel_start =
+			330 + static_cast<irr::s32>(4 - player_count) * 82;
+		for(uint8_t logical = 0; logical < player_count; ++logical) {
+			const irr::s32 left = panel_start + logical * 165;
+''',
+)
+
+# After the HUD block above is rewritten, this is the remaining field-hover
+# branch. Encoded P2 zones must be folded back to normal 7/8-zone geometry.
+replace_once(
+    "gframe/drawing.cpp",
+    '''	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+		if(dField.hovered_location == LOCATION_MZONE)
+''',
+    '''	if(dInfo.HasFieldFlag(DUEL_2_V_1)
+			|| dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+		if(dField.hovered_location == LOCATION_MZONE)
+''',
+)
+
+# The stock linked-zone traversal assumes one physical field per side; encoded
+# Team-vs-Solo fields use their projected visible geometry instead.
+replace_once(
+    "gframe/drawing.cpp",
+    '''	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+		return;
+''',
+    '''	if(dInfo.HasFieldFlag(DUEL_2_V_1)
+			|| dInfo.HasFieldFlag(DUEL_3_V_1)
+			|| dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
+		return;
+''',
+)
+
+# Keep the generic HUD turn-owner helper aware of 2v1 too.
+replace_once(
+    "gframe/drawing.cpp",
+    '''	const bool multiplayer_mode = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) || dInfo.HasFieldFlag(DUEL_3_V_1);
+''',
+    '''	const bool multiplayer_mode = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+		|| dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_2_V_1);
+''',
+)
+
+# Status text and Pendulum scales must follow the currently focused P1/P2 field.
+replace_once(
+    "gframe/drawing.cpp",
+    '''		const auto field_count = dInfo.HasFieldFlag(DUEL_3_V_1) && core_side == 0
+			? static_cast<uint32_t>(dInfo.team1) : 1u;
+''',
+    '''		const auto field_count =
+			(dInfo.HasFieldFlag(DUEL_2_V_1) || dInfo.HasFieldFlag(DUEL_3_V_1))
+				&& core_side == 0
+			? static_cast<uint32_t>(dInfo.team1) : 1u;
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 client/server mode")
