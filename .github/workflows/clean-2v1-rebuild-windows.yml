@@ -108,6 +108,8 @@ jobs:
           assert 'ApplyTwoVsOnePrivatePile' in client
           duelclient = Path('gframe/duelclient.cpp').read_text(encoding='utf-8')
           assert 'Swap Team' in duelclient
+          # P3 must never receive the 2v1 team-swap control.
+          assert 'selftype < mainGame->dInfo.team1' in duelclient
           assert 'DUEL_2_V_1' in client[client.index('void ClientField::RefreshLogicalDeckMasters()'):]
 
           # 2v1 HUD must render the real three-player topology rather than a
