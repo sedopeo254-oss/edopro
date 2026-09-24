@@ -71,6 +71,28 @@ jobs:
           # Eliminated real players keep their resource mapping; only the
           # nonexistent 2v1 P4 slot is zero-filled.
           assert 'side == MultiplayerState::NO_PLAYER || duelist == MultiplayerState::NO_PLAYER' in proc
+          # Cross-field allied attacks (P2 using P1's monster, as in the
+          # supplied replay) must encode P3 as the authoritative target.
+          assert 'core.attack_target_logical = 2;' in proc
+
+          # Diagnostic parity audit: print every remaining 3v1 reference after
+          # materialization so review can distinguish intentional topology-only
+          # branches from missing 2v1 inheritance.
+          for audit_path in [
+              'gframe/duelclient.cpp', 'gframe/client_field.cpp',
+              'gframe/drawing.cpp', 'gframe/event_handler.cpp',
+              'gframe/game.h', 'gframe/generic_duel.cpp',
+              'ocgcore/multiplayer.cpp', 'ocgcore/field.cpp',
+              'ocgcore/processor.cpp', 'ocgcore/operations.cpp',
+              'ocgcore/playerop.cpp', 'ocgcore/libduel.cpp',
+          ]:
+              text = Path(audit_path).read_text(encoding='utf-8').splitlines()
+              hits = [(n + 1, line.strip()) for n, line in enumerate(text)
+                      if 'DUEL_3_V_1' in line or 'MultiplayerMode::THREE_V_ONE' in line]
+              if hits:
+                  print(f'PARITY_AUDIT {audit_path}')
+                  for n, line in hits:
+                      print(f'  {n}: {line}')
 
           game = Path('gframe/game.cpp').read_text(encoding='utf-8')
           assert 'addItem(L"2 vs 1")' in game
