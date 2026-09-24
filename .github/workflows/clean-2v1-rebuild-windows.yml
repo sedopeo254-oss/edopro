@@ -157,7 +157,15 @@ jobs:
           assert 'active_player_mask' in view_block
           select_start = duelclient.index('case MSG_SELECT_CARD:')
           select_end = duelclient.index('case MSG_SELECT_UNSELECT_CARD:', select_start)
-          assert 'DUEL_2_V_1' in duelclient[select_start:select_end]
+          select_block = duelclient[select_start:select_end]
+          assert 'DUEL_2_V_1' in select_block
+
+          # Cross-private P1/P2 selection must use limbo cards instead of
+          # aliasing the same sequence from the currently displayed teammate.
+          assert 'use_two_v_one_private_limbo' in select_block
+          unselect_start = duelclient.index('case MSG_SELECT_UNSELECT_CARD:')
+          unselect_end = duelclient.index('case MSG_SELECT_CHAIN:', unselect_start)
+          assert 'use_two_v_one_private_limbo' in duelclient[unselect_start:unselect_end]
 
           # OUT teammate monster attack routing must keep its logical owner so
           # the camera/arrow originates from the persistent P1/P2 field.
@@ -170,7 +178,12 @@ jobs:
 
           chain_start = duelclient.index('case MSG_SELECT_CHAIN:')
           chain_end = duelclient.index('case MSG_SELECT_PLACE:', chain_start)
-          assert 'DUEL_2_V_1' in duelclient[chain_start:chain_end]
+          chain_block = duelclient[chain_start:chain_end]
+          assert 'DUEL_2_V_1' in chain_block
+          assert 'focus_two_v_one_private_chain' in chain_block
+          effect_start = duelclient.index('case MSG_SELECT_EFFECTYN:')
+          effect_end = duelclient.index('case MSG_SELECT_YESNO:', effect_start)
+          assert 'focus_two_v_one_private_effect' in duelclient[effect_start:effect_end]
 
           server = Path('gframe/generic_duel.cpp').read_text(encoding='utf-8')
           assert 'shared_two_v_one_field' in server
