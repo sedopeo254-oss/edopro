@@ -959,4 +959,72 @@ replace_once(
 )
 
 
+
+# ---------------------------------------------------------------------------
+# Close remaining replay/privacy parity gaps found by a full 3v1 -> 2v1 audit.
+# ---------------------------------------------------------------------------
+
+# CONFIRM_CARDS may reference a private pile that is not the currently projected
+# teammate. Reuse the same hidden-private rule in 2v1 so a replay cannot expose
+# or bind the wrong P1/P2 card.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''					|| (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+						&& !IsThreeVsOneReplayPrivateVisible(
+							core_controller, location, private_logical)));
+''',
+    '''					|| ((mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+							|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+						&& !IsThreeVsOneReplayPrivateVisible(
+							core_controller, location, private_logical)));
+''',
+)
+
+# SHUFFLE_HAND must not rebuild a hidden teammate's hand in replay, and the
+# visible P1/P2 hand uses the same instant reconcile policy as 3v1.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''				|| (mainGame->dInfo.isReplay
+					&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					&& !mainGame->dField.IsThreeVsOneReplayHandDisplayed(
+						mainGame->dInfo.GetLogicalPlayer(core_player)))) {
+''',
+    '''				|| (mainGame->dInfo.isReplay
+					&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+						|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+					&& !mainGame->dField.IsThreeVsOneReplayHandDisplayed(
+						mainGame->dInfo.GetLogicalPlayer(core_player)))) {
+''',
+)
+replace_once(
+    "gframe/duelclient.cpp",
+    '''		const bool instant_replay_hand = mainGame->dInfo.isReplay
+			&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1);
+''',
+    '''		const bool instant_replay_hand = mainGame->dInfo.isReplay
+			&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
+''',
+)
+
+# Deck Master replay summon: if a hidden logical Deck Master becomes public,
+# focus the real P1/P2 owner before animating it. 2v1 uses the same Deck Master
+# transport and replay projection as 3v1.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''		if(mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				&& summon_logical < mainGame->dInfo.team1
+				&& code == 153000012
+				&& mainGame->dField.attacker)
+''',
+    '''		if(mainGame->dInfo.isReplay
+				&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))
+				&& summon_logical < mainGame->dInfo.team1
+				&& code == 153000012
+				&& mainGame->dField.attacker)
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 client/server mode")
