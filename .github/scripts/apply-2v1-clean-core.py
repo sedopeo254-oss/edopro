@@ -219,4 +219,72 @@ replace_once(
     "\t\t\t\t? game_field.multiplayer.winner_team()\n",
 )
 
+
+
+# The solo opponent must choose which allied logical field to attack.
+replace_once(
+    "processor.cpp",
+    "\t\t} else if(multiplayer.mode() == MultiplayerMode::THREE_V_ONE && infos.turn_player == 1) {\n",
+    "\t\t} else if((multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE) && infos.turn_player == 1) {\n",
+)
+replace_once(
+    "processor.cpp",
+    "\t\t} else if(multiplayer.mode() == MultiplayerMode::THREE_V_ONE && infos.turn_player == 1\n"
+    "\t\t\t\t&& arg.attack_target_duelists.size() > 1) {\n",
+    "\t\t} else if((multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE) && infos.turn_player == 1\n"
+    "\t\t\t\t&& arg.attack_target_duelists.size() > 1) {\n",
+)
+replace_once(
+    "processor.cpp",
+    "\t\t\t} else if(multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t\t&& core.attack_target->current.controler == 0) {\n",
+    "\t\t\t} else if((multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE)\n"
+    "\t\t\t\t\t&& core.attack_target->current.controler == 0) {\n",
+)
+
+# Restrict target enumeration to the chosen P1/P2 field.
+replace_once(
+    "field.cpp",
+    "\t\treturn multiplayer.mode() == MultiplayerMode::THREE_V_ONE && p == 1\n"
+    "\t\t\t&& target_duelist < multiplayer.field_count(0)\n",
+    "\t\treturn (multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE) && p == 1\n"
+    "\t\t\t&& target_duelist < multiplayer.field_count(0)\n",
+)
+
+# Chain responses on the allied physical side are routed to the logical owner.
+replace_once(
+    "playerop.cpp",
+    "\tconst bool split_logical_prompt = !forced\n"
+    "\t\t&& ((multiplayer.mode() == MultiplayerMode::THREE_V_ONE && playerid == 0)\n"
+    "\t\t\t|| multiplayer.mode() == MultiplayerMode::BATTLE_ROYALE);\n",
+    "\tconst bool split_logical_prompt = !forced\n"
+    "\t\t&& (((multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE) && playerid == 0)\n"
+    "\t\t\t|| multiplayer.mode() == MultiplayerMode::BATTLE_ROYALE);\n",
+)
+
+# Team winner messages use winner_team just like 3v1.
+replace_once(
+    "processor.cpp",
+    "\t\t\t\t\twinner = multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t\t\t? multiplayer.winner_team()\n",
+    "\t\t\t\t\twinner = (multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE)\n"
+    "\t\t\t\t\t\t? multiplayer.winner_team()\n",
+)
+replace_once(
+    "libduel.cpp",
+    "\t\t\twinner = pduel->game_field->multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t? pduel->game_field->multiplayer.winner_team()\n",
+    "\t\t\twinner = (pduel->game_field->multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t\t|| pduel->game_field->multiplayer.mode() == MultiplayerMode::TWO_V_ONE)\n"
+    "\t\t\t\t? pduel->game_field->multiplayer.winner_team()\n",
+)
+
+print("Applied 2 vs 1 target routing, chain routing and team winner rules")
+
 print("Applied clean generic 2 vs 1 Core mode")
