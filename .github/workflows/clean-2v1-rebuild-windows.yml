@@ -133,6 +133,15 @@ jobs:
           shuffle_block = duelclient[shuffle_start:shuffle_end]
           assert 'DUEL_2_V_1' in shuffle_block
           assert 'instant_replay_hand' in shuffle_block
+
+          # The real replay uses MSG_DRAW, so this exact block must be 2v1-aware.
+          draw_start = duelclient.index('case MSG_DRAW:')
+          draw_end = duelclient.index('case MSG_DAMAGE:', draw_start)
+          draw_block = duelclient[draw_start:draw_end]
+          assert 'DUEL_2_V_1' in draw_block
+          assert 'UpdateMultiplayerPrivateDraw' in draw_block
+          assert 'ApplyThreeVsOneReplayPrivateDraw' in draw_block
+
           sp_start = duelclient.index('case MSG_SPSUMMONING:')
           sp_end = duelclient.index('case MSG_SPSUMMONED:', sp_start)
           sp_block = duelclient[sp_start:sp_end]
