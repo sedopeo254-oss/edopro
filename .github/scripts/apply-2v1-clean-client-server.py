@@ -1106,4 +1106,22 @@ replace_once(
 )
 
 
+
+# The supplied 2v1 replay uses ordinary MSG_DRAW packets (not the optional
+# MSG_MULTIPLAYER_DRAW transport). Route those draws through the same exact
+# logical private-pile path as 3v1, otherwise P1/P2 hands can be reconciled
+# against whichever teammate happens to be projected.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''		if(mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
+''',
+    '''		if(mainGame->dInfo.isReplay
+				&& (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))) {
+			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 client/server mode")
