@@ -68,6 +68,9 @@ jobs:
           # duplicate 2v1 win guard requires a fresh elimination in later
           # Adjust passes while leaving BR/3v1 behavior unchanged.
           assert 'multiplayer.mode() != MultiplayerMode::TWO_V_ONE || eliminated' in proc
+          # Eliminated real players keep their resource mapping; only the
+          # nonexistent 2v1 P4 slot is zero-filled.
+          assert 'side == MultiplayerState::NO_PLAYER || duelist == MultiplayerState::NO_PLAYER' in proc
 
           game = Path('gframe/game.cpp').read_text(encoding='utf-8')
           assert 'addItem(L"2 vs 1")' in game
