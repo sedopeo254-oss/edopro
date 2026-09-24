@@ -1979,7 +1979,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.isStarted = true;
 		mainGame->dInfo.active_player_mask = mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
 			? 0x07
-			: ((mainGame->dInfo.duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1)) ? 0x0f : 0x03);
+			: ((mainGame->dInfo.duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_2_V_1)) ? 0x0f : 0x03);
 		mainGame->dInfo.eliminated_player_mask = 0;
 		mainGame->dInfo.logical_turn_player = 0;
 		mainGame->dInfo.replay_battle_royale_perspective = 0xff;
@@ -3806,6 +3806,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			previous_logical, previous.location, previous.sequence,
 			current_logical, current.location, current.sequence,
 			code, static_cast<uint8_t>(current.position));
+		mainGame->dField.UpdateTwoVsOneTeamPublicMove(
+			previous_logical, previous.location, previous.sequence,
+			current_logical, current.location, current.sequence,
+			code, static_cast<uint8_t>(current.position));
 		auto MapDisplayControler = [&](CoreUtils::loc_info& info,
 				uint8_t core_player) {
 			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
@@ -3829,6 +3833,14 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					& (DUEL_BATTLE_ROYALE | DUEL_3_V_1))
 					|| core_player > 1 || !IsPrivatePile(info.location))
 				return false;
+			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					&& core_player == 0) {
+				if(info.location == LOCATION_GRAVE || info.location == LOCATION_REMOVED)
+					return info.duelist != mainGame->dInfo.field_focus[0];
+				const auto local = mainGame->dInfo.GetLocalLogicalPlayer();
+				return local >= mainGame->dInfo.team1
+					|| info.duelist != mainGame->dInfo.GetLocalDuelist();
+			}
 			if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
 				return GetPrivateDisplaySide(core_player, info.duelist) > 1;
 			if(mainGame->dInfo.isReplay
@@ -4631,7 +4643,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		uint32_t sounds = count;
 		if(mainGame->dInfo.isReplay) {
 			mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
-			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+					|| mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
 				const bool displayed =
 					mainGame->dField.IsThreeVsOneReplayHandDisplayed(logical_player);
 				if(displayed
@@ -4764,6 +4777,27 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					&& same_cards(previous.grave, snapshot.grave)
 					&& same_cards(previous.removed, snapshot.removed);
 			}();
+		if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
+			mainGame->dField.CacheMultiplayerPrivatePiles(
+				logical_player, snapshot);
+			const auto local_logical = mainGame->dInfo.GetLocalLogicalPlayer();
+			if(logical_player == local_logical && local_logical < 3) {
+				auto lock = LockIf();
+				const auto core_side =
+					mainGame->dInfo.GetLogicalCoreSide(logical_player);
+				mainGame->dField.ReplaceMultiplayerPrivatePiles(
+					mainGame->LocalPlayer(core_side), snapshot, false);
+				if(core_side == 0) {
+					const auto focused =
+						mainGame->dInfo.GetFocusedLogicalPlayer(0);
+					if(focused < mainGame->dInfo.team1
+							&& focused != logical_player)
+						mainGame->dField.ApplyTwoVsOneTeamPublicPiles(
+							focused);
+				}
+			}
+			return true;
+		}
 		if(multiplayer_battle_royale_live::ShouldCacheSnapshot(
 				mainGame->dInfo.isReplay,
 				mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE))
@@ -4806,6 +4840,37 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
 			mainGame->dField.ReplaceMultiplayerPrivatePiles(
 				mainGame->LocalPlayer(core_side), snapshot);
+		}
+		return true;
+	}
+	case MSG_MULTIPLAYER_TEAM_PUBLIC_PILES: {
+		const auto logical_player = BufferIO::Read<uint8_t>(pbuf);
+		MultiplayerTeamPublicPileSnapshot snapshot;
+		const auto grave_count = BufferIO::Read<uint32_t>(pbuf);
+		const auto removed_count = BufferIO::Read<uint32_t>(pbuf);
+		auto read_public = [&pbuf](auto& cards, uint32_t count) {
+			cards.reserve(count);
+			for(uint32_t i = 0; i < count; ++i) {
+				const auto code = BufferIO::Read<uint32_t>(pbuf);
+				const auto position = static_cast<uint8_t>(
+					BufferIO::Read<uint32_t>(pbuf));
+				cards.push_back({ code, position });
+			}
+		};
+		read_public(snapshot.grave, grave_count);
+		read_public(snapshot.removed, removed_count);
+		if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& logical_player < mainGame->dInfo.team1) {
+			mainGame->dField.CacheTwoVsOneTeamPublicPiles(
+				logical_player, snapshot);
+			if(mainGame->dInfo.GetLocalLogicalPlayer()
+						< mainGame->dInfo.team1
+					&& mainGame->dInfo.GetFocusedLogicalPlayer(0)
+						== logical_player) {
+				auto lock = LockIf();
+				mainGame->dField.ApplyTwoVsOneTeamPublicPiles(
+					logical_player);
+			}
 		}
 		return true;
 	}
@@ -5101,7 +5166,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			&& len >= 22;
 		const bool has_three_vs_one_target =
 			!mainGame->dInfo.compat_mode
-			&& mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+			&& (mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+				|| mainGame->dInfo.HasFieldFlag(DUEL_2_V_1))
 			&& len >= 21;
 		const auto attacker_logical = has_battle_royale_attack
 			? BufferIO::Read<uint8_t>(pbuf)
@@ -5128,7 +5194,18 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			&& attacker_logical != attack_target_logical
 			&& (mainGame->dInfo.active_player_mask & (1u << attacker_logical))
 			&& (mainGame->dInfo.active_player_mask & (1u << attack_target_logical));
-		if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
+		if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& valid_logical_attack) {
+			const auto allied = attacker_logical < mainGame->dInfo.team1
+				? attacker_logical
+				: (attack_target_logical < mainGame->dInfo.team1
+					? attack_target_logical : static_cast<uint8_t>(0xff));
+			if(allied < mainGame->dInfo.team1) {
+				mainGame->dInfo.field_focus[0] = allied;
+				mainGame->dField.ApplyTwoVsOneTeamPublicPiles(allied);
+				mainGame->dField.RefreshAllCards();
+			}
+		} else if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)
 				&& valid_logical_attack) {
 			SetThreeVsOneView(attacker_logical, attack_target_logical);
 		} else if(mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
@@ -5284,6 +5361,15 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	}
 	case MSG_DAMAGE_STEP_END: {
 		RestoreThreeVsOneReplayTurnView();
+		if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
+			const auto local = mainGame->dInfo.GetLocalLogicalPlayer();
+			if(local < mainGame->dInfo.team1) {
+				mainGame->dInfo.field_focus[0] =
+					mainGame->dInfo.GetLocalDuelist();
+				mainGame->dField.ApplyTwoVsOneTeamPublicPiles(local);
+				mainGame->dField.RefreshAllCards();
+			}
+		}
 		return true;
 	}
 	case MSG_MISSED_EFFECT: {
