@@ -320,4 +320,16 @@ replace_once(
 
 print("Applied 2 vs 1 target routing, chain routing and team winner rules")
 
+
+# Prevent duplicate MSG_WIN in 2v1. After the final elimination the multiplayer
+# state remains finished, so later Adjust passes must not publish another win
+# unless that pass actually eliminated someone. Existing BR/3v1 behavior stays
+# byte-for-byte unchanged.
+replace_once(
+    "processor.cpp",
+    "\t\t\tif(multiplayer.is_finished()) {\n",
+    "\t\t\tif(multiplayer.is_finished()\n"
+    "\t\t\t\t\t&& (multiplayer.mode() != MultiplayerMode::TWO_V_ONE || eliminated)) {\n",
+)
+
 print("Applied clean generic 2 vs 1 Core mode")
