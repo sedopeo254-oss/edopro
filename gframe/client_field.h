@@ -43,6 +43,11 @@ struct MultiplayerPrivatePileSnapshot {
 	std::vector<MultiplayerPrivatePileCard> removed;
 };
 
+struct MultiplayerTeamPublicPileSnapshot {
+	std::vector<MultiplayerPrivatePileCard> grave;
+	std::vector<MultiplayerPrivatePileCard> removed;
+};
+
 class ClientField final : public irr::IEventReceiver {
 public:
 	std::vector<ClientCard*> deck[2];
@@ -69,6 +74,8 @@ public:
 	int extra_p_count[2];
 	std::array<MultiplayerPrivatePileSnapshot, 4> multiplayer_private_piles;
 	std::array<bool, 4> multiplayer_private_piles_valid{};
+	std::array<MultiplayerTeamPublicPileSnapshot, 4> two_vs_one_team_public_piles;
+	std::array<bool, 4> two_vs_one_team_public_piles_valid{};
 	std::array<uint8_t, 2> multiplayer_displayed_field_logical{ 0xff, 0xff };
 	std::array<uint8_t, 2> multiplayer_displayed_hand_logical{ 0xff, 0xff };
 	multiplayer_battle_royale_replay::SnapshotBatch
@@ -136,6 +143,14 @@ public:
 	void RefreshHandHitboxes();
 	void CycleBattleRoyaleOpponent();
 	void CycleTeamField();
+	void CycleTwoVsOneTeamField();
+	void CacheTwoVsOneTeamPublicPiles(uint8_t logical_player,
+		const MultiplayerTeamPublicPileSnapshot& snapshot);
+	bool ApplyTwoVsOneTeamPublicPiles(uint8_t logical_player);
+	void UpdateTwoVsOneTeamPublicMove(uint8_t previous_logical,
+		uint8_t previous_location, uint32_t previous_sequence,
+		uint8_t current_logical, uint8_t current_location,
+		uint32_t current_sequence, uint32_t code, uint8_t position);
 	bool ReplaceMultiplayerPrivatePiles(uint8_t player,
 		const MultiplayerPrivatePileSnapshot& snapshot, bool clear_transient = true);
 	void CacheMultiplayerPrivatePiles(uint8_t logical_player, const MultiplayerPrivatePileSnapshot& snapshot);
