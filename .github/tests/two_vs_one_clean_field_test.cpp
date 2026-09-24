@@ -145,6 +145,35 @@ int main() {
         "P1 Deck Master must not leak into P2 field when P2 is projected");
     expect(field.tag_swap_to(0, 0), "test returns projection to P1");
 
+    // Logical field capacity must follow the card owner, not the teammate
+    // currently projected. Fill P2's five main monster zones while P1 remains
+    // partially empty, then verify a P2-owned unplaced card sees zero capacity.
+    for(uint8_t local_seq = 3; local_seq < 5; ++local_seq) {
+        auto* filler = game.new_card(13100 + local_seq);
+        filler->owner = 0;
+        filler->owner_duelist = 1;
+        field.add_card(0, filler, LOCATION_MZONE, local_seq, false, 1);
+    }
+    auto* p2_capacity_probe = game.new_card(13120);
+    p2_capacity_probe->owner = 0;
+    p2_capacity_probe->owner_duelist = 1;
+    p2_capacity_probe->current.controler = 0;
+    p2_capacity_probe->current.duelist = 1;
+    p2_capacity_probe->current.location = 0;
+    expect(field.get_useable_count(p2_capacity_probe, 0, LOCATION_MZONE, 0,
+            LOCATION_REASON_TOFIELD, 0x1f) == 0,
+        "P2 full field must block a P2-owned summon even while P1 is projected");
+
+    auto* p1_capacity_probe = game.new_card(13121);
+    p1_capacity_probe->owner = 0;
+    p1_capacity_probe->owner_duelist = 0;
+    p1_capacity_probe->current.controler = 0;
+    p1_capacity_probe->current.duelist = 0;
+    p1_capacity_probe->current.location = 0;
+    expect(field.get_useable_count(p1_capacity_probe, 0, LOCATION_MZONE, 0,
+            LOCATION_REASON_TOFIELD, 0x1f) > 0,
+        "P1 capacity must remain independent from P2's full field");
+
     expect(field.move_card(0, p2, LOCATION_GRAVE, 0),
         "P2 monster must move to P2 Graveyard");
     expect(field.get_logical_list(0, LOCATION_GRAVE, 1).front() == p2,
