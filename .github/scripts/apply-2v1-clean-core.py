@@ -285,6 +285,39 @@ replace_once(
     "\t\t\t\t? pduel->game_field->multiplayer.winner_team()\n",
 )
 
+
+# 2v1 inherits the 3v1 "Let me take it" interception rules.
+# The only difference is that the allied side has two logical players instead of three.
+replace_once(
+    "processor.cpp",
+    "\t\tconst bool three_vs_one_interception = multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t&& infos.turn_player == 1;\n",
+    "\t\tconst bool three_vs_one_interception = (multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE) && infos.turn_player == 1;\n",
+)
+replace_once(
+    "processor.cpp",
+    "\t\t\tif(three_vs_one_interception) {\n"
+    "\t\t\t\tfor(uint8_t logical_player = 0; logical_player < 3; ++logical_player) {\n",
+    "\t\t\tif(three_vs_one_interception) {\n"
+    "\t\t\t\tconst auto team_count = static_cast<uint8_t>(\n"
+    "\t\t\t\t\tmultiplayer.mode() == MultiplayerMode::TWO_V_ONE ? 2 : 3);\n"
+    "\t\t\t\tfor(uint8_t logical_player = 0; logical_player < team_count; ++logical_player) {\n",
+)
+replace_once(
+    "operations.cpp",
+    "\t\tconst bool three_vs_one_interception = multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t&& playerid == 0;\n",
+    "\t\tconst bool three_vs_one_interception = (multiplayer.mode() == MultiplayerMode::THREE_V_ONE\n"
+    "\t\t\t|| multiplayer.mode() == MultiplayerMode::TWO_V_ONE) && playerid == 0;\n",
+)
+replace_once(
+    "operations.cpp",
+    "\t\t\tconst auto last = three_vs_one_interception ? 3u : MultiplayerState::MAX_PLAYERS;\n",
+    "\t\t\tconst auto last = multiplayer.mode() == MultiplayerMode::TWO_V_ONE ? 2u\n"
+    "\t\t\t\t: three_vs_one_interception ? 3u : MultiplayerState::MAX_PLAYERS;\n",
+)
+
 print("Applied 2 vs 1 target routing, chain routing and team winner rules")
 
 print("Applied clean generic 2 vs 1 Core mode")
