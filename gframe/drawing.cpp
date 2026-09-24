@@ -182,7 +182,8 @@ void Game::DrawBackGround() {
 	if(dField.hovered_location == 0 || dField.hovered_location == LOCATION_HAND || dField.hovered_location == POSITION_HINT)
 		return;
 	uint32_t display_sequence = dField.hovered_sequence;
-	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)) {
+	if(dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+			|| dInfo.HasFieldFlag(DUEL_2_V_1)) {
 		if(dField.hovered_location == LOCATION_MZONE)
 			display_sequence %= 7u;
 		else if(dField.hovered_location == LOCATION_SZONE)
@@ -582,7 +583,9 @@ void Game::DrawMisc() {
 			const auto index = static_cast<size_t>(logical - dInfo.team1);
 			return index < team2_names.size() ? team2_names[index] : unknown;
 		};
-		for(uint8_t logical = 0; logical < 4; ++logical) {
+		const auto logical_player_count = static_cast<uint8_t>(
+			dInfo.team1 + dInfo.team2);
+		for(uint8_t logical = 0; logical < logical_player_count; ++logical) {
 			const irr::s32 left = 330 + logical * 165;
 			const auto panel = Resize(left, 8, left + 157, 44);
 			const bool eliminated = (dInfo.eliminated_player_mask & (1u << logical))
@@ -634,7 +637,8 @@ void Game::DrawMisc() {
 	//lp bar
 	const auto& self = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
 	const auto& oppo = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
-	const bool multiplayer_mode = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE) || dInfo.HasFieldFlag(DUEL_3_V_1);
+	const bool multiplayer_mode = dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+		|| dInfo.HasFieldFlag(DUEL_3_V_1) || dInfo.HasFieldFlag(DUEL_2_V_1);
 	const bool local_side_has_turn = multiplayer_mode
 		? ((dInfo.logical_turn_player < dInfo.team1) == dInfo.isTeam1)
 		: ((dInfo.turn % 2 && dInfo.isFirst) || (!(dInfo.turn % 2) && !dInfo.isFirst));
