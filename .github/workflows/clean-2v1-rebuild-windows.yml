@@ -187,11 +187,34 @@ jobs:
           effect_end = duelclient.index('case MSG_SELECT_YESNO:', effect_start)
           assert 'focus_two_v_one_private_effect' in duelclient[effect_start:effect_end]
 
+          # Swap Team must never erase a pending idle/selection/chain prompt.
+          cycle_start = client.index('void ClientField::CycleTeamField()')
+          cycle_end = client.index('void ClientField::GetChainDrawCoordinates', cycle_start)
+          cycle_block = client[cycle_start:cycle_end]
+          two_start = cycle_block.index('HasFieldFlag(DUEL_2_V_1)')
+          three_start = cycle_block.index('HasFieldFlag(DUEL_3_V_1)', two_start)
+          two_swap = cycle_block[two_start:three_start]
+          assert 'ClearSelect()' not in two_swap
+          assert 'ClearChainSelect()' not in two_swap
+          assert 'ClearCommandFlag()' not in two_swap
+          assert 'ApplyTwoVsOnePrivatePile' not in two_swap
+
+          core_field = Path('ocgcore/field.cpp').read_text(encoding='utf-8')
+          assert 'player[1].lp = 8000;' in core_field
+          assert 'player[1].start_lp = 8000;' in core_field
+          assert 'teammate_fusion_extra_only' in core_field
+          assert 'pcard->data.type & TYPE_FUSION' in core_field
+
           server = Path('gframe/generic_duel.cpp').read_text(encoding='utf-8')
           assert 'shared_two_v_one_field' in server
           assert 'ally_visible_card' in server
-          assert 'LOCATION_ONFIELD | LOCATION_GRAVE' in server
+          assert 'LOCATION_ONFIELD | LOCATION_GRAVE | LOCATION_EXTRA' in server
           assert 'info.position & POS_FACEUP' in server
+          assert 'solo_start_lp' in server
+          assert '(duel_flags & DUEL_2_V_1) ? 8000u' in server
+
+          assert 'logical_start_lp' in drawing
+          assert '? 8000 : std::max(1, dInfo.startlp)' in drawing
 
           # Deck Master loss logic must derive teams from logical side. P3 is
           # solo in 2v1 while P4 is solo in 3v1, so hard-coded p==3 is invalid.
