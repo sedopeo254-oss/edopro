@@ -87,7 +87,7 @@ int main() {
     initialize_extra_card(game, 1, 15003); // P2 non-Fusion Extra Deck monster
     auto shared_fusion_extra = game.new_group();
     field.filter_matching_card(0, 0, LOCATION_EXTRA, 0,
-        shared_fusion_extra.get(), nullptr, nullptr, 0);
+        shared_fusion_extra, nullptr, nullptr, 0);
     auto* p2_fusion = field.get_logical_list(0, LOCATION_EXTRA, 1)[0];
     auto* p2_nonfusion = field.get_logical_list(0, LOCATION_EXTRA, 1)[1];
     expect(shared_fusion_extra->container.find(p2_fusion)
