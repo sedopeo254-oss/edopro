@@ -331,20 +331,13 @@ new_cycle = r'''void ClientField::CycleTeamField() {
 			(mainGame->dInfo.field_focus[0] + 1) % 2);
 		const auto logical = mainGame->dInfo.GetFocusedLogicalPlayer(0);
 		hovered_card = nullptr;
-		clicked_card = nullptr;
-		command_card = nullptr;
 		hovered_location = 0;
 		hovered_sequence = 0;
-		ClearSelect();
-		ClearChainSelect();
-		ClearCommandFlag();
-		selectable_cards.clear();
-		selected_cards.clear();
+		// Live Swap Team is view-only. Never destroy the current idle/select/
+		// chain command state while the Core is waiting for this client.
 		if(mainGame->dInfo.isReplay) {
 			mainGame->dInfo.SetThreeVsOneReplayHandPolicy(logical);
 			ApplyThreeVsOneReplayPrivatePiles();
-		} else if(mainGame->dInfo.GetLocalLogicalPlayer() < 2) {
-			ApplyTwoVsOnePrivatePile(logical, false);
 		}
 		RefreshLogicalDeckMasters();
 		RefreshAllCards();
@@ -498,7 +491,7 @@ for signature in ["case MSG_SELECT_CARD: {", "case MSG_SELECT_UNSELECT_CARD: {"]
 					|| (logical_selector && info_logical != logical_player))'''
     new = '''const bool ally_visible_card = shared_two_v_one_field
 					&& info.controler == 0
-					&& ((info.location & (LOCATION_ONFIELD | LOCATION_GRAVE))
+					&& ((info.location & (LOCATION_ONFIELD | LOCATION_GRAVE | LOCATION_EXTRA))
 						|| ((info.location & LOCATION_REMOVED)
 							&& (info.position & POS_FACEUP)));
 				if(info.controler != visible_side
@@ -1320,6 +1313,72 @@ replace_once(
 		}
 		return true;
 	};
+''',
+)
+
+
+
+# Fixed 8000 LP for the solo P3 in 2v1. P1/P2 retain the room's configured LP.
+replace_once(
+    "gframe/generic_duel.cpp",
+    '''	OCG_Player team = { host_info.start_lp, host_info.start_hand, host_info.draw_count };
+	pduel = mainGame->SetupDuel({ { seed[0], seed[1], seed[2], seed[3] }, opt, team, team });
+''',
+    '''	const uint32_t solo_start_lp =
+		(duel_flags & DUEL_2_V_1) ? 8000u : host_info.start_lp;
+	OCG_Player team1 = { host_info.start_lp, host_info.start_hand, host_info.draw_count };
+	OCG_Player team2 = { solo_start_lp, host_info.start_hand, host_info.draw_count };
+	pduel = mainGame->SetupDuel({ { seed[0], seed[1], seed[2], seed[3] }, opt, team1, team2 });
+''',
+)
+
+replace_once(
+    "gframe/generic_duel.cpp",
+    '''	BufferIO::Write<uint32_t>(pbuf, host_info.start_lp);
+	BufferIO::Write<uint32_t>(pbuf, host_info.start_lp);
+''',
+    '''	BufferIO::Write<uint32_t>(pbuf, host_info.start_lp);
+	BufferIO::Write<uint32_t>(pbuf, solo_start_lp);
+''',
+)
+
+# Initialize logical LP immediately from the asymmetric MSG_START payload so
+# the HUD is correct even before the first multiplayer turn snapshot arrives.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''		for(uint8_t logical = 0; logical < 4; ++logical) {
+			mainGame->dInfo.logical_lp[logical] = mainGame->dInfo.startlp;
+			mainGame->dInfo.logical_strLP[logical] = epro::to_wstring(mainGame->dInfo.startlp);
+		}
+''',
+    '''		if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
+			const auto team_lp = mainGame->dInfo.lp[mainGame->LocalPlayer(0)];
+			const auto solo_lp = mainGame->dInfo.lp[mainGame->LocalPlayer(1)];
+			for(uint8_t logical = 0; logical < 4; ++logical) {
+				const int value = logical < mainGame->dInfo.team1 ? team_lp
+					: logical == mainGame->dInfo.team1 ? solo_lp : 0;
+				mainGame->dInfo.logical_lp[logical] = value;
+				mainGame->dInfo.logical_strLP[logical] = epro::to_wstring(value);
+			}
+		} else {
+			for(uint8_t logical = 0; logical < 4; ++logical) {
+				mainGame->dInfo.logical_lp[logical] = mainGame->dInfo.startlp;
+				mainGame->dInfo.logical_strLP[logical] = epro::to_wstring(mainGame->dInfo.startlp);
+			}
+		}
+''',
+)
+
+# The solo player's LP bar uses 8000 as its own maximum rather than the allied
+# 4000 starting value used by the shared HUD denominator.
+replace_once(
+    "gframe/drawing.cpp",
+    '''			const auto ratio = std::clamp(lp / static_cast<double>(std::max(1, dInfo.startlp)), 0.0, 1.0);
+''',
+    '''			const auto logical_start_lp =
+				dInfo.HasFieldFlag(DUEL_2_V_1) && logical >= dInfo.team1
+					? 8000 : std::max(1, dInfo.startlp);
+			const auto ratio = std::clamp(lp / static_cast<double>(logical_start_lp), 0.0, 1.0);
 ''',
 )
 
