@@ -156,6 +156,8 @@ replace_once(
     "\t\tplayer[0].list_szone.resize(16, nullptr);\n"
     "\t\tplayer[0].extra_used_location.resize(1, 0);\n"
     "\t\tplayer[0].extra_disabled_location.resize(1, 0);\n"
+    "\t\tplayer[1].lp = 8000;\n"
+    "\t\tplayer[1].start_lp = 8000;\n"
     "\t} else if(options.flags & DUEL_3_V_1) {\n",
 )
 
@@ -523,6 +525,81 @@ replace_once(
 	pcard->current.duelist = logical_duelist;
 ''',
 )
+
+
+
+# Shared Fusion Extra Deck access for 2v1.
+# The allied side may use Fusion Monsters from either P1 or P2 Extra Deck,
+# while non-Fusion Extra Deck monsters remain private to their owner.
+field_text = read("field.cpp")
+fm_start = field_text.index("int32_t field::filter_matching_card(")
+fm_end = field_text.index("\n// Duel.GetFieldGroup(), Duel.GetFieldGroupCount()", fm_start)
+fm = field_text[fm_start:fm_end]
+
+old_scope = '''	struct effect_scope {
+		uint8_t side;
+		uint8_t duelist;
+		uint32_t location;
+	};
+'''
+new_scope = '''	struct effect_scope {
+		uint8_t side;
+		uint8_t duelist;
+		uint32_t location;
+		bool teammate_fusion_extra_only{ false };
+	};
+'''
+if old_scope not in fm:
+    raise SystemExit("filter_matching_card effect_scope anchor missing")
+fm = fm.replace(old_scope, new_scope, 1)
+
+old_scopes = '''	} else {
+		scopes.push_back({ self, get_effect_duelist(self), location1 });
+		scopes.push_back({ static_cast<uint8_t>(1 - self),
+			get_effect_duelist(static_cast<uint8_t>(1 - self)), location2 });
+	}
+'''
+new_scopes = '''	} else if(multiplayer.mode() == MultiplayerMode::TWO_V_ONE && self == 0) {
+		const auto origin_duelist = get_effect_duelist(self);
+		scopes.push_back({ self, origin_duelist, location1 });
+		if(location1 & LOCATION_EXTRA) {
+			for(uint8_t duelist = 0; duelist < multiplayer.field_count(0); ++duelist) {
+				if(duelist == origin_duelist)
+					continue;
+				const auto logical = multiplayer.logical_player(0, duelist);
+				if(multiplayer.is_active(logical))
+					scopes.push_back({ 0, duelist, LOCATION_EXTRA, true });
+			}
+		}
+		scopes.push_back({ 1, get_effect_duelist(1), location2 });
+	} else {
+		scopes.push_back({ self, get_effect_duelist(self), location1 });
+		scopes.push_back({ static_cast<uint8_t>(1 - self),
+			get_effect_duelist(static_cast<uint8_t>(1 - self)), location2 });
+	}
+'''
+if old_scopes not in fm:
+    raise SystemExit("filter_matching_card scope construction anchor missing")
+fm = fm.replace(old_scopes, new_scopes, 1)
+
+old_extra = '''		if((location & LOCATION_EXTRA) && check_list(get_logical_list(side, LOCATION_EXTRA, logical_duelist), checkc))
+			return TRUE;
+'''
+new_extra = '''		if(location & LOCATION_EXTRA) {
+			auto extra_check = [&](card* pcard) {
+				return (!scope.teammate_fusion_extra_only
+						|| (pcard && (pcard->data.type & TYPE_FUSION)))
+					&& checkc(pcard);
+			};
+			if(check_list(get_logical_list(side, LOCATION_EXTRA, logical_duelist), extra_check))
+				return TRUE;
+		}
+'''
+if old_extra not in fm:
+    raise SystemExit("filter_matching_card Extra Deck anchor missing")
+fm = fm.replace(old_extra, new_extra, 1)
+
+write("field.cpp", field_text[:fm_start] + fm + field_text[fm_end:])
 
 
 print("Applied clean generic 2 vs 1 Core mode")
