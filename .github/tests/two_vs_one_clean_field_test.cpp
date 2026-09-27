@@ -2,6 +2,7 @@
 #include "duel.h"
 #include "effect.h"
 #include "field.h"
+#include "group.h"
 #include "ocgapi.h"
 
 #include <cstdlib>
@@ -17,6 +18,8 @@ void read_card(void*, uint32_t code, OCG_CardData* data) {
     *data = {};
     data->code = code;
     data->type = TYPE_MONSTER;
+    if(code == 15002)
+        data->type |= TYPE_FUSION;
 }
 void read_card_done(void*, OCG_CardData*) {}
 int read_script(void*, OCG_Duel, const char*) { return 0; }
@@ -25,6 +28,12 @@ void log_message(void*, const char*, int) {}
 void initialize_extra_duelist(duel& game, uint8_t duelist_index, uint32_t code) {
     const OCG_NewCardInfo info{
         0, duelist_index, code, 0, LOCATION_DECK, 0, POS_FACEDOWN_DEFENSE
+    };
+    OCG_DuelNewCard(&game, &info);
+}
+void initialize_extra_card(duel& game, uint8_t duelist_index, uint32_t code) {
+    const OCG_NewCardInfo info{
+        0, duelist_index, code, 0, LOCATION_EXTRA, 0, POS_FACEDOWN_DEFENSE
     };
     OCG_DuelNewCard(&game, &info);
 }
@@ -69,6 +78,24 @@ int main() {
     initialize_extra_duelist(game, 1, 11001);
     expect(field.get_logical_list(0, LOCATION_DECK, 1).size() == 1,
         "P2 Deck must be independent from P1 Deck");
+    expect(field.get_logical_lp(0, 0) == 4000
+        && field.get_logical_lp(0, 1) == 4000
+        && field.get_logical_lp(1, 0) == 8000,
+        "2v1 must start P1/P2 at 4000 and solo P3 at fixed 8000 LP");
+
+    initialize_extra_card(game, 1, 15002); // P2 Fusion Monster
+    initialize_extra_card(game, 1, 15003); // P2 non-Fusion Extra Deck monster
+    auto shared_fusion_extra = game.new_group();
+    field.filter_matching_card(0, 0, LOCATION_EXTRA, 0,
+        shared_fusion_extra.get(), nullptr, nullptr, 0);
+    auto* p2_fusion = field.get_logical_list(0, LOCATION_EXTRA, 1)[0];
+    auto* p2_nonfusion = field.get_logical_list(0, LOCATION_EXTRA, 1)[1];
+    expect(shared_fusion_extra->container.find(p2_fusion)
+            != shared_fusion_extra->container.end(),
+        "P1 must be able to see P2 Fusion Monsters as Fusion summon candidates");
+    expect(shared_fusion_extra->container.find(p2_nonfusion)
+            == shared_fusion_extra->container.end(),
+        "P2 non-Fusion Extra Deck monsters must remain private to P2");
 
     auto* p1 = game.new_card(12001);
     p1->owner = 0;
