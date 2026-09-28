@@ -264,6 +264,25 @@ jobs:
           print('clean 2v1 architecture guards passed')
           PY
 
+      - name: Validate multiplayer anime Lua syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          LUA="$PWD/ocgcore/lua/src"
+          BUILD="${TMPDIR:-/tmp}/clean-two-v-one-lua"
+          mkdir -p "$BUILD"
+          sources=()
+          for source in "$LUA"/*.c; do
+            case "$(basename "$source")" in
+              luac.c|ltests.c|onelua.c) continue ;;
+            esac
+            sources+=("$source")
+          done
+          cc -std=c99 -O2 -I"$LUA" "${sources[@]}" -ldl -lm -o "$BUILD/lua"
+          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-deck-master/c153000000.lua; do
+            "$BUILD/lua" -e "assert(loadfile('$script'))"
+          done
+
       - name: Compile and run clean 2v1 Core integration
         shell: bash
         run: |
