@@ -37,6 +37,23 @@ if not DeckMaster then
 		end
 		return Duel.GetFieldGroup(p,locations,0)
 	end
+	local function is_team_vs_solo_mode()
+		if Duel.GetActiveLogicalPlayerMask()==0 then return false end
+		local side0,side1=0,0
+		for p=0,3 do
+			local side=Duel.GetLogicalPlayerSide(p)
+			if side==0 then side0=side0+1
+			elseif side==1 then side1=side1+1 end
+		end
+		return side0>=2 and side1==1
+	end
+	local function enable_team_loss_protection(p,c)
+		if not c or not is_team_vs_solo_mode() then return end
+		local side=player_side(p)
+		if side==0 and TEAM_SHARED_DECK_MASTERS[c:GetOriginalCode()] then
+			DeckMaster.TeamLossProtected[side]=true
+		end
+	end
 
 	function Card.IsDeckMaster(c)
 		return c:GetFlagEffect(FLAG_DECK_MASTER)>0
@@ -63,6 +80,7 @@ if not DeckMaster then
 
 	function Card.MoveToDeckMasterZone(c,p)
 		p=p or c:GetLogicalOwner()
+		enable_team_loss_protection(p,c)
 		Duel.DisableShuffleCheck()
 		Duel.SendtoDeck(c,nil,-2,REASON_RULE)
 		if Duel.GetActiveLogicalPlayerMask()~=0 then
@@ -135,10 +153,6 @@ if not DeckMaster then
 				--Dark Flare Knight / Mirage Knight are team-wide Deck Masters:
 				--once selected by an allied logical player, Deck Master loss can
 				--never eliminate P1/P2/P3 allies for the rest of that duel.
-				if Duel.GetActiveLogicalPlayerMask()~=0 and side==0
-					and TEAM_SHARED_DECK_MASTERS[dmc] then
-					DeckMaster.TeamLossProtected[side]=true
-				end
 				local dg=get_player_cards(p,LOCATION_ALL):Filter(Card.IsOriginalCode,nil,dmc)
 				local remove_copy=#dg==3
 					or (#dg>0 and Duel.SelectYesNoPlayer(
@@ -217,9 +231,11 @@ if not DeckMaster then
 		local g=eg:Filter(Card.IsDeckMaster,nil)
 		for tc in aux.Next(g) do
 			if tc:GetReason()&REASON_BATTLE==0 and tc:GetReasonCard() then
-				tc:GetReasonCard():RegisterFlagEffect(FLAG_DECK_MASTER,
+				local rc=tc:GetReasonCard()
+				rc:RegisterFlagEffect(FLAG_DECK_MASTER,
 					RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 					EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+				enable_team_loss_protection(rc:GetLogicalControler(),rc)
 			end
 		end
 	end
@@ -243,6 +259,7 @@ if not DeckMaster then
 					dm:RegisterFlagEffect(FLAG_DECK_MASTER,
 						RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 						EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+					enable_team_loss_protection(p,dm)
 				end
 			end
 		end
