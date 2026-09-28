@@ -351,6 +351,51 @@ jobs:
           rm -f deploy/compressed-ygopro.exe
           test -f deploy/ygopro.exe
 
+      - name: Microsoft Defender scan and SHA-256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $deploy = (Resolve-Path "deploy").Path
+          $exe = (Resolve-Path "deploy\ygopro.exe").Path
+
+          if (Test-Path "deploy\compressed-ygopro.exe") {
+            throw "compressed-ygopro.exe must never be shipped"
+          }
+
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
+          $sig = Get-AuthenticodeSignature $exe
+
+          $security = @(
+            "EDOPro clean 2v1 security manifest"
+            "Commit: $env:GITHUB_SHA"
+            "ygopro.exe SHA-256: $hash"
+            "Authenticode status: $($sig.Status)"
+            "UPX/compressed executable: absent"
+          )
+
+          $mp = Get-MpComputerStatus
+          $security += "Microsoft Defender antivirus enabled: $($mp.AntivirusEnabled)"
+          $security += "Microsoft Defender engine: $($mp.AMEngineVersion)"
+          $security += "Microsoft Defender signatures: $($mp.AntivirusSignatureVersion)"
+          if (-not $mp.AntivirusEnabled) {
+            throw "Microsoft Defender is unavailable on the build runner; refusing to label this artifact scanned"
+          }
+
+          Start-MpScan -ScanType CustomScan -ScanPath $deploy
+
+          $detections = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            ($_.Resources -join " ") -like "*$deploy*"
+          })
+          if ($detections.Count -gt 0) {
+            $detections | Format-List * | Out-String | Write-Host
+            throw "Microsoft Defender detected a threat in the packaged build"
+          }
+
+          $security += "Microsoft Defender custom scan: PASS - no detections"
+          New-Item -ItemType Directory -Force "deploy\mode-info" | Out-Null
+          $security | Set-Content -Encoding UTF8 "deploy\mode-info\SECURITY.txt"
+          $security | ForEach-Object { Write-Host $_ }
+
       - name: Windows startup smoke test
         shell: pwsh
         run: |
