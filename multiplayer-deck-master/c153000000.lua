@@ -89,8 +89,10 @@ if not DeckMaster then
 		local c=DeckMasterZone[p]
 		if not c then return false end
 		local side=player_side(p)
+		local ignore_condition=TEAM_SHARED_DECK_MASTERS[c:GetOriginalCode()] or false
 		Duel.ClearDeckMasterZonePlayer(p)
-		local res=Duel.SpecialSummon(c,0,side,side,false,false,POS_FACEUP)
+		local res=Duel.SpecialSummon(c,0,side,side,ignore_condition,false,POS_FACEUP)
+		if res>0 and ignore_condition then c:CompleteProcedure() end
 		c:RegisterFlagEffect(FLAG_DECK_MASTER,
 			RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 			EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
@@ -197,8 +199,9 @@ if not DeckMaster then
 		local p=e:GetLabel()
 		local dm=DeckMasterZone[p]
 		local side=player_side(p)
+		local ignore_condition=dm and TEAM_SHARED_DECK_MASTERS[dm:GetOriginalCode()] or false
 		return Duel.IsMainPhase() and is_active_player(p) and dm
-			and dm:IsCanBeSpecialSummoned(e,0,side,false,false)
+			and dm:IsCanBeSpecialSummoned(e,0,side,ignore_condition,false)
 			and Duel.GetLocationCount(side,LOCATION_MZONE)>0
 	end
 	function DeckMaster.spop(e,tp,eg,ep,ev,re,r,rp)
