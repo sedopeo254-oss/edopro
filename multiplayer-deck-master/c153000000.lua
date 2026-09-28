@@ -1,5 +1,5 @@
 --Deck Master System
---Independent logical-player implementation for normal duels and 3v1
+--Independent logical-player implementation for normal duels, 2v1 and 3v1
 local s,id=GetID()
 
 function s.initial_effect(c)
@@ -9,8 +9,14 @@ end
 if not DeckMaster then
 	DeckMaster={}
 	DeckMaster.Abilities={}
+	DeckMaster.TeamLossProtected={}
 	DeckMasterZone={}
 	FLAG_DECK_MASTER=id
+	local TEAM_SHARED_DECK_MASTERS={
+		[13722870]=true,   --Dark Flare Knight
+		[120000336]=true, --Mirage Knight (Anime custom)
+		[49217579]=true   --Mirage Knight
+	}
 
 	local function active_mask()
 		local mask=Duel.GetActiveLogicalPlayerMask()
@@ -123,6 +129,14 @@ if not DeckMaster then
 			if is_active_player(p) then
 				local dmc=Duel.SelectCardsFromCodesPlayer(
 					p,1,1,false,false,table.unpack(DeckMasterTableSelect))
+				local side=player_side(p)
+				--Dark Flare Knight / Mirage Knight are team-wide Deck Masters:
+				--once selected by an allied logical player, Deck Master loss can
+				--never eliminate P1/P2/P3 allies for the rest of that duel.
+				if Duel.GetActiveLogicalPlayerMask()~=0 and side==0
+					and TEAM_SHARED_DECK_MASTERS[dmc] then
+					DeckMaster.TeamLossProtected[side]=true
+				end
 				local dg=get_player_cards(p,LOCATION_ALL):Filter(Card.IsOriginalCode,nil,dmc)
 				local remove_copy=#dg==3
 					or (#dg>0 and Duel.SelectYesNoPlayer(
@@ -238,8 +252,11 @@ if not DeckMaster then
 			local surviving_allies,surviving_solo=0,0
 			for p=0,3 do
 				if Duel.IsLogicalPlayerActive(p) then
-					local has_dm=Duel.GetDeckMasterPlayer(p)~=nil
 					local side=player_side(p)
+					local has_dm=Duel.GetDeckMasterPlayer(p)~=nil
+					if side==0 and DeckMaster.TeamLossProtected[side] then
+						has_dm=true
+					end
 					if side==0 then
 						active_allies=active_allies+1
 						if has_dm then surviving_allies=surviving_allies+1 end
@@ -287,12 +304,14 @@ if not DeckMaster then
 		153000001,153000002,153000003,153000004,153000005,
 		153000006,153000007,153000008,153000009,153000010,
 		153000011,153000012,153000013,153000014,153000015,
-		153000016,153000017
+		153000016,153000017,
+		13722870,120000336,49217579
 	}
 	DeckMasterTable={
 		153000001,153000002,153000003,153000004,153000005,
 		153000006,153000007,153000008,153000009,153000010,
 		153000011,153000012,153000013,153000014,153000015,
-		153000016,153000017,153000018
+		153000016,153000017,153000018,
+		13722870,120000336,49217579
 	}
 end
