@@ -222,6 +222,40 @@ jobs:
           assert 'local side=player_side(p)' in dm
           assert 'if player_side(p)==1 then' in dm
           assert 'if player_side(p)==0 then' in dm
+          assert 'DeckMaster.TeamLossProtected' in dm
+          assert '[13722870]=true' in dm
+          assert '[120000336]=true' in dm
+          assert '[49217579]=true' in dm
+          assert 'ignore_condition=TEAM_SHARED_DECK_MASTERS' in dm
+
+          dark_flare = Path('multiplayer-anime-cards/c13722870.lua').read_text(encoding='utf-8')
+          assert 'SetCode(511004016)' in dark_flare
+          assert 'MIRAGE_KNIGHT_ANIME=120000336' in dark_flare
+
+          mirage = Path('multiplayer-anime-cards/c120000336.lua').read_text(encoding='utf-8')
+          assert 'EFFECT_TYPE_FIELD+EFFECT_TYPE_TRIGGER_O' in mirage
+          assert 'Duel.GetPlayerFieldGroup' in mirage
+          assert 'GetLogicalOwner()' in mirage
+          assert 'summon_to_true_owner' in mirage
+
+          deal = Path('multiplayer-anime-cards/c99900043.lua').read_text(encoding='utf-8')
+          assert 'EVENT_PRE_BATTLE_DAMAGE' in deal
+          assert 'STATUS_BATTLE_RESULT' in deal
+          assert 'Duel.ChangeBattleDamage(tp,0)' in deal
+          assert 'math.floor(Duel.GetLP(tp)/2)' in deal
+          assert 'EVENT_DESTROYED' in deal
+
+          # P3 attack guidance in 2v1: the Core must present logical P1/P2
+          # options first, and the client must render the real player names.
+          proc_attack = proc[proc.index('attack_target_duelists.clear()'):]
+          assert 'MultiplayerMode::TWO_V_ONE' in proc_attack
+          assert 'MULTIPLAYER_OPTION_PLAYER_BASE | logical_player' in proc_attack
+          assert 'core.attack_target_logical = multiplayer.logical_player' in proc_attack
+          option_text = client[client.index('std::wstring ClientField::GetOptionText'):]
+          assert 'P{} {}' in option_text
+          attack_client = duelclient[duelclient.index('case MSG_ATTACK:'):]
+          assert 'ResolveLogicalTarget' in attack_client
+          assert 'SetThreeVsOneView(attacker_logical, attack_target_logical)' in attack_client
 
           # No legacy Big Five mode is part of the clean implementation.
           for p in ['.github/scripts/apply-2v1-clean-core.py',
@@ -332,8 +366,14 @@ jobs:
           mkdir -p deploy/mode-info deploy/expansions/script
           cp multiplayer-deck-master/c153999999.lua deploy/expansions/script/c153999999.lua
           cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
+          cp multiplayer-anime-cards/c13722870.lua deploy/expansions/script/c13722870.lua
+          cp multiplayer-anime-cards/c120000336.lua deploy/expansions/script/c120000336.lua
+          cp multiplayer-anime-cards/c99900043.lua deploy/expansions/script/c99900043.lua
           test -f deploy/expansions/script/c153999999.lua
           test -f deploy/expansions/script/c153000000.lua
+          test -f deploy/expansions/script/c13722870.lua
+          test -f deploy/expansions/script/c120000336.lua
+          test -f deploy/expansions/script/c99900043.lua
 
           cat > deploy/mode-info/2-vs-1-clean.txt <<'EOF'
           Clean 2 vs 1 mode
