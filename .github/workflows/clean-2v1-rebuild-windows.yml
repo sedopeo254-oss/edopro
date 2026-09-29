@@ -238,6 +238,7 @@ jobs:
           assert 'DeckMaster.DragonRevivalDeckMasters' in dm
           assert 'DeckMaster.DragonRevivalMerged' in dm
           assert 'DeckMaster.DragonRevivalResolving' in dm
+          assert 'DeckMaster.DragonRevivalConsumed' in dm
           assert 'DeckMaster.CanCallDragonRevivalMasters' in dm
           assert 'DeckMaster.CallDragonRevivalMasters' in dm
           assert 'DeckMaster.FinishDragonRevival' in dm
