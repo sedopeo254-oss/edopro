@@ -10,6 +10,10 @@ if not DeckMaster then
 	DeckMaster={}
 	DeckMaster.Abilities={}
 	DeckMaster.TeamLossProtected={}
+	DeckMaster.TeamSharedCode={}
+	DeckMaster.TeamSharedOwner={}
+	DeckMaster.TeamSharedCard={}
+	DeckMaster.TeamSharedMode=false
 	DeckMasterZone={}
 	FLAG_DECK_MASTER=id
 	local TEAM_SHARED_DECK_MASTERS={
@@ -47,12 +51,43 @@ if not DeckMaster then
 		end
 		return side0>=2 and side1==1
 	end
-	local function enable_team_loss_protection(p,c)
-		if not c or not is_team_vs_solo_mode() then return end
+	local function is_shared_code(code)
+		return code and TEAM_SHARED_DECK_MASTERS[code] or false
+	end
+	function DeckMaster.EnableTeamSharedDeckMasterMode()
+		DeckMaster.TeamSharedMode=is_team_vs_solo_mode()
+		return DeckMaster.TeamSharedMode
+	end
+	local function team_shared_enabled_for(p)
+		return DeckMaster.TeamSharedMode and is_team_vs_solo_mode() and player_side(p)==0
+	end
+	local function mark_team_shared_master(p,c,code)
+		if not team_shared_enabled_for(p) then return false end
+		code=code or (c and c:GetOriginalCode())
+		if not is_shared_code(code) then return false end
 		local side=player_side(p)
-		if side==0 and TEAM_SHARED_DECK_MASTERS[c:GetOriginalCode()] then
-			DeckMaster.TeamLossProtected[side]=true
+		DeckMaster.TeamLossProtected[side]=true
+		DeckMaster.TeamSharedCode[side]=code
+		DeckMaster.TeamSharedOwner[side]=p
+		if c then DeckMaster.TeamSharedCard[side]=c end
+		return true
+	end
+	local function shared_master_for(p)
+		if not team_shared_enabled_for(p) then return nil end
+		local side=player_side(p)
+		if not DeckMaster.TeamSharedCode[side] then return nil end
+		local remembered=DeckMaster.TeamSharedCard[side]
+		if remembered then return remembered end
+		for q=0,3 do
+			if player_side(q)==side then
+				local dm=DeckMasterZone[q]
+				if dm and is_shared_code(dm:GetOriginalCode()) then
+					DeckMaster.TeamSharedCard[side]=dm
+					return dm
+				end
+			end
 		end
+		return nil
 	end
 
 	function Card.IsDeckMaster(c)
@@ -65,22 +100,26 @@ if not DeckMaster then
 	function Duel.GetDeckMasterPlayer(p)
 		local dm=DeckMasterZone[p]
 		if dm then return dm end
-		return get_player_cards(p,LOCATION_MZONE):Filter(Card.IsLogicalDeckMaster,nil,p):GetFirst()
+		dm=get_player_cards(p,LOCATION_MZONE):Filter(Card.IsLogicalDeckMaster,nil,p):GetFirst()
+		if dm then return dm end
+		return shared_master_for(p)
 	end
 	function Duel.GetDeckMaster(p)
 		return Duel.GetDeckMasterPlayer(resolve_player(p))
 	end
 	function Duel.IsDeckMasterPlayer(p,code)
 		local dm=Duel.GetDeckMasterPlayer(p)
-		return dm and dm:IsOriginalCode(code)
+		if dm and dm:IsOriginalCode(code) then return true end
+		return team_shared_enabled_for(p)
+			and DeckMaster.TeamSharedCode[player_side(p)]==code
 	end
 	function Duel.IsDeckMaster(p,code)
 		return Duel.IsDeckMasterPlayer(resolve_player(p),code)
 	end
 
-	function Card.MoveToDeckMasterZone(c,p)
+	function Card.MoveToDeckMasterZone(c,p,known_code)
 		p=p or c:GetLogicalOwner()
-		enable_team_loss_protection(p,c)
+		mark_team_shared_master(p,c,known_code)
 		Duel.DisableShuffleCheck()
 		Duel.SendtoDeck(c,nil,-2,REASON_RULE)
 		if Duel.GetActiveLogicalPlayerMask()~=0 then
@@ -111,6 +150,7 @@ if not DeckMaster then
 		Duel.ClearDeckMasterZonePlayer(p)
 		local res=Duel.SpecialSummon(c,0,side,side,ignore_condition,false,POS_FACEUP)
 		if res>0 and ignore_condition then c:CompleteProcedure() end
+		mark_team_shared_master(p,c,c:GetOriginalCode())
 		c:RegisterFlagEffect(FLAG_DECK_MASTER,
 			RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 			EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
@@ -150,9 +190,12 @@ if not DeckMaster then
 				local dmc=Duel.SelectCardsFromCodesPlayer(
 					p,1,1,false,false,table.unpack(DeckMasterTableSelect))
 				local side=player_side(p)
-				--Dark Flare Knight / Mirage Knight are team-wide Deck Masters:
-				--once selected by an allied logical player, Deck Master loss can
-				--never eliminate P1/P2/P3 allies for the rest of that duel.
+				--Register the shared team identity directly from the selected code.
+				if team_shared_enabled_for(p) and is_shared_code(dmc) then
+					DeckMaster.TeamLossProtected[side]=true
+					DeckMaster.TeamSharedCode[side]=dmc
+					DeckMaster.TeamSharedOwner[side]=p
+				end
 				local dg=get_player_cards(p,LOCATION_ALL):Filter(Card.IsOriginalCode,nil,dmc)
 				local remove_copy=#dg==3
 					or (#dg>0 and Duel.SelectYesNoPlayer(
@@ -163,7 +206,7 @@ if not DeckMaster then
 					Duel.SendtoDeck(dg:GetFirst(),nil,-2,REASON_RULE)
 				end
 				local t=Duel.CreateTokenPlayer(p,dmc)
-				t:MoveToDeckMasterZone(p)
+				t:MoveToDeckMasterZone(p,dmc)
 
 				--Each Deck Master gets its own free-chain summon effect. Its
 				--handler identifies which logical teammate must receive prompts.
@@ -235,7 +278,7 @@ if not DeckMaster then
 				rc:RegisterFlagEffect(FLAG_DECK_MASTER,
 					RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 					EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
-				enable_team_loss_protection(rc:GetLogicalControler(),rc)
+				mark_team_shared_master(rc:GetLogicalControler(),rc,rc:GetOriginalCode())
 			end
 		end
 	end
@@ -259,7 +302,7 @@ if not DeckMaster then
 					dm:RegisterFlagEffect(FLAG_DECK_MASTER,
 						RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 						EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
-					enable_team_loss_protection(p,dm)
+					mark_team_shared_master(p,dm,dm:GetOriginalCode())
 				end
 			end
 		end
@@ -273,10 +316,10 @@ if not DeckMaster then
 			for p=0,3 do
 				if Duel.IsLogicalPlayerActive(p) then
 					local side=player_side(p)
-					local has_dm=Duel.GetDeckMasterPlayer(p)~=nil
-					if side==0 and DeckMaster.TeamLossProtected[side] then
-						has_dm=true
-					end
+					local shared_team_master=side==0
+						and DeckMaster.TeamSharedMode
+						and DeckMaster.TeamSharedCode[side]~=nil
+					local has_dm=shared_team_master or Duel.GetDeckMasterPlayer(p)~=nil
 					if side==0 then
 						active_allies=active_allies+1
 						if has_dm then surviving_allies=surviving_allies+1 end
