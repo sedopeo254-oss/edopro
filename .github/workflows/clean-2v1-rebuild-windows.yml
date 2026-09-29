@@ -236,18 +236,27 @@ jobs:
           assert '[49217579]=true' in dm
           assert 'ignore_condition=TEAM_SHARED_DECK_MASTERS' in dm
           assert 'DeckMaster.DragonRevivalDeckMasters' in dm
-          assert 'DeckMaster.EnableDragonRevivalRitual' in dm
-          assert 'DeckMaster.SummonDragonRevivalMasters' in dm
-          for code in ['153000020','153000021','153000022','153000023','153000024']:
+          assert 'DeckMaster.DragonRevivalMerged' in dm
+          assert 'DeckMaster.CanCallDragonRevivalMasters' in dm
+          assert 'DeckMaster.CallDragonRevivalMasters' in dm
+          for code in ['153000020','153000021','153000022','153000023','153000024',
+                       '153000013','153000003','153000005','153000008','153000009']:
               assert code in dm
-          assert 'EnableDragonRevivalRitual' in vw
 
           dragon_ritual = Path('multiplayer-anime-cards/c120000016.lua').read_text(encoding='utf-8')
-          assert 'DeckMaster.SummonDragonRevivalMasters' in dragon_ritual
-          assert 'RESET_SELF_TURN,5' in dragon_ritual
-          assert 'BIG_FIVE_RITUAL_ATTRIBUTE' in dragon_ritual
-          assert '[153000022]=ATTRIBUTE_WIND' in dragon_ritual
-          assert 'DeckMaster.MakeFieldDeckMaster' in dragon_ritual
+          assert 'DeckMaster.CallDragonRevivalMasters' in dragon_ritual
+          assert 'LOCATION_HAND|LOCATION_DECK' in dragon_ritual
+          assert 'Duel.Release(' in dragon_ritual
+          assert 'released~=5' in dragon_ritual
+          assert 'RESET_SELF_TURN,5' not in dragon_ritual
+          assert 'AnnounceAttribute' not in dragon_ritual
+          assert 'BIG_FIVE_RITUAL_ATTRIBUTE' not in dragon_ritual
+          assert 'MakeFieldDeckMaster' not in dragon_ritual
+          assert 'SetDeckMasterPlayerState' not in dragon_ritual
+
+          fhd = Path('multiplayer-anime-cards/c99267150.lua').read_text(encoding='utf-8')
+          assert 'IsCode(120000016)' in fhd
+          assert 'aux.fuslimit' in fhd
 
           dark_flare = Path('multiplayer-anime-cards/c13722870.lua').read_text(encoding='utf-8')
           assert 'SetCode(511004016)' in dark_flare
@@ -300,7 +309,7 @@ jobs:
             sources+=("$source")
           done
           cc -std=c99 -O2 -I"$LUA" "${sources[@]}" -ldl -lm -o "$BUILD/lua"
-          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153999999.lua; do
+          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-anime-cards/c99267150.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153999999.lua; do
             "$BUILD/lua" -e "assert(loadfile('$script'))"
           done
 
@@ -410,12 +419,14 @@ jobs:
           cp multiplayer-anime-cards/c120000336.lua deploy/expansions/script/c120000336.lua
           cp multiplayer-anime-cards/c99900043.lua deploy/expansions/script/c99900043.lua
           cp multiplayer-anime-cards/c120000016.lua deploy/expansions/script/c120000016.lua
+          cp multiplayer-anime-cards/c99267150.lua deploy/expansions/script/c99267150.lua
           test -f deploy/expansions/script/c153999999.lua
           test -f deploy/expansions/script/c153000000.lua
           test -f deploy/expansions/script/c13722870.lua
           test -f deploy/expansions/script/c120000336.lua
           test -f deploy/expansions/script/c99900043.lua
           test -f deploy/expansions/script/c120000016.lua
+          test -f deploy/expansions/script/c99267150.lua
 
           cat > deploy/mode-info/2-vs-1-clean.txt <<'EOF'
           Clean 2 vs 1 mode
