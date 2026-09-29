@@ -1,5 +1,5 @@
 --Virtual World
---3v1 logical-player Deck Master support
+--2v1 / 3v1 logical-player Deck Master support
 local s,id=GetID()
 function s.initial_effect(c)
 	aux.EnableExtraRules(c,s,s.VirtualWorldStart)
@@ -31,8 +31,11 @@ function s.VirtualWorldStart()
 	local dm=Duel.CreateToken(0,153000000)
 	Duel.ConfirmCards(1,dm)
 	if Duel.GetActiveLogicalPlayerMask()~=0 then
-		--In 3v1 the rule is enabled directly and every active logical player
-		--receives an independent Deck Master selection.
+		--Enable the team-wide Dark Flare Knight / Mirage Knight Deck Master rule
+		--before players choose their Deck Masters.
+		if DeckMaster.EnableTeamSharedDeckMasterMode then
+			DeckMaster.EnableTeamSharedDeckMasterMode()
+		end
 		DeckMaster.RegisterRules(dm)
 		return
 	end
