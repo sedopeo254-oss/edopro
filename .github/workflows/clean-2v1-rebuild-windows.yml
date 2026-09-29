@@ -258,9 +258,10 @@ jobs:
           assert 'MakeFieldDeckMaster' not in dragon_ritual
           assert 'SetDeckMasterPlayerState' not in dragon_ritual
 
-          fhd = Path('multiplayer-anime-cards/c99267150.lua').read_text(encoding='utf-8')
-          assert 'IsCode(120000016)' in fhd
-          assert 'aux.fuslimit' in fhd
+          fhd = Path('multiplayer-anime-cards/c511013020.lua').read_text(encoding='utf-8')
+          assert 'Five-Headed Dragon (Anime)' in fhd
+          assert 'EVENT_SPSUMMON_SUCCESS' in fhd
+          assert 'EFFECT_CANNOT_ATTACK' in fhd
 
           dark_flare = Path('multiplayer-anime-cards/c13722870.lua').read_text(encoding='utf-8')
           assert 'SetCode(511004016)' in dark_flare
@@ -313,7 +314,7 @@ jobs:
             sources+=("$source")
           done
           cc -std=c99 -O2 -I"$LUA" "${sources[@]}" -ldl -lm -o "$BUILD/lua"
-          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-anime-cards/c99267150.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153999999.lua; do
+          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-anime-cards/c511013020.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153999999.lua; do
             "$BUILD/lua" -e "assert(loadfile('$script'))"
           done
 
@@ -423,14 +424,14 @@ jobs:
           cp multiplayer-anime-cards/c120000336.lua deploy/expansions/script/c120000336.lua
           cp multiplayer-anime-cards/c99900043.lua deploy/expansions/script/c99900043.lua
           cp multiplayer-anime-cards/c120000016.lua deploy/expansions/script/c120000016.lua
-          cp multiplayer-anime-cards/c99267150.lua deploy/expansions/script/c99267150.lua
+          cp multiplayer-anime-cards/c511013020.lua deploy/expansions/script/c511013020.lua
           test -f deploy/expansions/script/c153999999.lua
           test -f deploy/expansions/script/c153000000.lua
           test -f deploy/expansions/script/c13722870.lua
           test -f deploy/expansions/script/c120000336.lua
           test -f deploy/expansions/script/c99900043.lua
           test -f deploy/expansions/script/c120000016.lua
-          test -f deploy/expansions/script/c99267150.lua
+          test -f deploy/expansions/script/c511013020.lua
 
           cat > deploy/mode-info/2-vs-1-clean.txt <<'EOF'
           Clean 2 vs 1 mode
