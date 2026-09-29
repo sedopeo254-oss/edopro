@@ -237,8 +237,10 @@ jobs:
           assert 'ignore_condition=is_shared_code' in dm
           assert 'DeckMaster.DragonRevivalDeckMasters' in dm
           assert 'DeckMaster.DragonRevivalMerged' in dm
+          assert 'DeckMaster.DragonRevivalResolving' in dm
           assert 'DeckMaster.CanCallDragonRevivalMasters' in dm
           assert 'DeckMaster.CallDragonRevivalMasters' in dm
+          assert 'DeckMaster.FinishDragonRevival' in dm
           for code in ['153000020','153000021','153000022','153000023','153000024',
                        '153000013','153000003','153000005','153000008','153000009']:
               assert code in dm
@@ -248,6 +250,7 @@ jobs:
           assert 'LOCATION_HAND|LOCATION_DECK' in dragon_ritual
           assert 'Duel.Release(' in dragon_ritual
           assert 'released~=5' in dragon_ritual
+          assert 'FinishDragonRevival' in dragon_ritual
           assert 'RESET_SELF_TURN,5' not in dragon_ritual
           assert 'AnnounceAttribute' not in dragon_ritual
           assert 'BIG_FIVE_RITUAL_ATTRIBUTE' not in dragon_ritual
