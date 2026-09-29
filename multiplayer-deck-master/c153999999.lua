@@ -31,13 +31,13 @@ function s.VirtualWorldStart()
 	local dm=Duel.CreateToken(0,153000000)
 	Duel.ConfirmCards(1,dm)
 	if Duel.GetActiveLogicalPlayerMask()~=0 then
-		--Enable the team-wide Dark Flare Knight / Mirage Knight Deck Master rule
-		--before players choose their Deck Masters.
+		--Team-vs-Solo multiplayer: enable the shared Deck Master rule BEFORE
+		--players choose. If any allied player selects Dark Flare Knight or
+		--Mirage Knight, that card becomes the Deck Master of the whole team.
+		--Therefore no allied logical player can lose merely because their own
+		--personal Deck Master is absent/lost.
 		if DeckMaster.EnableTeamSharedDeckMasterMode then
 			DeckMaster.EnableTeamSharedDeckMasterMode()
-		end
-		if DeckMaster.EnableDragonRevivalRitual then
-			DeckMaster.EnableDragonRevivalRitual()
 		end
 		DeckMaster.RegisterRules(dm)
 		return
