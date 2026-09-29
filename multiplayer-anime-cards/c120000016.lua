@@ -2,7 +2,6 @@
 --Dragon Revival Ritual (Anime) - simplified Big Five version
 local s,id=GetID()
 local FHD_ANIME=511013020
-local FHD=99267150
 
 function s.initial_effect(c)
 	local e1=Effect.CreateEffect(c)
@@ -16,7 +15,7 @@ function s.initial_effect(c)
 end
 
 s.listed_names={
-	FHD_ANIME,FHD,
+	FHD_ANIME,
 	153000020,153000021,153000022,153000023,153000024,
 	153000013,153000003,153000005,153000008,153000009
 }
@@ -29,7 +28,7 @@ function s.logical_player(tp)
 end
 
 function s.fhdfilter(c,e,tp)
-	return c:IsCode(FHD_ANIME,FHD)
+	return c:IsCode(FHD_ANIME)
 		and c:IsCanBeSpecialSummoned(e,SUMMON_TYPE_RITUAL,tp,true,true)
 end
 
