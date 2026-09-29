@@ -16,6 +16,7 @@ if not DeckMaster then
 	DeckMaster.TeamSharedMode=false
 	DeckMaster.DragonRevivalMerged={}
 	DeckMaster.DragonRevivalResolving={}
+	DeckMaster.DragonRevivalConsumed={}
 	DeckMasterZone={}
 	FLAG_DECK_MASTER=id
 
@@ -199,17 +200,20 @@ if not DeckMaster then
 			if not dm then return nil end
 			g:AddCard(dm)
 		end
+		DeckMaster.DragonRevivalConsumed[side]=clear_players
 		for q,_ in pairs(clear_players) do
 			Duel.ClearDeckMasterZonePlayer(q)
 		end
 		local ct=Duel.SpecialSummon(g,0,side,side,true,false,POS_FACEUP_ATTACK)
 		if ct~=5 then
 			DeckMaster.DragonRevivalResolving[side]=nil
+			DeckMaster.DragonRevivalConsumed[side]=nil
 			return nil
 		end
 		local sg=g:Filter(Card.IsLocation,nil,LOCATION_MZONE)
 		if #sg~=5 then
 			DeckMaster.DragonRevivalResolving[side]=nil
+			DeckMaster.DragonRevivalConsumed[side]=nil
 			return nil
 		end
 		return sg
@@ -217,7 +221,13 @@ if not DeckMaster then
 
 	function DeckMaster.FinishDragonRevival(p,merged)
 		local side=player_side(p)
-		if merged then DeckMaster.DragonRevivalMerged[side]=true end
+		if merged then
+			local consumed=DeckMaster.DragonRevivalConsumed[side] or {}
+			for q,_ in pairs(consumed) do
+				DeckMaster.DragonRevivalMerged[q]=true
+			end
+		end
+		DeckMaster.DragonRevivalConsumed[side]=nil
 		DeckMaster.DragonRevivalResolving[side]=nil
 	end
 
@@ -454,7 +464,7 @@ if not DeckMaster then
 					local shared_team_master=side==0
 						and DeckMaster.TeamSharedMode
 						and DeckMaster.TeamSharedCode[side]~=nil
-					local dragon_revival_merged=DeckMaster.DragonRevivalMerged[side] or false
+					local dragon_revival_merged=DeckMaster.DragonRevivalMerged[p] or false
 					local has_dm=dragon_revival_merged or shared_team_master
 						or Duel.GetDeckMasterPlayer(p)~=nil
 					if side==0 then
