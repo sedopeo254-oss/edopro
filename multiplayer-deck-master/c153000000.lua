@@ -15,6 +15,7 @@ if not DeckMaster then
 	DeckMaster.TeamSharedCard={}
 	DeckMaster.TeamSharedMode=false
 	DeckMaster.DragonRevivalMerged={}
+	DeckMaster.DragonRevivalResolving={}
 	DeckMasterZone={}
 	FLAG_DECK_MASTER=id
 
@@ -185,6 +186,7 @@ if not DeckMaster then
 	function DeckMaster.CallDragonRevivalMasters(p,e)
 		if not DeckMaster.CanCallDragonRevivalMasters(p,e) then return nil end
 		local side=player_side(p)
+		DeckMaster.DragonRevivalResolving[side]=true
 		local g=Group.CreateGroup()
 		local clear_players={}
 		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
@@ -201,13 +203,22 @@ if not DeckMaster then
 			Duel.ClearDeckMasterZonePlayer(q)
 		end
 		local ct=Duel.SpecialSummon(g,0,side,side,true,false,POS_FACEUP_ATTACK)
-		if ct~=5 then return nil end
+		if ct~=5 then
+			DeckMaster.DragonRevivalResolving[side]=nil
+			return nil
+		end
 		local sg=g:Filter(Card.IsLocation,nil,LOCATION_MZONE)
-		if #sg~=5 then return nil end
-		--The five are merged by Dragon Revival. Five-Headed Dragon itself is
-		--not advertised as a Deck Master, so no duplicate Deck Master Zone image.
-		DeckMaster.DragonRevivalMerged[side]=true
+		if #sg~=5 then
+			DeckMaster.DragonRevivalResolving[side]=nil
+			return nil
+		end
 		return sg
+	end
+
+	function DeckMaster.FinishDragonRevival(p,merged)
+		local side=player_side(p)
+		if merged then DeckMaster.DragonRevivalMerged[side]=true end
+		DeckMaster.DragonRevivalResolving[side]=nil
 	end
 
 	function Card.IsDeckMaster(c)
@@ -406,6 +417,8 @@ if not DeckMaster then
 	end
 	function DeckMaster.inheritFilter(c)
 		local p=c:GetLogicalControler()
+		local side=player_side(p)
+		if DeckMaster.DragonRevivalResolving[side] then return false end
 		return not Duel.GetDeckMasterPlayer(p)
 			and c:GetControler()==c:GetSummonPlayer()
 	end
