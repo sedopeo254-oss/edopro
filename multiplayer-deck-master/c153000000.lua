@@ -92,11 +92,11 @@ if not DeckMaster then
 	end
 
 	DeckMaster.DragonRevivalDeckMasters={
-		153000020, --Jinzo
-		153000021, --Deepsea Warrior
-		153000022, --Nightmare Penguin
-		153000023, --Judge Man
-		153000024  --Robotic Knight
+		{field_code=153000020,zone_codes={153000020,153000013}}, --Jinzo
+		{field_code=153000021,zone_codes={153000021,153000003}}, --Deepsea Warrior
+		{field_code=153000022,zone_codes={153000022,153000005}}, --Nightmare Penguin
+		{field_code=153000023,zone_codes={153000023,153000008}}, --Judge Man
+		{field_code=153000024,zone_codes={153000024,153000009}}  --Robotic Knight
 	}
 
 	function DeckMaster.EnableDragonRevivalRitual()
@@ -115,11 +115,19 @@ if not DeckMaster then
 		return true
 	end
 
-	local function find_dragon_revival_zone_master(code,side)
+	local function matches_dragon_revival_zone_code(dm,entry)
+		if not dm then return false end
+		for _,code in ipairs(entry.zone_codes) do
+			if dm:IsOriginalCode(code) then return true end
+		end
+		return false
+	end
+
+	local function find_dragon_revival_zone_master(entry,side)
 		for p=0,3 do
 			if player_side(p)==side then
 				local dm=DeckMasterZone[p]
-				if dm and dm:IsOriginalCode(code) then
+				if matches_dragon_revival_zone_code(dm,entry) then
 					return p,dm
 				end
 			end
@@ -132,8 +140,8 @@ if not DeckMaster then
 		local side=player_side(p)
 		if side~=0 and side~=1 then return false end
 		if Duel.GetLocationCount(side,LOCATION_MZONE)<5 then return false end
-		for _,code in ipairs(DeckMaster.DragonRevivalDeckMasters) do
-			local _,dm=find_dragon_revival_zone_master(code,side)
+		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
+			local _,dm=find_dragon_revival_zone_master(entry,side)
 			if dm and not dm:IsCanBeSpecialSummoned(e,0,side,true,false) then
 				return false
 			end
@@ -141,12 +149,12 @@ if not DeckMaster then
 		return true
 	end
 
-	local function summon_dragon_revival_master(code,p,e)
+	local function summon_dragon_revival_master(entry,p,e)
 		local side=player_side(p)
-		local zone_owner,dm=find_dragon_revival_zone_master(code,side)
+		local zone_owner,dm=find_dragon_revival_zone_master(entry,side)
 		local summon_owner=zone_owner or p
 		if not dm then
-			dm=Duel.CreateTokenPlayer(p,code)
+			dm=Duel.CreateTokenPlayer(p,entry.field_code)
 		end
 		if not dm or Duel.GetLocationCount(side,LOCATION_MZONE)<=0
 				or not dm:IsCanBeSpecialSummoned(e,0,side,true,false) then
@@ -166,8 +174,8 @@ if not DeckMaster then
 		if not DeckMaster.DragonRevivalEnabled then return 0 end
 		if not DeckMaster.CanSummonDragonRevivalMasters(p,e) then return 0 end
 		local ct=0
-		for _,code in ipairs(DeckMaster.DragonRevivalDeckMasters) do
-			ct=ct+summon_dragon_revival_master(code,p,e)
+		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
+			ct=ct+summon_dragon_revival_master(entry,p,e)
 		end
 		return ct
 	end
@@ -448,8 +456,7 @@ if not DeckMaster then
 		153000006,153000007,153000008,153000009,153000010,
 		153000011,153000012,153000013,153000014,153000015,
 		153000016,153000017,
-		13722870,120000336,49217579,
-		153000020,153000021,153000022,153000023,153000024
+		13722870,120000336,49217579
 	}
 	DeckMasterTable={
 		153000001,153000002,153000003,153000004,153000005,
