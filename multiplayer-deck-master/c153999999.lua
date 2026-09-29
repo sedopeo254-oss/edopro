@@ -36,6 +36,9 @@ function s.VirtualWorldStart()
 		if DeckMaster.EnableTeamSharedDeckMasterMode then
 			DeckMaster.EnableTeamSharedDeckMasterMode()
 		end
+		if DeckMaster.EnableDragonRevivalRitual then
+			DeckMaster.EnableDragonRevivalRitual()
+		end
 		DeckMaster.RegisterRules(dm)
 		return
 	end
