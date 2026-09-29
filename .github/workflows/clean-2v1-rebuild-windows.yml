@@ -218,11 +218,19 @@ jobs:
 
           # Deck Master loss logic must derive teams from logical side. P3 is
           # solo in 2v1 while P4 is solo in 3v1, so hard-coded p==3 is invalid.
+          vw = Path('multiplayer-deck-master/c153999999.lua').read_text(encoding='utf-8')
+          assert 'EnableTeamSharedDeckMasterMode' in vw
+
           dm = Path('multiplayer-deck-master/c153000000.lua').read_text(encoding='utf-8')
           assert 'local side=player_side(p)' in dm
           assert 'if player_side(p)==1 then' in dm
           assert 'if player_side(p)==0 then' in dm
           assert 'DeckMaster.TeamLossProtected' in dm
+          assert 'DeckMaster.TeamSharedCode' in dm
+          assert 'DeckMaster.TeamSharedCard' in dm
+          assert 'DeckMaster.EnableTeamSharedDeckMasterMode' in dm
+          assert 'return shared_master_for(p)' in dm
+          assert 'shared_team_master' in dm
           assert '[13722870]=true' in dm
           assert '[120000336]=true' in dm
           assert '[49217579]=true' in dm
