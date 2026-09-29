@@ -14,6 +14,7 @@ if not DeckMaster then
 	DeckMaster.TeamSharedOwner={}
 	DeckMaster.TeamSharedCard={}
 	DeckMaster.TeamSharedMode=false
+	DeckMaster.DragonRevivalEnabled=false
 	DeckMasterZone={}
 	FLAG_DECK_MASTER=id
 	local TEAM_SHARED_DECK_MASTERS={
@@ -90,6 +91,87 @@ if not DeckMaster then
 		return nil
 	end
 
+	DeckMaster.DragonRevivalDeckMasters={
+		153000020, --Jinzo
+		153000021, --Deepsea Warrior
+		153000022, --Nightmare Penguin
+		153000023, --Judge Man
+		153000024  --Robotic Knight
+	}
+
+	function DeckMaster.EnableDragonRevivalRitual()
+		DeckMaster.DragonRevivalEnabled=true
+	end
+
+	function DeckMaster.MakeFieldDeckMaster(c,p,advertise)
+		if not c then return false end
+		p=p or c:GetLogicalControler()
+		c:RegisterFlagEffect(FLAG_DECK_MASTER,
+			RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
+			EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+		if advertise~=false and Duel.GetActiveLogicalPlayerMask()~=0 then
+			Duel.SetDeckMasterPlayerState(p,c:GetOriginalCode(),true)
+		end
+		return true
+	end
+
+	local function find_dragon_revival_zone_master(code,side)
+		for p=0,3 do
+			if player_side(p)==side then
+				local dm=DeckMasterZone[p]
+				if dm and dm:IsOriginalCode(code) then
+					return p,dm
+				end
+			end
+		end
+		return nil,nil
+	end
+
+	function DeckMaster.CanSummonDragonRevivalMasters(p,e)
+		if not DeckMaster.DragonRevivalEnabled then return true end
+		local side=player_side(p)
+		if side~=0 and side~=1 then return false end
+		if Duel.GetLocationCount(side,LOCATION_MZONE)<5 then return false end
+		for _,code in ipairs(DeckMaster.DragonRevivalDeckMasters) do
+			local _,dm=find_dragon_revival_zone_master(code,side)
+			if dm and not dm:IsCanBeSpecialSummoned(e,0,side,true,false) then
+				return false
+			end
+		end
+		return true
+	end
+
+	local function summon_dragon_revival_master(code,p,e)
+		local side=player_side(p)
+		local zone_owner,dm=find_dragon_revival_zone_master(code,side)
+		local summon_owner=zone_owner or p
+		if not dm then
+			dm=Duel.CreateTokenPlayer(p,code)
+		end
+		if not dm or Duel.GetLocationCount(side,LOCATION_MZONE)<=0
+				or not dm:IsCanBeSpecialSummoned(e,0,side,true,false) then
+			return 0
+		end
+		if zone_owner then
+			Duel.ClearDeckMasterZonePlayer(zone_owner)
+		end
+		local res=Duel.SpecialSummon(dm,0,side,side,true,false,POS_FACEUP_ATTACK)
+		if res>0 then
+			DeckMaster.MakeFieldDeckMaster(dm,summon_owner,false)
+		end
+		return res
+	end
+
+	function DeckMaster.SummonDragonRevivalMasters(p,e)
+		if not DeckMaster.DragonRevivalEnabled then return 0 end
+		if not DeckMaster.CanSummonDragonRevivalMasters(p,e) then return 0 end
+		local ct=0
+		for _,code in ipairs(DeckMaster.DragonRevivalDeckMasters) do
+			ct=ct+summon_dragon_revival_master(code,p,e)
+		end
+		return ct
+	end
+
 	function Card.IsDeckMaster(c)
 		return c:GetFlagEffect(FLAG_DECK_MASTER)>0
 	end
@@ -151,9 +233,7 @@ if not DeckMaster then
 		local res=Duel.SpecialSummon(c,0,side,side,ignore_condition,false,POS_FACEUP)
 		if res>0 and ignore_condition then c:CompleteProcedure() end
 		mark_team_shared_master(p,c,c:GetOriginalCode())
-		c:RegisterFlagEffect(FLAG_DECK_MASTER,
-			RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
-			EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+		DeckMaster.MakeFieldDeckMaster(c,p,false)
 		return res
 	end
 	function Duel.SummonDeckMaster(p)
@@ -368,13 +448,15 @@ if not DeckMaster then
 		153000006,153000007,153000008,153000009,153000010,
 		153000011,153000012,153000013,153000014,153000015,
 		153000016,153000017,
-		13722870,120000336,49217579
+		13722870,120000336,49217579,
+		153000020,153000021,153000022,153000023,153000024
 	}
 	DeckMasterTable={
 		153000001,153000002,153000003,153000004,153000005,
 		153000006,153000007,153000008,153000009,153000010,
 		153000011,153000012,153000013,153000014,153000015,
 		153000016,153000017,153000018,
-		13722870,120000336,49217579
+		13722870,120000336,49217579,
+		153000020,153000021,153000022,153000023,153000024
 	}
 end
