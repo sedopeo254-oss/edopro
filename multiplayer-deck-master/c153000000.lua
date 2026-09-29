@@ -197,7 +197,11 @@ if not DeckMaster then
 			else
 				dm=Duel.CreateTokenPlayer(p,entry.field_code)
 			end
-			if not dm then return nil end
+			if not dm then
+				DeckMaster.DragonRevivalResolving[side]=nil
+				DeckMaster.DragonRevivalConsumed[side]=nil
+				return nil
+			end
 			g:AddCard(dm)
 		end
 		DeckMaster.DragonRevivalConsumed[side]=clear_players
