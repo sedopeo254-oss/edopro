@@ -234,7 +234,7 @@ jobs:
           assert '[13722870]=true' in dm
           assert '[120000336]=true' in dm
           assert '[49217579]=true' in dm
-          assert 'ignore_condition=TEAM_SHARED_DECK_MASTERS' in dm
+          assert 'ignore_condition=is_shared_code' in dm
           assert 'DeckMaster.DragonRevivalDeckMasters' in dm
           assert 'DeckMaster.DragonRevivalMerged' in dm
           assert 'DeckMaster.CanCallDragonRevivalMasters' in dm
