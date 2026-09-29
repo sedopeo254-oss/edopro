@@ -49,9 +49,9 @@ end
 function s.activate(e,tp,eg,ep,ev,re,r,rp)
 	if not DeckMaster or not DeckMaster.CallDragonRevivalMasters then return end
 	local logical=s.logical_player(tp)
-	local five=DeckMaster.CallDragonRevivalMasters(logical,e)
-	if not five or #five~=5 then return end
 
+	--Lock in Five-Headed Dragon first. If it disappeared before resolution,
+	--do not disturb any Deck Master Zone.
 	if not Duel.IsExistingMatchingCard(
 		s.fhdfilter,tp,LOCATION_HAND|LOCATION_DECK,0,1,nil,e,tp) then
 		return
@@ -61,15 +61,30 @@ function s.activate(e,tp,eg,ep,ev,re,r,rp)
 		tp,s.fhdfilter,tp,LOCATION_HAND|LOCATION_DECK,0,1,1,nil,e,tp):GetFirst()
 	if not fhd then return end
 
+	local five=DeckMaster.CallDragonRevivalMasters(logical,e)
+	if not five or #five~=5 then
+		if DeckMaster.FinishDragonRevival then
+			DeckMaster.FinishDragonRevival(logical,false)
+		end
+		return
+	end
+
 	fhd:SetMaterial(five)
 	local released=Duel.Release(
 		five,REASON_EFFECT|REASON_MATERIAL|REASON_RITUAL)
-	if released~=5 then return end
+	if released~=5 then
+		if DeckMaster.FinishDragonRevival then
+			DeckMaster.FinishDragonRevival(logical,true)
+		end
+		return
+	end
 
-	--No DeckMaster.MakeFieldDeckMaster / SetDeckMasterPlayerState here.
-	--Five-Headed Dragon only exists on the field, never as a duplicated DM icon.
-	if Duel.SpecialSummon(
-		fhd,SUMMON_TYPE_RITUAL,tp,tp,true,true,POS_FACEUP)>0 then
-		fhd:CompleteProcedure()
+	--The inheritance lock is still active while FHD is summoned, so the client
+	--never receives a Deck Master Zone copy of Five-Headed Dragon.
+	local res=Duel.SpecialSummon(
+		fhd,SUMMON_TYPE_RITUAL,tp,tp,true,true,POS_FACEUP)
+	if res>0 then fhd:CompleteProcedure() end
+	if DeckMaster.FinishDragonRevival then
+		DeckMaster.FinishDragonRevival(logical,true)
 	end
 end
