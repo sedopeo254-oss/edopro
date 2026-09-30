@@ -9,6 +9,7 @@ end
 if not DeckMaster then
 	DeckMaster={}
 	DeckMaster.Abilities={}
+	DeckMaster.AbilityContextCard=nil
 	DeckMaster.TeamLossProtected={}
 	DeckMaster.TeamSharedCode={}
 	DeckMaster.TeamSharedOwner={}
@@ -242,7 +243,22 @@ if not DeckMaster then
 		return c:IsDeckMaster() and c:GetLogicalControler()==p
 	end
 
+	--A Deck Master keeps its registered abilities after being Special Summoned
+	--to the Monster Zone. Face-down Deck Masters (for example under Magical Hats)
+	--also remain valid because the Deck Master flag itself is not removed.
+	function DeckMaster.IsAbilityActiveCard(c)
+		if not c then return false end
+		local p=c:GetLogicalOwner()
+		if DeckMasterZone[p]==c then return true end
+		return c:IsLocation(LOCATION_MZONE) and c:IsDeckMaster()
+	end
+
 	function Duel.GetDeckMasterPlayer(p)
+		local ctx=DeckMaster.AbilityContextCard
+		if ctx and DeckMaster.IsAbilityActiveCard(ctx)
+				and ctx:GetLogicalOwner()==p then
+			return ctx
+		end
 		local dm=DeckMasterZone[p]
 		if dm then return dm end
 		dm=get_player_cards(p,LOCATION_MZONE):Filter(Card.IsLogicalDeckMaster,nil,p):GetFirst()
@@ -323,7 +339,33 @@ if not DeckMaster then
 			if not DeckMaster.Abilities[logical][card_id] then
 				DeckMaster.Abilities[logical][card_id]=true
 				for _,eff in ipairs(deck_master_effects) do
-					Duel.RegisterEffect(eff:Clone(),c:GetOwner())
+					local ce=eff:Clone()
+					local original_condition=ce:GetCondition()
+					local original_operation=ce:GetOperation()
+					ce:SetCondition(function(re,tp,eg,ep,ev,r,rp)
+						local ability_card=re:GetOwner()
+						if not DeckMaster.IsAbilityActiveCard(ability_card) then
+							return false
+						end
+						local old=DeckMaster.AbilityContextCard
+						DeckMaster.AbilityContextCard=ability_card
+						local ok=true
+						if original_condition then
+							ok=original_condition(re,tp,eg,ep,ev,r,rp)
+						end
+						DeckMaster.AbilityContextCard=old
+						return ok
+					end)
+					if original_operation then
+						ce:SetOperation(function(re,tp,eg,ep,ev,r,rp)
+							local ability_card=re:GetOwner()
+							local old=DeckMaster.AbilityContextCard
+							DeckMaster.AbilityContextCard=ability_card
+							original_operation(re,tp,eg,ep,ev,r,rp)
+							DeckMaster.AbilityContextCard=old
+						end)
+					end
+					Duel.RegisterEffect(ce,c:GetOwner())
 				end
 			end
 			e:Reset()
