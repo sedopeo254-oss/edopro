@@ -342,8 +342,8 @@ if not DeckMaster then
 					local ce=eff:Clone()
 					local original_condition=ce:GetCondition()
 					local original_operation=ce:GetOperation()
-					ce:SetCondition(function(re,tp,eg,ep,ev,r,rp)
-						local ability_card=re:GetOwner()
+					ce:SetCondition(function(eff,tp,eg,ep,ev,re,r,rp)
+						local ability_card=eff:GetOwner()
 						if not DeckMaster.IsAbilityActiveCard(ability_card) then
 							return false
 						end
@@ -351,17 +351,17 @@ if not DeckMaster then
 						DeckMaster.AbilityContextCard=ability_card
 						local ok=true
 						if original_condition then
-							ok=original_condition(re,tp,eg,ep,ev,r,rp)
+							ok=original_condition(eff,tp,eg,ep,ev,re,r,rp)
 						end
 						DeckMaster.AbilityContextCard=old
 						return ok
 					end)
 					if original_operation then
-						ce:SetOperation(function(re,tp,eg,ep,ev,r,rp)
-							local ability_card=re:GetOwner()
+						ce:SetOperation(function(eff,tp,eg,ep,ev,re,r,rp)
+							local ability_card=eff:GetOwner()
 							local old=DeckMaster.AbilityContextCard
 							DeckMaster.AbilityContextCard=ability_card
-							original_operation(re,tp,eg,ep,ev,r,rp)
+							original_operation(eff,tp,eg,ep,ev,re,r,rp)
 							DeckMaster.AbilityContextCard=old
 						end)
 					end
