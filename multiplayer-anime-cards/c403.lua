@@ -79,14 +79,19 @@ function MagicalHatsAnime_DeckMasterCopy(tp,source,hats_card)
     if not copy then return false end
     c403.copy_mode[copy]=true
     c403.copy_for_logical[teammate]=copy
+    if not Duel.MoveToField(copy,side,side,LOCATION_SZONE,POS_FACEUP,true) then
+        c403.copy_mode[copy]=nil
+        c403.copy_for_logical[teammate]=nil
+        return false
+    end
     local ce=Effect.CreateEffect(copy)
     c403.activate(ce,side,nil,nil,nil,nil,nil,nil)
     if copy:GetFlagEffect(403)==0 then
         c403.copy_mode[copy]=nil
         c403.copy_for_logical[teammate]=nil
+        if copy:IsOnField() then Duel.SendtoGrave(copy,REASON_RULE) end
         return false
     end
-    Duel.MoveToField(copy,side,side,LOCATION_SZONE,POS_FACEUP,true)
     copy:SetStatus(STATUS_ACTIVATED,true)
     return true
 end
@@ -1195,7 +1200,9 @@ function c403.ac3op(e,tp,eg,ep,ev,re,r,rp)
     Duel.Destroy(e:GetHandler(),REASON_EFFECT)
 end
 function c403.descon(e)
-    local fid=e:GetHandler():GetFieldID()
+    local c=e:GetHandler()
+    if c403.copy_mode[c] and c:GetFlagEffect(403)==0 then return false end
+    local fid=c:GetFieldID()
     return not Duel.IsExistingMatchingCard(c403.refilter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil,fid)
 end
 function c403.ac4con(e,tp,eg,ep,ev,re,r,rp)
