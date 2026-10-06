@@ -3,6 +3,7 @@
 local s,id=GetID()
 local BERSERK_DRAGON_ANIME=99900042
 local BERSERK_DRAGON=85605684
+local BATTLE_HANDLED_FLAG=id+100
 function s.initial_effect(c)
 	--Battle destruction version: activate before battle damage is applied so the
 	--"no Battle Damage involving the destroyed monster" clause works correctly.
@@ -25,6 +26,14 @@ function s.initial_effect(c)
 	e2:SetTarget(s.target)
 	e2:SetOperation(s.activate)
 	c:RegisterEffect(e2)
+	local e3=e1:Clone()
+	e3:SetCode(EVENT_BATTLE_DESTROYED)
+	e3:SetProperty(EFFECT_FLAG_DELAY+EFFECT_FLAG_DAMAGE_STEP+EFFECT_FLAG_DAMAGE_CAL)
+	e3:SetCondition(s.zbcondition)
+	e3:SetCost(s.cost)
+	e3:SetTarget(s.target)
+	e3:SetOperation(s.activate)
+	c:RegisterEffect(e3)
 end
 s.listed_names={BERSERK_DRAGON_ANIME,BERSERK_DRAGON}
 function s.logicalplayer(e)
@@ -44,6 +53,16 @@ function s.cfilter(c,e)
 		and c:IsReason(REASON_EFFECT)
 		and not c:IsReason(REASON_BATTLE)
 		and s.is_yours(c,e)
+end
+function s.zbfilter(c,e)
+	return c:IsPreviousLocation(LOCATION_MZONE)
+		and c:GetPreviousLevelOnField()>=8
+		and c:IsReason(REASON_BATTLE)
+		and c:GetFlagEffect(BATTLE_HANDLED_FLAG)==0
+		and s.is_yours(c,e)
+end
+function s.zbcondition(e,tp,eg,ep,ev,re,r,rp)
+	return eg:IsExists(s.zbfilter,1,nil,e)
 end
 function s.dcondition(e,tp,eg,ep,ev,re,r,rp)
 	return eg:IsExists(s.cfilter,1,nil,e)
