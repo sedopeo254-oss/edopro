@@ -298,7 +298,7 @@ jobs:
           assert 'EVENT_PRE_BATTLE_DAMAGE' in deal
           assert 'STATUS_BATTLE_RESULT' in deal
           assert 'Duel.ChangeBattleDamage(tp,0)' in deal
-          assert 'math.floor(Duel.GetLP(tp)/2)' in deal
+          assert 'math.floor(lp/2)' in deal
           assert 'EVENT_DESTROYED' in deal
           assert 'function s.bcost' in deal
           assert 'Duel.ChangeBattleDamage(tp,0)' in deal
