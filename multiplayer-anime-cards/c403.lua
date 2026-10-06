@@ -1106,3 +1106,315 @@ function c403.ac3op(e,tp,eg,ep,ev,re,r,rp)
         else 
             tc2:ResetFlagEffect(403+2)
         end
+    end
+    local g=Duel.GetChainInfo(0, CHAININFO_TARGET_CARDS)
+    if not g or g:GetCount()==0 then return end
+    local ordered_cards = c403.GetOrderedSetCards(tp, fid)
+    for i, info in ipairs(ordered_cards) do
+        local tc = info.card
+        if g:IsContains(tc) and tc:IsRelateToEffect(e) and tc:IsLocation(LOCATION_MZONE) and tc:IsFacedown() then
+            if (tc:GetOriginalType() & TYPE_FIELD) ~= 0 then
+                Duel.MoveToField(tc,tp,tp,LOCATION_FZONE,POS_FACEUP,true)
+            else
+                Duel.MoveToField(tc,tp,tp,LOCATION_SZONE,POS_FACEUP,true)
+            end
+            if tc:IsType(TYPE_SPELL+TYPE_TRAP) and tc:GetActivateEffect() then
+                local te=tc:GetActivateEffect()
+                local tpe=tc:GetType()
+                local tg_func=te:GetTarget()
+                local co_func=te:GetCost()
+                local op_func=te:GetOperation()
+                e:SetCategory(te:GetCategory())
+                e:SetProperty(te:GetProperty())
+                Duel.ClearTargetCard()
+                Duel.Hint(HINT_CARD,0,tc:GetCode())
+                tc:CreateEffectRelation(te)
+                if (tpe&(TYPE_EQUIP+TYPE_CONTINUOUS+TYPE_FIELD))==0 and not tc:IsHasEffect(EFFECT_REMAIN_FIELD) and not (te and te:IsHasCategory(CATEGORY_EQUIP)) then
+                    tc:CancelToGrave(false)
+                end
+                if te:GetCode()==EVENT_CHAINING then
+                    local chain=Duel.GetCurrentChain()-1
+                    local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
+                    local tc2=te2:GetHandler()
+                    local g2=Group.FromCards(tc2)
+                    local p=tc2:GetControler()
+                    if co_func then co_func(te,tp,g2,p,chain,te2,REASON_EFFECT,p,1) end
+                    if tg_func then tg_func(te,tp,g2,p,chain,te2,REASON_EFFECT,p,1) end
+                elseif te:GetCode()==EVENT_FREE_CHAIN then
+                    if co_func then co_func(te,tp,eg,ep,ev,re,r,rp,1) end
+                    if tg_func then tg_func(te,tp,eg,ep,ev,re,r,rp,1) end
+                else
+                    local res,teg,tep,tev,tre,tr,trp=Duel.CheckEvent(te:GetCode(),true)
+                    if co_func then co_func(te,tp,teg,tep,tev,tre,tr,trp,1) end
+                    if tg_func then tg_func(te,tp,teg,tep,tev,tre,tr,trp,1) end
+                end
+                Duel.BreakEffect()
+                local g3=Duel.GetChainInfo(0,CHAININFO_TARGET_CARDS)
+                if g3 then
+                    local etc=g3:GetFirst()
+                    while etc do
+                        etc:CreateEffectRelation(te)
+                        etc=g3:GetNext()
+                    end
+                end
+                tc:SetStatus(STATUS_ACTIVATED,true)
+                if not tc:IsDisabled() then
+                    if te:GetCode()==EVENT_CHAINING then
+                        local chain=Duel.GetCurrentChain()-1
+                        local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
+                        local tc2=te2:GetHandler()
+                        local g2=Group.FromCards(tc2)
+                        local p=tc2:GetControler()
+                        if op_func then op_func(te,tp,g2,p,chain,te2,REASON_EFFECT,p) end
+                    elseif te:GetCode()==EVENT_FREE_CHAIN then
+                        if op_func then op_func(te,tp,eg,ep,ev,re,r,rp) end
+                    else
+                        local res,teg,tep,tev,tre,tr,trp=Duel.CheckEvent(te:GetCode(),true)
+                        if op_func then op_func(te,tp,teg,tep,tev,tre,tr,trp) end
+                    end
+                end
+                Duel.RaiseEvent(Group.CreateGroup(tc),EVENT_CHAIN_SOLVED,te,0,tp,tp,Duel.GetCurrentChain())
+                if g3 and tc:IsType(TYPE_EQUIP) and not tc:GetEquipTarget() then
+                    Duel.Equip(tp,tc,g3:GetFirst())
+                end
+                tc:ReleaseEffectRelation(te)
+                if g3 then
+                    local etc=g3:GetFirst()
+                    while etc do
+                        etc:ReleaseEffectRelation(te)
+                        etc=g3:GetNext()
+                    end
+                end
+            end
+        end
+    end
+    local g2=Duel.GetMatchingGroup(c403.desfilter2,tp,LOCATION_ONFIELD,LOCATION_ONFIELD,nil,fid)
+    if #g2>0 then
+        Duel.Destroy(g2,REASON_EFFECT)
+    end
+    Duel.Destroy(e:GetHandler(),REASON_EFFECT)
+end
+function c403.descon(e)
+    local fid=e:GetHandler():GetFieldID()
+    return not Duel.IsExistingMatchingCard(c403.refilter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil,fid)
+end
+function c403.ac4con(e,tp,eg,ep,ev,re,r,rp)
+    local fid = e:GetLabel()
+    return eg:IsExists(function(c)
+        return c:IsControler(tp) and c:GetFlagEffectLabel(403+1)==fid
+    end, 1, nil)
+end
+function c403.ac4op(e,tp,eg,ep,ev,re,r,rp)
+    local fid = e:GetLabel()
+    local tc1 = eg:GetFirst()
+    if tc1 and tc1:GetFlagEffectLabel(403+1)==fid then
+        Duel.ChangePosition(tc1,tc1:GetPreviousPosition())
+        if tc1:GetFlagEffectLabel(403+1)==fid then
+            tc1:ResetFlagEffect(403+1)
+        else 
+            tc1:ResetFlagEffect(403+2)
+        end		
+    end
+    local g1 = Duel.GetMatchingGroup(c403.desfilter1, tp, LOCATION_ONFIELD, LOCATION_ONFIELD, nil, fid)
+    for tc2 in aux.Next(g1) do
+        Duel.ChangePosition(tc2, tc2:GetPreviousPosition()) 
+        if tc2:GetFlagEffectLabel(403+1)==fid then
+            tc2:ResetFlagEffect(403+1)
+        else 
+            tc2:ResetFlagEffect(403+2)
+        end
+    end
+    local g=Duel.GetChainInfo(0, CHAININFO_TARGET_CARDS)
+    if not g or g:GetCount()==0 then return end
+    local ordered_cards = c403.GetOrderedSetCards(tp, fid)
+    for i, info in ipairs(ordered_cards) do
+        local tc = info.card
+        if g:IsContains(tc) and tc:IsRelateToEffect(e) and tc:IsLocation(LOCATION_MZONE) and tc:IsFacedown() then
+            if (tc:GetOriginalType() & TYPE_FIELD) ~= 0 then
+                Duel.MoveToField(tc,tp,tp,LOCATION_FZONE,POS_FACEUP,true)
+            else
+                Duel.MoveToField(tc,tp,tp,LOCATION_SZONE,POS_FACEUP,true)
+            end
+            if tc:IsType(TYPE_SPELL+TYPE_TRAP) and tc:GetActivateEffect() then
+                local te=tc:GetActivateEffect()
+                local tpe=tc:GetType()
+                local tg_func=te:GetTarget()
+                local co_func=te:GetCost()
+                local op_func=te:GetOperation()
+                e:SetCategory(te:GetCategory())
+                e:SetProperty(te:GetProperty())
+                Duel.ClearTargetCard()
+                Duel.Hint(HINT_CARD,0,tc:GetCode())
+                tc:CreateEffectRelation(te)
+                if (tpe&(TYPE_EQUIP+TYPE_CONTINUOUS+TYPE_FIELD))==0 and not tc:IsHasEffect(EFFECT_REMAIN_FIELD) and not (te and te:IsHasCategory(CATEGORY_EQUIP)) then
+                    tc:CancelToGrave(false)
+                end
+                if te:GetCode()==EVENT_CHAINING then
+                    local chain=Duel.GetCurrentChain()-1
+                    local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
+                    local tc2=te2:GetHandler()
+                    local g2=Group.FromCards(tc2)
+                    local p=tc2:GetControler()
+                    if co_func then co_func(te,tp,g2,p,chain,te2,REASON_EFFECT,p,1) end
+                    if tg_func then tg_func(te,tp,g2,p,chain,te2,REASON_EFFECT,p,1) end
+                elseif te:GetCode()==EVENT_FREE_CHAIN then
+                    if co_func then co_func(te,tp,eg,ep,ev,re,r,rp,1) end
+                    if tg_func then tg_func(te,tp,eg,ep,ev,re,r,rp,1) end
+                else
+                    local res,teg,tep,tev,tre,tr,trp=Duel.CheckEvent(te:GetCode(),true)
+                    if co_func then co_func(te,tp,teg,tep,tev,tre,tr,trp,1) end
+                    if tg_func then tg_func(te,tp,teg,tep,tev,tre,tr,trp,1) end
+                end
+                Duel.BreakEffect()
+                local g3=Duel.GetChainInfo(0,CHAININFO_TARGET_CARDS)
+                if g3 then
+                    local etc=g3:GetFirst()
+                    while etc do
+                        etc:CreateEffectRelation(te)
+                        etc=g3:GetNext()
+                    end
+                end
+                tc:SetStatus(STATUS_ACTIVATED,true)
+                if not tc:IsDisabled() then
+                    if te:GetCode()==EVENT_CHAINING then
+                        local chain=Duel.GetCurrentChain()-1
+                        local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
+                        local tc2=te2:GetHandler()
+                        local g2=Group.FromCards(tc2)
+                        local p=tc2:GetControler()
+                        if op_func then op_func(te,tp,g2,p,chain,te2,REASON_EFFECT,p) end
+                    elseif te:GetCode()==EVENT_FREE_CHAIN then
+                        if op_func then op_func(te,tp,eg,ep,ev,re,r,rp) end
+                    else
+                        local res,teg,tep,tev,tre,tr,trp=Duel.CheckEvent(te:GetCode(),true)
+                        if op_func then op_func(te,tp,teg,tep,tev,tre,tr,trp) end
+                    end
+                end
+                Duel.RaiseEvent(Group.CreateGroup(tc),EVENT_CHAIN_SOLVED,te,0,tp,tp,Duel.GetCurrentChain())
+                if g3 and tc:IsType(TYPE_EQUIP) and not tc:GetEquipTarget() then
+                    Duel.Equip(tp,tc,g3:GetFirst())
+                end
+                tc:ReleaseEffectRelation(te)
+                if g3 then
+                    local etc=g3:GetFirst()
+                    while etc do
+                        etc:ReleaseEffectRelation(te)
+                        etc=g3:GetNext()
+                    end
+                end
+            end
+        end
+    end
+    local g2=Duel.GetMatchingGroup(c403.desfilter2,tp,LOCATION_ONFIELD,LOCATION_ONFIELD,nil,fid)
+    if #g2>0 then
+        Duel.Destroy(g2,REASON_EFFECT)
+    end
+    Duel.Destroy(e:GetHandler(),REASON_EFFECT)
+end
+function c403.ac5op(e,tp,eg,ep,ev,re,r,rp)
+    local fid=e:GetLabel()
+    local g1=Duel.GetMatchingGroup(c403.desfilter4,tp,LOCATION_ONFIELD,LOCATION_ONFIELD,nil,fid)
+    for tc in aux.Next(g1) do
+        Duel.ChangePosition(tc,tc:GetPreviousPosition()) 
+        if tc:GetFlagEffectLabel(403+1)==fid then
+            tc:ResetFlagEffect(403+1)
+        else 
+            tc:ResetFlagEffect(403+2) 
+        end
+    end
+    local g=Duel.GetChainInfo(0, CHAININFO_TARGET_CARDS)
+    if not g or g:GetCount()==0 then return end
+    local ordered_cards = c403.GetOrderedSetCards(tp, fid)
+    for i, info in ipairs(ordered_cards) do
+        local tc = info.card
+        if g:IsContains(tc) and tc:IsRelateToEffect(e) and tc:IsLocation(LOCATION_MZONE) and tc:IsFacedown() then
+            if (tc:GetOriginalType() & TYPE_FIELD) ~= 0 then
+                Duel.MoveToField(tc,tp,tp,LOCATION_FZONE,POS_FACEUP,true)
+            else
+                Duel.MoveToField(tc,tp,tp,LOCATION_SZONE,POS_FACEUP,true)
+            end
+            if tc:IsType(TYPE_SPELL+TYPE_TRAP) and tc:GetActivateEffect() then
+                local te=tc:GetActivateEffect()
+                local tpe=tc:GetType()
+                local tg_func=te:GetTarget()
+                local co_func=te:GetCost()
+                local op_func=te:GetOperation()
+                e:SetCategory(te:GetCategory())
+                e:SetProperty(te:GetProperty())
+                Duel.ClearTargetCard()
+                Duel.Hint(HINT_CARD,0,tc:GetCode())
+                tc:CreateEffectRelation(te)
+                if (tpe&(TYPE_EQUIP+TYPE_CONTINUOUS+TYPE_FIELD))==0 and not tc:IsHasEffect(EFFECT_REMAIN_FIELD) and not (te and te:IsHasCategory(CATEGORY_EQUIP)) then
+                    tc:CancelToGrave(false)
+                end
+                if te:GetCode()==EVENT_CHAINING then
+                    local chain=Duel.GetCurrentChain()-1
+                    local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
+                    local tc2=te2:GetHandler()
+                    local g2=Group.FromCards(tc2)
+                    local p=tc2:GetControler()
+                    if co_func then co_func(te,tp,g2,p,chain,te2,REASON_EFFECT,p,1) end
+                    if tg_func then tg_func(te,tp,g2,p,chain,te2,REASON_EFFECT,p,1) end
+                elseif te:GetCode()==EVENT_FREE_CHAIN then
+                    if co_func then co_func(te,tp,eg,ep,ev,re,r,rp,1) end
+                    if tg_func then tg_func(te,tp,eg,ep,ev,re,r,rp,1) end
+                else
+                    local res,teg,tep,tev,tre,tr,trp=Duel.CheckEvent(te:GetCode(),true)
+                    if co_func then co_func(te,tp,teg,tep,tev,tre,tr,trp,1) end
+                    if tg_func then tg_func(te,tp,teg,tep,tev,tre,tr,trp,1) end
+                end
+                Duel.BreakEffect()
+                local g3=Duel.GetChainInfo(0,CHAININFO_TARGET_CARDS)
+                if g3 then
+                    local etc=g3:GetFirst()
+                    while etc do
+                        etc:CreateEffectRelation(te)
+                        etc=g3:GetNext()
+                    end
+                end
+                tc:SetStatus(STATUS_ACTIVATED,true)
+                if not tc:IsDisabled() then
+                    if te:GetCode()==EVENT_CHAINING then
+                        local chain=Duel.GetCurrentChain()-1
+                        local te2=Duel.GetChainInfo(chain,CHAININFO_TRIGGERING_EFFECT)
+                        local tc2=te2:GetHandler()
+                        local g2=Group.FromCards(tc2)
+                        local p=tc2:GetControler()
+                        if op_func then op_func(te,tp,g2,p,chain,te2,REASON_EFFECT,p) end
+                    elseif te:GetCode()==EVENT_FREE_CHAIN then
+                        if op_func then op_func(te,tp,eg,ep,ev,re,r,rp) end
+                    else
+                        local res,teg,tep,tev,tre,tr,trp=Duel.CheckEvent(te:GetCode(),true)
+                        if op_func then op_func(te,tp,teg,tep,tev,tre,tr,trp) end
+                    end
+                end
+                Duel.RaiseEvent(Group.CreateGroup(tc),EVENT_CHAIN_SOLVED,te,0,tp,tp,Duel.GetCurrentChain())
+                if g3 and tc:IsType(TYPE_EQUIP) and not tc:GetEquipTarget() then
+                    Duel.Equip(tp,tc,g3:GetFirst())
+                end
+                tc:ReleaseEffectRelation(te)
+                if g3 then
+                    local etc=g3:GetFirst()
+                    while etc do
+                        etc:ReleaseEffectRelation(te)
+                        etc=g3:GetNext()
+                    end
+                end
+            end
+        end
+    end
+    local g2=Duel.GetMatchingGroup(c403.desfilter2,tp,LOCATION_ONFIELD,LOCATION_ONFIELD,nil,fid)
+    if #g2>0 then
+        Duel.Destroy(g2,REASON_EFFECT)
+    end
+    e:GetHandler():ResetFlagEffect(403)
+    Duel.Destroy(e:GetHandler(),REASON_EFFECT)
+end
+function c403.ac6con(e,tp,eg,ep,ev,re,r,rp)
+local fid = e:GetLabel()
+    return eg:IsExists(function(c)
+        return c:GetFlagEffectLabel(403+1)==fid
+            and c:IsPreviousPosition(POS_FACEDOWN)
+            and c:IsFaceup()
+    end, 1, nil)
+end
