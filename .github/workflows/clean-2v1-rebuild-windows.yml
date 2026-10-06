@@ -229,6 +229,7 @@ jobs:
           assert 'DeckMaster.TeamSharedCode' in dm
           assert 'DeckMaster.IsAbilityActiveCard' in dm
           assert 'DeckMaster.AbilityContextCard' in dm
+          assert 'DeckMaster.FieldAbilityCards' in dm
           assert 'DeckMaster.TeamSharedCard' in dm
           assert 'DeckMaster.EnableTeamSharedDeckMasterMode' in dm
           assert 'return shared_master_for(p)' in dm
@@ -283,9 +284,15 @@ jobs:
           assert 'transferable_attack' in flame_dm
           assert 'LOCATION_MZONE,0' in flame_dm
 
-          magical_hats = Path('multiplayer-anime-cards/c120000030.lua').read_text(encoding='utf-8')
+          magical_hats = Path('multiplayer-anime-cards/c403.lua').read_text(encoding='utf-8')
           assert 'MagicalHatsAnime_CanDeckMasterCopy' in magical_hats
           assert 'MagicalHatsAnime_DeckMasterCopy' in magical_hats
+
+          hats403 = Path('multiplayer-anime-cards/c403.lua').read_text(encoding='utf-8')
+          assert 'MagicalHatsAnime_DeckMasterCopy' in hats403
+          assert 'Duel.CreateTokenPlayer' in hats403
+          assert 'copy_for_logical' in hats403
+          assert 'c403.logical_mzone' in hats403
 
           deal = Path('multiplayer-anime-cards/c99900043.lua').read_text(encoding='utf-8')
           assert 'EVENT_PRE_BATTLE_DAMAGE' in deal
@@ -293,6 +300,10 @@ jobs:
           assert 'Duel.ChangeBattleDamage(tp,0)' in deal
           assert 'math.floor(Duel.GetLP(tp)/2)' in deal
           assert 'EVENT_DESTROYED' in deal
+          assert 'function s.bcost' in deal
+          assert 'Duel.ChangeBattleDamage(tp,0)' in deal
+          assert 'c:IsReason(REASON_EFFECT)' in deal
+          assert 'not c:IsReason(REASON_BATTLE)' in deal
 
           # P3 attack guidance in 2v1: the Core must present logical P1/P2
           # options first, and the client must render the real player names.
@@ -328,7 +339,7 @@ jobs:
             sources+=("$source")
           done
           cc -std=c99 -O2 -I"$LUA" "${sources[@]}" -ldl -lm -o "$BUILD/lua"
-          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-anime-cards/c511013020.lua             multiplayer-anime-cards/c120000030.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153000007.lua             multiplayer-deck-master/c153000015.lua             multiplayer-deck-master/c153999999.lua; do
+          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-anime-cards/c511013020.lua             multiplayer-anime-cards/c403.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153000007.lua             multiplayer-deck-master/c153000015.lua             multiplayer-deck-master/c153999999.lua; do
             "$BUILD/lua" -e "assert(loadfile('$script'))"
           done
 
@@ -441,7 +452,7 @@ jobs:
           cp multiplayer-anime-cards/c99900043.lua deploy/expansions/script/c99900043.lua
           cp multiplayer-anime-cards/c120000016.lua deploy/expansions/script/c120000016.lua
           cp multiplayer-anime-cards/c511013020.lua deploy/expansions/script/c511013020.lua
-          cp multiplayer-anime-cards/c120000030.lua deploy/expansions/script/c120000030.lua
+          cp multiplayer-anime-cards/c403.lua deploy/expansions/script/c403.lua
           test -f deploy/expansions/script/c153999999.lua
           test -f deploy/expansions/script/c153000000.lua
           test -f deploy/expansions/script/c153000007.lua
@@ -451,7 +462,7 @@ jobs:
           test -f deploy/expansions/script/c99900043.lua
           test -f deploy/expansions/script/c120000016.lua
           test -f deploy/expansions/script/c511013020.lua
-          test -f deploy/expansions/script/c120000030.lua
+          test -f deploy/expansions/script/c403.lua
 
           cat > deploy/mode-info/2-vs-1-clean.txt <<'EOF'
           Clean 2 vs 1 mode

@@ -33,7 +33,7 @@ function s.checkop(e,tp,eg,ep,ev,re,r,rp)
 end
 function s.filter(c,p)
 	if not c:IsSpell() then return false end
-	if c:IsCode(120000030) and MagicalHatsAnime_CanDeckMasterCopy then
+	if c:IsCode(403) and MagicalHatsAnime_CanDeckMasterCopy then
 		return MagicalHatsAnime_CanDeckMasterCopy(p,c)
 	end
 	local te=c:CheckActivateEffect(false,false,false)
@@ -52,7 +52,7 @@ function s.op(e,tp,eg,ep,ev,re,r,rp)
 	Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_EFFECT)
 	local sc=s.usedSpell:FilterSelect(tp,s.filter,1,1,nil,tp):GetFirst()
 	if not sc then return end
-	if sc:IsCode(120000030) and MagicalHatsAnime_DeckMasterCopy then
+	if sc:IsCode(403) and MagicalHatsAnime_DeckMasterCopy then
 		MagicalHatsAnime_DeckMasterCopy(tp,e:GetOwner(),sc)
 		return
 	end

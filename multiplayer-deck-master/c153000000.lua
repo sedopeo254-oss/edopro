@@ -10,6 +10,7 @@ if not DeckMaster then
 	DeckMaster={}
 	DeckMaster.Abilities={}
 	DeckMaster.AbilityContextCard=nil
+	DeckMaster.FieldAbilityCards={}
 	DeckMaster.TeamLossProtected={}
 	DeckMaster.TeamSharedCode={}
 	DeckMaster.TeamSharedOwner={}
@@ -237,7 +238,9 @@ if not DeckMaster then
 	end
 
 	function Card.IsDeckMaster(c)
-		return c:GetFlagEffect(FLAG_DECK_MASTER)>0
+		if c:GetFlagEffect(FLAG_DECK_MASTER)>0 then return true end
+		local p=DeckMaster.FieldAbilityCards[c]
+		return p~=nil and c:IsLocation(LOCATION_MZONE)
 	end
 	function Card.IsLogicalDeckMaster(c,p)
 		return c:IsDeckMaster() and c:GetLogicalControler()==p
@@ -250,7 +253,7 @@ if not DeckMaster then
 		if not c then return false end
 		local p=c:GetLogicalOwner()
 		if DeckMasterZone[p]==c then return true end
-		return c:IsLocation(LOCATION_MZONE) and c:IsDeckMaster()
+		return DeckMaster.FieldAbilityCards[c]==p and c:IsLocation(LOCATION_MZONE)
 	end
 
 	function Duel.GetDeckMasterPlayer(p)
@@ -316,7 +319,10 @@ if not DeckMaster then
 		local ignore_condition=is_shared_code(c:GetOriginalCode())
 		Duel.ClearDeckMasterZonePlayer(p)
 		local res=Duel.SpecialSummon(c,0,side,side,ignore_condition,false,POS_FACEUP)
-		if res>0 and ignore_condition then c:CompleteProcedure() end
+		if res>0 then
+			DeckMaster.FieldAbilityCards[c]=p
+			if ignore_condition then c:CompleteProcedure() end
+		end
 		c:RegisterFlagEffect(FLAG_DECK_MASTER,
 			RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 			EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
@@ -467,6 +473,7 @@ if not DeckMaster then
 				rc:RegisterFlagEffect(FLAG_DECK_MASTER,
 					RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 					EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+				DeckMaster.FieldAbilityCards[rc]=rc:GetLogicalControler()
 				mark_team_shared_master(rc:GetLogicalControler(),rc,rc:GetOriginalCode())
 			end
 		end
@@ -493,6 +500,7 @@ if not DeckMaster then
 					dm:RegisterFlagEffect(FLAG_DECK_MASTER,
 						RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 						EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+					DeckMaster.FieldAbilityCards[dm]=p
 					mark_team_shared_master(p,dm,dm:GetOriginalCode())
 				end
 			end

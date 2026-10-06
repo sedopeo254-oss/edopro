@@ -13,7 +13,7 @@ function s.initial_effect(c)
 	e1:SetCode(EVENT_PRE_BATTLE_DAMAGE)
 	e1:SetProperty(EFFECT_FLAG_DAMAGE_STEP+EFFECT_FLAG_DAMAGE_CAL)
 	e1:SetCondition(s.bcondition)
-	e1:SetCost(s.cost)
+	e1:SetCost(s.bcost)
 	e1:SetTarget(s.btarget)
 	e1:SetOperation(s.bactivate)
 	c:RegisterEffect(e1)
@@ -41,15 +41,23 @@ end
 function s.cfilter(c,e)
 	return c:IsPreviousLocation(LOCATION_MZONE)
 		and c:GetPreviousLevelOnField()>=8
-		and c:IsReason(REASON_DESTROY)
+		and c:IsReason(REASON_EFFECT)
+		and not c:IsReason(REASON_BATTLE)
 		and s.is_yours(c,e)
 end
 function s.dcondition(e,tp,eg,ep,ev,re,r,rp)
 	return eg:IsExists(s.cfilter,1,nil,e)
 end
+function s.bcost(e,tp,eg,ep,ev,re,r,rp,chk)
+	if chk==0 then return Duel.GetLP(tp)>1 end
+	local lp=Duel.GetLP(tp)
+	Duel.ChangeBattleDamage(tp,0)
+	Duel.PayLPCost(tp,math.floor(lp/2))
+end
 function s.cost(e,tp,eg,ep,ev,re,r,rp,chk)
 	if chk==0 then return Duel.GetLP(tp)>1 end
-	Duel.PayLPCost(tp,math.floor(Duel.GetLP(tp)/2))
+	local lp=Duel.GetLP(tp)
+	Duel.PayLPCost(tp,math.floor(lp/2))
 end
 function s.spfilter(c,e,tp)
 	return c:IsCode(BERSERK_DRAGON_ANIME,BERSERK_DRAGON)
@@ -79,8 +87,7 @@ end
 function s.bactivate(e,tp,eg,ep,ev,re,r,rp)
 	local bc=e:GetLabelObject()
 	if not bc or not bc:IsRelateToBattle() then return end
-	--No Battle Damage involving the Level 8+ monster that is being destroyed.
-	Duel.ChangeBattleDamage(tp,0)
+	--Battle Damage was already changed to 0 during s.bcost.
 	--Summon Berserk Dragon only after that monster is actually destroyed by battle.
 	local e1=Effect.CreateEffect(e:GetHandler())
 	e1:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
