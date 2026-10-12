@@ -277,33 +277,35 @@ jobs:
           assert 'summon_to_true_owner' in mirage
 
           dark_magician_dm = Path('multiplayer-deck-master/c153000015.lua').read_text(encoding='utf-8')
-          assert 'MagicalHatsAnime_CanDeckMasterCopy' in dark_magician_dm
-          assert 'MagicalHatsAnime_DeckMasterCopy' in dark_magician_dm
+          assert 'DeckMaster.IsAbilityActiveCard(c)' in dark_magician_dm
+          assert 'Duel.GetLogicalPlayer(tp)==c:GetLogicalOwner()' in dark_magician_dm
+          assert 'LOCATION_GRAVE|LOCATION_ONFIELD' in dark_magician_dm
+          assert 'function s.replay_spell' in dark_magician_dm
+          assert 'Duel.PayLPCost(tp,1000)' in dark_magician_dm
+          assert 'MagicalHatsAnime_DeckMasterCopy' not in dark_magician_dm
+          assert '120000030' not in dark_magician_dm
 
           flame_dm = Path('multiplayer-deck-master/c153000007.lua').read_text(encoding='utf-8')
           assert 'transferable_attack' in flame_dm
           assert 'LOCATION_MZONE,0' in flame_dm
 
           magical_hats = Path('multiplayer-anime-cards/c403.lua').read_text(encoding='utf-8')
-          assert 'MagicalHatsAnime_CanDeckMasterCopy' in magical_hats
-          assert 'MagicalHatsAnime_DeckMasterCopy' in magical_hats
-
-          hats403 = Path('multiplayer-anime-cards/c403.lua').read_text(encoding='utf-8')
-          assert 'MagicalHatsAnime_DeckMasterCopy' in hats403
-          assert 'Duel.CreateTokenPlayer' in hats403
-          assert 'copy_for_logical' in hats403
-          assert 'c403.logical_mzone' in hats403
+          assert '--Magical Hats (Anime)' in magical_hats
+          assert 'local c403,id=GetID()' in magical_hats
+          assert 'MagicalHatsAnime_DeckMasterCopy' not in magical_hats
+          assert 'copy_for_logical' not in magical_hats
+          assert 'c403.logical_mzone' not in magical_hats
 
           deal = Path('multiplayer-anime-cards/c99900043.lua').read_text(encoding='utf-8')
-          assert 'EVENT_PRE_BATTLE_DAMAGE' in deal
-          assert 'STATUS_BATTLE_RESULT' in deal
-          assert 'Duel.ChangeBattleDamage(tp,0)' in deal
+          assert 'EVENT_PRE_DAMAGE_CALCULATE' in deal
+          assert 'EVENT_PRE_BATTLE_DAMAGE' not in deal
+          assert 'EFFECT_CHANGE_BATTLE_DAMAGE' in deal
+          assert 'SetValue(0)' in deal
           assert 'math.floor(lp/2)' in deal
           assert 'EVENT_DESTROYED' in deal
-          assert 'function s.bcost' in deal
-          assert 'Duel.ChangeBattleDamage(tp,0)' in deal
           assert 'c:IsReason(REASON_EFFECT)' in deal
           assert 'not c:IsReason(REASON_BATTLE)' in deal
+          assert 'EVENT_BATTLE_DESTROYED' in deal
 
           # P3 attack guidance in 2v1: the Core must present logical P1/P2
           # options first, and the client must render the real player names.
