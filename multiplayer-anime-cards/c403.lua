@@ -72,7 +72,9 @@ function c403.initial_effect(c)
     end
 end
 function c403.spellcaster_filter(c)
-    return c:IsFaceup() and c:IsRace(RACE_SPELLCASTER) and not c:IsLocation(LOCATION_PZONE)
+    return c:IsFaceup()
+        and (c:IsRace(RACE_SPELLCASTER) or c:IsRace(RACE_WARRIOR))
+        and not c:IsLocation(LOCATION_PZONE)
 end
 function c403.condition(e,tp,eg,ep,ev,re,r,rp)
     if Duel.IsPlayerAffectedByEffect(tp,CARD_BLUEEYES_SPIRIT) then return false end
@@ -85,19 +87,44 @@ local c403_chain_with_10000020 = false
 function c403.target(e,tp,eg,ep,ev,re,r,rp,chk,chkc)
     if chkc then return chkc:IsLocation(LOCATION_ONFIELD) and chkc:IsControler(tp) and c403.tgfilter(chkc,tp) end
     if chk==0 then return not Duel.IsPlayerAffectedByEffect(tp,CARD_BLUEEYES_SPIRIT)
-     and Duel.IsExistingMatchingCard(Auxiliary.FaceupFilter(Card.IsRace,RACE_SPELLCASTER),e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil) end
+     and Duel.IsExistingMatchingCard(c403.spellcaster_filter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil) end
     local ct=Duel.GetMatchingGroupCount(Card.IsType,tp,LOCATION_ONFIELD,0,nil,TYPE_MONSTER)
     Duel.SetOperationInfo(0,CATEGORY_POSITION,nil,ct,0,0)
     Duel.SetOperationInfo(0,CATEGORY_TOKEN,nil,3-ct,0,0)
     Duel.SetOperationInfo(0,CATEGORY_SPECIAL_SUMMON,nil,3-ct,0,0)
+    e:SetLabel(0)
     c403_chain_with_10000020 = false
     local ch = Duel.GetCurrentChain()
     if ch > 1 then
         local prev_re = Duel.GetChainInfo(ch-1,CHAININFO_TRIGGERING_EFFECT)
+        local prev_rp = Duel.GetChainInfo(ch-1,CHAININFO_TRIGGERING_PLAYER)
+        local prev_tg = Duel.GetChainInfo(ch-1,CHAININFO_TARGET_CARDS)
         if prev_re and prev_re:GetHandler():GetCode() == 10000020 then
             c403_chain_with_10000020 = true
         end
+        if prev_re and prev_rp~=tp and prev_re:IsHasProperty(EFFECT_FLAG_CARD_TARGET) and prev_tg and #prev_tg>0 then
+            e:SetLabel(ch-1)
+        end
     end
+end
+function c403.retarget_previous_chain(e,tp,hatm1,hats)
+    local ch=e:GetLabel()
+    if not ch or ch<=0 or not hatm1 or not hats or #hats==0 then return end
+    local prev_re=Duel.GetChainInfo(ch,CHAININFO_TRIGGERING_EFFECT)
+    local prev_rp=Duel.GetChainInfo(ch,CHAININFO_TRIGGERING_PLAYER)
+    local prev_tg=Duel.GetChainInfo(ch,CHAININFO_TARGET_CARDS)
+    if not prev_re or prev_rp==tp or not prev_re:IsHasProperty(EFFECT_FLAG_CARD_TARGET) or not prev_tg or not prev_tg:IsContains(hatm1) then return end
+    local rg=hats:RandomSelect(tp,1)
+    local rc=rg:GetFirst()
+    if not rc then return end
+    local ng=Group.CreateGroup()
+    for tc in aux.Next(prev_tg) do
+        if tc~=hatm1 then
+            ng:AddCard(tc)
+        end
+    end
+    ng:AddCard(rc)
+    Duel.ChangeTargetCard(ch,ng)
 end
 function c403.activate(e,tp,eg,ep,ev,re,r,rp)
     local c=e:GetHandler()
@@ -115,6 +142,7 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
             g1:Merge(g2)
             g1:KeepAlive()
             for hatma in aux.Next(g2) do
+                c403.savepos(hatma)
                 Duel.ChangePosition(hatma,POS_FACEDOWN_DEFENSE)
                 local e1=Effect.CreateEffect(c)
                 e1:SetType(EFFECT_TYPE_SINGLE)
@@ -242,6 +270,7 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
             hat:SetStatus(STATUS_NO_LEVEL,true)
             hat:RegisterFlagEffect(403+3,RESET_EVENT+RESETS_STANDARD,0,0,fid)
         end	
+        c403.savepos(hatm1)
         Duel.ChangePosition(hatm1,POS_FACEDOWN_DEFENSE)
         local e1=Effect.CreateEffect(c)
         e1:SetType(EFFECT_TYPE_SINGLE)
@@ -284,6 +313,7 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
         local gs1=Duel.GetMatchingGroup(c403.gsfilter,tp,LOCATION_ONFIELD,0,nil,fid)
         Duel.ChangePosition(gs1,POS_FACEDOWN_DEFENSE)
         Duel.ShuffleSetCard(gs1)
+        c403.retarget_previous_chain(e,tp,hatm1,gs1)
     end	
     if c403_chain_with_10000020 then
         table.insert(MagicalHatsAnime_HatTokenFidList, {fid=fid,player=tp})
@@ -407,7 +437,20 @@ function c403.check_10000020_resolve(e,tp,eg,ep,ev,re,r,rp)
 end
 function c403.econ(e,tp,eg,ep,ev,re,r,rp)
     return e:GetHandler():IsFacedown()
-end	
+end
+function c403.savepos(c)
+    local pos=POS_FACEUP_DEFENSE
+    if c:IsAttackPos() then pos=POS_FACEUP_ATTACK end
+    c:ResetFlagEffect(403+20)
+    c:RegisterFlagEffect(403+20,RESET_EVENT+RESETS_STANDARD,0,0,pos)
+end
+function c403.revealpos(c)
+    local pos=c:GetFlagEffectLabel(403+20)
+    if not pos or pos==0 then pos=c:GetPreviousPosition() end
+    if not pos or pos==0 or pos==POS_FACEDOWN_ATTACK or pos==POS_FACEDOWN_DEFENSE then pos=POS_FACEUP_DEFENSE end
+    Duel.ChangePosition(c,pos)
+    c:ResetFlagEffect(403+20)
+end
 function c403.hatop(e,tp,eg,ep,ev,re,r,rp)
     Duel.Destroy(e:GetHandler(),REASON_EFFECT)
 end
@@ -504,7 +547,7 @@ function c403.desop2(e,tp,eg,ep,ev,re,r,rp)
     local tc1=e:GetLabelObject()
     local fid=e:GetLabel()
     if tc1 and tc1:GetFlagEffectLabel(403+1)==fid then
-        Duel.ChangePosition(tc1,tc1:GetPreviousPosition())
+        c403.revealpos(tc1)
         if tc1:GetFlagEffectLabel(403+1)==fid then
             tc1:ResetFlagEffect(403+1)
         else 
@@ -514,7 +557,7 @@ function c403.desop2(e,tp,eg,ep,ev,re,r,rp)
     local g1=Duel.GetMatchingGroup(c403.desfilter1,tp,LOCATION_ONFIELD,LOCATION_ONFIELD,nil,fid)
     local tc2=g1:GetFirst()
     for tc2 in aux.Next(g1) do
-        Duel.ChangePosition(tc2,tc2:GetPreviousPosition()) 
+        c403.revealpos(tc2)
         if tc2:GetFlagEffectLabel(403+1)==fid then
             tc2:ResetFlagEffect(403+1)
         else 
@@ -531,7 +574,7 @@ function c403.desop4(e,tp,eg,ep,ev,re,r,rp)
     local tc=Duel.GetAttackTarget() 
     local fid=e:GetLabel()
     if tc and tc:GetFlagEffectLabel(403+2)==fid then
-        Duel.ChangePosition(tc,tc:GetPreviousPosition())  
+        c403.revealpos(tc)
         if tc:GetFlagEffectLabel(403+1)==fid then
             tc:ResetFlagEffect(403+1)
         else 
@@ -548,7 +591,7 @@ function c403.desop5(e,tp,eg,ep,ev,re,r,rp)
     local tg=g:Filter(c403.desfilter3,nil,fid)
     local tc=tg:GetFirst()
     if tc then
-        Duel.ChangePosition(tc,tc:GetPreviousPosition()) 
+        c403.revealpos(tc)
         if tc:GetFlagEffectLabel(403+1)==fid then
             tc:ResetFlagEffect(403+1)
         else 
@@ -572,7 +615,7 @@ function c403.desop6(e,tp,eg,ep,ev,re,r,rp)
     local g1=Duel.GetMatchingGroup(c403.desfilter4,tp,LOCATION_ONFIELD,LOCATION_ONFIELD,nil,fid)
     local tc=g1:GetFirst()
     for tc in aux.Next(g1) do
-        Duel.ChangePosition(tc,tc:GetPreviousPosition()) 
+        c403.revealpos(tc)
         if tc:GetFlagEffectLabel(403+1)==fid then
             tc:ResetFlagEffect(403+1)
         else 
@@ -590,7 +633,7 @@ function c403.desop8(e,tp,eg,ep,ev,re,r,rp)
     local fid = e:GetLabel()
     local g1 = Duel.GetMatchingGroup(c403.desfilter4, tp, LOCATION_ONFIELD, LOCATION_ONFIELD, nil, fid)
     for tc in aux.Next(g1) do
-        Duel.ChangePosition(tc, tc:GetPreviousPosition())
+        c403.revealpos(tc)
         if tc:GetFlagEffectLabel(403+1) == fid then
             tc:ResetFlagEffect(403+1)
         else
@@ -957,44 +1000,3 @@ function c403.actop2(e,tp,eg,ep,ev,re,r,rp)
             while etc do
                 etc:ReleaseEffectRelation(te)
                 etc=g:GetNext()
-            end
-        end
-    end
-end
-function c403.ac3con(e,tp,eg,ep,ev,re,r,rp)
-    local d=Duel.GetAttackTarget()
-    return d and d:IsControler(tp) and d:GetFlagEffectLabel(403+1)==e:GetLabel()
-end
-function c403.ac3target(e,tp,eg,ep,ev,re,r,rp,chk,chkc)
-    if chkc then return chkc:IsLocation(LOCATION_MZONE) and chkc:IsControler(tp) and chkc:GetFlagEffectLabel(403+4)==e:GetLabel() end
-    if chk==0 then 
-        return Duel.IsExistingMatchingCard(
-            function(c) return c:GetFlagEffectLabel(403+4)==e:GetLabel() and c:IsFacedown() end, 
-            tp, LOCATION_MZONE, 0, 1, nil
-        ) 
-    end
-    local g=Duel.GetMatchingGroup(
-        function(c) return c:GetFlagEffectLabel(403+4)==e:GetLabel() and c:IsFacedown() end, 
-        tp, LOCATION_MZONE, 0, nil
-    )
-    Duel.SetTargetCard(g)
-end
-function c403.ac3op(e,tp,eg,ep,ev,re,r,rp)
-    local atk_target = Duel.GetAttackTarget()
-    local fid = e:GetLabel()
-    if atk_target and atk_target:IsFacedown() and atk_target:GetFlagEffectLabel(403+1)==fid then
-        Duel.ChangePosition(atk_target, atk_target:GetPreviousPosition())
-        if atk_target:GetFlagEffectLabel(403+1)==fid then
-            atk_target:ResetFlagEffect(403+1)
-        else
-            atk_target:ResetFlagEffect(403+2)
-        end
-    end
-    local g1 = Duel.GetMatchingGroup(c403.desfilter1, tp, LOCATION_ONFIELD, LOCATION_ONFIELD, nil, fid)
-    for tc2 in aux.Next(g1) do
-        Duel.ChangePosition(tc2, tc2:GetPreviousPosition()) 
-        if tc2:GetFlagEffectLabel(403+1)==fid then
-            tc2:ResetFlagEffect(403+1)
-        else 
-            tc2:ResetFlagEffect(403+2)
-        end
