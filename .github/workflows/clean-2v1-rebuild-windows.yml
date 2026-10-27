@@ -301,6 +301,9 @@ jobs:
           assert 'c403.dm_copy_target' in magical_hats
           assert 'if not ok or not hat:IsLocation(LOCATION_MZONE)' in magical_hats
           assert 'RACE_WARRIOR' in magical_hats
+          assert 'chosen_logical=hatm1:GetLogicalControler()' in magical_hats
+          assert 'Duel.GetPlayerFieldGroup(chosen_logical,LOCATION_MZONE)' in magical_hats
+          assert 'other_team_field=chosen_logical~=nil' in magical_hats
           assert 'local fid=c:GetFlagEffectLabel(403)' in magical_hats
           assert 'c403.copy_fid_override' not in magical_hats
 
