@@ -203,6 +203,8 @@ jobs:
           assert 'player[1].lp = 8000;' in core_field
           assert 'player[1].start_lp = 8000;' in core_field
           assert 'teammate_fusion_extra_only' in core_field
+          assert 'multiplayer_shared_tofield_limit' in core_field
+          assert 'limit + active_used - target_used' in core_field
           assert 'pcard->data.type & TYPE_FUSION' in core_field
 
           server = Path('gframe/generic_duel.cpp').read_text(encoding='utf-8')
@@ -282,7 +284,8 @@ jobs:
           assert 'LOCATION_GRAVE|LOCATION_ONFIELD' in dark_magician_dm
           assert 'function s.replay_spell' in dark_magician_dm
           assert 'Duel.PayLPCost(tp,1000)' in dark_magician_dm
-          assert 'MagicalHatsAnime_DeckMasterCopy' not in dark_magician_dm
+          assert 'MagicalHatsAnime_CanDeckMasterCopy' in dark_magician_dm
+          assert 'MagicalHatsAnime_DeckMasterCopy' in dark_magician_dm
           assert '120000030' not in dark_magician_dm
 
           flame_dm = Path('multiplayer-deck-master/c153000007.lua').read_text(encoding='utf-8')
@@ -292,9 +295,14 @@ jobs:
           magical_hats = Path('multiplayer-anime-cards/c403.lua').read_text(encoding='utf-8')
           assert '--Magical Hats (Anime)' in magical_hats
           assert 'local c403,id=GetID()' in magical_hats
-          assert 'MagicalHatsAnime_DeckMasterCopy' not in magical_hats
-          assert 'copy_for_logical' not in magical_hats
-          assert 'c403.logical_mzone' not in magical_hats
+          assert 'MagicalHatsAnime_DeckMasterCopy' in magical_hats
+          assert 'Duel.CreateTokenPlayer(logical,403)' in magical_hats
+          assert 'c403.dm_copy_setup' in magical_hats
+          assert 'c403.dm_copy_target' in magical_hats
+          assert 'if not ok or not hat:IsLocation(LOCATION_MZONE)' in magical_hats
+          assert 'RACE_WARRIOR' in magical_hats
+          assert 'local fid=c:GetFlagEffectLabel(403)' in magical_hats
+          assert 'c403.copy_fid_override' not in magical_hats
 
           deal = Path('multiplayer-anime-cards/c99900043.lua').read_text(encoding='utf-8')
           assert 'EVENT_PRE_DAMAGE_CALCULATE' in deal
