@@ -602,4 +602,73 @@ fm = fm.replace(old_extra, new_extra, 1)
 write("field.cpp", field_text[:fm_start] + fm + field_text[fm_end:])
 
 
+
+# A summoned spell/token can belong to P1 while P2 is taking the turn.
+# The existing get_tofield_count already uses the card's logical duelist,
+# but get_useable_count_other still applied the *current teammate's* global
+# MZONE/SZONE occupancy limit, causing new hats for P1 to silently fail.
+# Adjust the destination's limit without relaxing maximum-zone effects.
+replace_once(
+    "field.cpp",
+    '''int32_t field::get_useable_count_other(card* pcard, uint8_t playerid, uint8_t location, uint8_t uplayer, uint32_t reason, uint32_t zone, uint32_t* list) {
+	int32_t count = get_tofield_count(pcard, playerid, location, uplayer, reason, zone, list);
+	int32_t limit;
+	if(location == LOCATION_MZONE)
+		limit = get_mzone_limit(playerid, uplayer, reason);
+	else
+		limit = get_szone_limit(playerid, uplayer, reason);
+	if(count > limit)
+		count = limit;
+	return count;
+}
+''',
+    '''int32_t field::get_useable_count_other(card* pcard, uint8_t playerid, uint8_t location, uint8_t uplayer, uint32_t reason, uint32_t zone, uint32_t* list) {
+	int32_t count = get_tofield_count(pcard, playerid, location, uplayer, reason, zone, list);
+	int32_t limit;
+	if(location == LOCATION_MZONE)
+		limit = get_mzone_limit(playerid, uplayer, reason);
+	else
+		limit = get_szone_limit(playerid, uplayer, reason);
+	// multiplayer_shared_tofield_limit: the destination teammate's MZONE/SZONE
+	// cap must not inherit the active teammate's occupied-zone count. Existing
+	// EFFECT_MAX_MZONE/EFFECT_MAX_SZONE limits are retained by applying only
+	// the difference in used slots; never grant extra slots beyond the limit.
+	if(playerid == 0 && pcard && multiplayer.enabled()
+			&& (multiplayer.mode() == MultiplayerMode::TWO_V_ONE
+				|| multiplayer.mode() == MultiplayerMode::THREE_V_ONE)
+			&& (location == LOCATION_MZONE || location == LOCATION_SZONE)) {
+		uint8_t duelist = player[playerid].current_duelist;
+		if(pcard->current.controler == playerid
+				&& pcard->current.duelist < multiplayer.field_count(playerid))
+			duelist = pcard->current.duelist;
+		else if(pcard->owner == playerid
+				&& pcard->owner_duelist < multiplayer.field_count(playerid))
+			duelist = pcard->owner_duelist;
+		if(duelist != player[playerid].current_duelist) {
+			const auto shift = location == LOCATION_MZONE ? 0u : 8u;
+			const auto active_mask = (player[playerid].used_location >> shift) & 0x1fu;
+			const auto target_mask = (get_logical_used_location(playerid, duelist) >> shift) & 0x1fu;
+			int32_t active_used = field_used_count[active_mask];
+			int32_t target_used = field_used_count[target_mask];
+			if(location == LOCATION_MZONE && is_flag(DUEL_EMZONE)) {
+				for(uint8_t sequence = 5; sequence <= 6; ++sequence) {
+					if(player[playerid].list_mzone[get_zone_sequence(playerid, LOCATION_MZONE, sequence,
+							player[playerid].current_duelist)])
+						++active_used;
+					if(player[playerid].list_mzone[get_zone_sequence(playerid, LOCATION_MZONE, sequence,
+							duelist)])
+						++target_used;
+				}
+			}
+			limit = std::max<int32_t>(0, limit + active_used - target_used);
+		}
+	}
+	if(count > limit)
+		count = limit;
+	return count;
+}
+''',
+)
+
+
 print("Applied clean generic 2 vs 1 Core mode")
