@@ -17,7 +17,7 @@ void expect(bool condition, const char* message) {
 void read_card(void*, uint32_t code, OCG_CardData* data) {
     *data = {};
     data->code = code;
-    data->type = TYPE_MONSTER;
+    data->type = (code >= 17000 && code < 18000) ? TYPE_SPELL : TYPE_MONSTER;
     if(code == 15002)
         data->type |= TYPE_FUSION;
 }
@@ -200,6 +200,34 @@ int main() {
     expect(field.get_useable_count(p1_capacity_probe, 0, LOCATION_MZONE, 0,
             LOCATION_REASON_TOFIELD, 0x1f) > 0,
         "P1 capacity must remain independent from P2's full field");
+
+    // Regression: when P2 already has a full five-monster field, P1 must
+    // still have three empty Monster Zones, even DURING P2's projected turn.
+    // This is the situation from the Oct 27 replay: Yugi's four hats must
+    // not prevent three additional hats from entering Joey's separate field.
+    expect(field.tag_swap_to(0, 1),
+        "test may view P2 while placing team-owned cards onto P1");
+    expect(field.get_useable_count(p1_capacity_probe, 0, LOCATION_MZONE, 0,
+            LOCATION_REASON_TOFIELD, 0x1f) == 3,
+        "P1 still has exactly three MZONE slots while P2's MZONE is full");
+
+    for(uint8_t seq = 0; seq < 4; ++seq) {
+        auto* p2_spell = game.new_card(17000 + seq);
+        p2_spell->owner = 0;
+        p2_spell->owner_duelist = 1;
+        field.add_card(0, p2_spell, LOCATION_SZONE, seq, false, 1);
+    }
+    auto* p1_hat_spell = game.new_card(17100);
+    p1_hat_spell->owner = 0;
+    p1_hat_spell->owner_duelist = 0;
+    p1_hat_spell->current.controler = 0;
+    p1_hat_spell->current.duelist = 0;
+    p1_hat_spell->current.location = 0;
+    expect(field.get_useable_count(p1_hat_spell, 0, LOCATION_SZONE, 0,
+            LOCATION_REASON_TOFIELD, 0x1f) == 5,
+        "P1's SZONE must not inherit the active P2's four occupied spell slots");
+    expect(field.tag_swap_to(0, 0),
+        "restore P1 projection after independent MZONE/SZONE capacity checks");
 
     expect(field.move_card(0, p2, LOCATION_GRAVE, 0),
         "P2 monster must move to P2 Graveyard");
