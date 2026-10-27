@@ -48,6 +48,10 @@ function s.filter(c,e,tp)
 		or not c:IsControler(tp) then
 		return false
 	end
+	if c:IsCode(403) then
+		return MagicalHatsAnime_CanDeckMasterCopy
+			and MagicalHatsAnime_CanDeckMasterCopy(c,e,tp) or false
+	end
 	return c:GetActivateEffect()~=nil
 end
 
