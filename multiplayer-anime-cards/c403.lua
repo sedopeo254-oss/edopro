@@ -220,11 +220,31 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
         end
         local hatm1=g1:GetFirst()
         if not hatm1 then return end
-        local ct=copy_mode and 0 or Duel.GetMatchingGroupCount(
-            Card.IsType,tp,LOCATION_ONFIELD,0,hatm1,TYPE_MONSTER)
-        if not copy_mode and ct>0 and Duel.SelectYesNo(tp,aux.Stringid(403,0)) then 
+        --Both ordinary Magical Hats and a Dark Magician copy may select a
+        --Warrior/Spellcaster from another teammate's independent monster field.
+        --Calculate the actual chosen monster owner's space, NOT the current
+        --turn player's field occupancy.
+        local chosen_logical=nil
+        local own_group=nil
+        if Duel.GetActiveLogicalPlayerMask
+            and Duel.GetActiveLogicalPlayerMask()~=0 then
+            chosen_logical=hatm1:GetLogicalControler()
+            own_group=Duel.GetPlayerFieldGroup(chosen_logical,LOCATION_MZONE)
+            ft=5-#own_group
+        end
+        local ct=copy_mode and 0 or (own_group
+            and #own_group:Filter(Card.IsType,hatm1,TYPE_MONSTER)
+            or Duel.GetMatchingGroupCount(
+                Card.IsType,tp,LOCATION_ONFIELD,0,hatm1,TYPE_MONSTER))
+        if not copy_mode and ct>0 and Duel.SelectYesNo(tp,aux.Stringid(403,0)) then
             Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_POSCHANGE)
-            local g2=Duel.SelectMatchingCard(tp,Card.IsType,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,3,hatm1,TYPE_MONSTER)
+            local g2
+            if own_group then
+                local other_monsters=own_group:Filter(Card.IsType,hatm1,TYPE_MONSTER)
+                g2=other_monsters:Select(tp,1,math.min(3,#other_monsters),nil)
+            else
+                g2=Duel.SelectMatchingCard(tp,Card.IsType,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,3,hatm1,TYPE_MONSTER)
+            end
             g1:Merge(g2)
             g1:KeepAlive()
             for hatma in aux.Next(g2) do
@@ -277,16 +297,22 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
     else
         local placed=Group.CreateGroup()
         for i=1,zone do
-            local hat=copy_mode and Duel.CreateTokenPlayer(
-                copied_target:GetLogicalControler(),511005062)
+            local other_team_field=chosen_logical~=nil and
+                (copy_mode or c:GetLogicalOwner()~=chosen_logical)
+            local hat=other_team_field and Duel.CreateTokenPlayer(
+                chosen_logical,511005062)
                 or Duel.CreateToken(tp,511005062)
             local ok=hat and Duel.MoveToField(
                 hat,tp,tp,LOCATION_MZONE,POS_FACEDOWN_DEFENSE,true)
             if not ok or not hat:IsLocation(LOCATION_MZONE) then
                 if #placed>0 then Duel.SendtoGrave(placed,REASON_RULE) end
+                if not copy_mode then
+                    c:ResetFlagEffect(403)
+                    Duel.Destroy(c,REASON_EFFECT)
+                end
                 return -- Never hide a teammate's monster with 0/1/2 hats.
             end
-            if copy_mode then placed:AddCard(hat) end
+            placed:AddCard(hat)
             local e1=Effect.CreateEffect(c)
             e1:SetType(EFFECT_TYPE_SINGLE)
             e1:SetCode(EFFECT_CHANGE_TYPE)
