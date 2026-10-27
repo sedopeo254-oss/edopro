@@ -78,6 +78,13 @@ end
 function s.replay_spell(tc,e,tp,eg,ep,ev,re,r,rp)
 	local te=tc:GetActivateEffect()
 	if not te then return false end
+	--Magical Hats copies require a new independent card/FieldID for the ally.
+	--Replaying the same original c403 would corrupt Yugi's four hats.
+	if tc:IsCode(403) then
+		return MagicalHatsAnime_DeckMasterCopy
+			and MagicalHatsAnime_DeckMasterCopy(tc,e,tp,eg,ep,ev,re,r,rp)
+			or false
+	end
 	local was_grave=tc:IsLocation(LOCATION_GRAVE)
 	if was_grave then
 		local loc=tc:IsType(TYPE_FIELD) and LOCATION_FZONE or LOCATION_SZONE
