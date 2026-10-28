@@ -379,11 +379,27 @@ if not DeckMaster then
 		Duel.RegisterEffect(e0,0)
 	end
 
+	local function is_big_five_solo(p)
+		if Duel.GetActiveLogicalPlayerMask()==0 or player_side(p)~=1 then return false end
+		local solo,allies=0,0
+		for q=0,3 do
+			if is_active_player(q) then
+				if player_side(q)==1 then solo=solo+1
+				elseif player_side(q)==0 then allies=allies+1 end
+			end
+		end
+		return solo==1 and allies>=2
+	end
 	function DeckMaster.RegisterRules(c)
 		for p=0,3 do
 			if is_active_player(p) then
+				local pool=DeckMasterTableSelect
+				if is_big_five_solo(p) then
+					pool={table.unpack(DeckMasterTableSelect)}
+					for code=153000020,153000024 do pool[#pool+1]=code end
+				end
 				local dmc=Duel.SelectCardsFromCodesPlayer(
-					p,1,1,false,false,table.unpack(DeckMasterTableSelect))
+					p,1,1,false,false,table.unpack(pool))
 				--Register the TEAM identity directly from the selected code. This is
 				--more reliable than waiting for token metadata to be queried later.
 				if team_shared_enabled_for(p) and is_shared_code(dmc) then
