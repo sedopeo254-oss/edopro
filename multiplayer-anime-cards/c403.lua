@@ -1,5 +1,6 @@
 --Magical Hats (Anime)
 
+
 local c403,id=GetID()
 if not MagicalHatsAnime_HatTokenFidList then MagicalHatsAnime_HatTokenFidList = {} end
 if not c403.gl_chk then
@@ -76,79 +77,6 @@ function c403.spellcaster_filter(c)
         and (c:IsRace(RACE_SPELLCASTER) or c:IsRace(RACE_WARRIOR))
         and not c:IsLocation(LOCATION_PZONE)
 end
-
--- Dark Magician Deck Master copy: build an independent c403 card and set of
--- four hats on the chosen teammate's logical field. Never reuse the original
--- Magical Hats effect/handler (which would destroy or overwrite Yugi's hats).
-c403.dm_copy_setup=setmetatable({},{__mode="k"})
-c403.dm_copy_target=setmetatable({},{__mode="k"})
-c403.dm_copy_success=setmetatable({},{__mode="k"})
-
-function c403.GetDeckMasterCopyTargets(source,e,tp)
-    local g=Group.CreateGroup()
-    if not source or not Duel.GetActiveLogicalPlayerMask
-        or Duel.GetActiveLogicalPlayerMask()==0 then return g end
-    local logical=source:GetLogicalOwner()
-    local side=Duel.GetLogicalPlayerSide(logical)
-    for p=0,3 do
-        if p~=logical and Duel.IsLogicalPlayerActive(p)
-            and Duel.GetLogicalPlayerSide(p)==side then
-            local mz=Duel.GetPlayerFieldGroup(p,LOCATION_MZONE)
-            local sz=Duel.GetPlayerFieldGroup(p,LOCATION_SZONE)
-            --One real monster + 3 empty hats; no half-complete set is legal.
-            if #mz<=2 and #sz<5 then
-                g:Merge(mz:Filter(c403.spellcaster_filter,nil))
-            end
-        end
-    end
-    return g
-end
-
-function MagicalHatsAnime_CanDeckMasterCopy(tc,e,tp)
-    if not tc or not tc:IsCode(403)
-        or not tc:IsLocation(LOCATION_ONFIELD|LOCATION_GRAVE) then
-        return false
-    end
-    local source=e and e:GetOwner()
-    return source and #c403.GetDeckMasterCopyTargets(source,e,tp)>0 or false
-end
-
-function MagicalHatsAnime_DeckMasterCopy(tc,e,tp,eg,ep,ev,re,r,rp)
-    if not MagicalHatsAnime_CanDeckMasterCopy(tc,e,tp) then return false end
-    local source=e:GetOwner()
-    local candidates=c403.GetDeckMasterCopyTargets(source,e,tp)
-    if #candidates==0 then return false end
-    Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_POSCHANGE)
-    local picked=candidates:Select(tp,1,1,nil):GetFirst()
-    if not picked or not picked:IsFaceup() or not picked:IsLocation(LOCATION_MZONE) then
-        return false
-    end
-    local logical=picked:GetLogicalControler()
-    local side=Duel.GetLogicalPlayerSide(logical)
-
-    --Each player receives a distinct physical Magical Hats handler/FieldID.
-    --No original Magical Hats is moved, reactivated, or modified.
-    local proxy=Duel.CreateTokenPlayer(logical,403)
-    if not proxy then return false end
-    c403.dm_copy_setup[proxy]=true
-    c403.dm_copy_target[proxy]=picked
-    if not Duel.MoveToField(proxy,side,side,LOCATION_SZONE,POS_FACEUP,true) then
-        c403.dm_copy_setup[proxy]=nil
-        c403.dm_copy_target[proxy]=nil
-        return false
-    end
-    local ce=Effect.CreateEffect(proxy)
-    c403.activate(ce,side,eg,ep,ev,re,r,rp)
-    local succeeded=c403.dm_copy_success[proxy] and proxy:IsLocation(LOCATION_SZONE)
-    c403.dm_copy_setup[proxy]=nil
-    c403.dm_copy_target[proxy]=nil
-    c403.dm_copy_success[proxy]=nil
-    if not succeeded and proxy:IsOnField() then
-        Duel.SendtoGrave(proxy,REASON_RULE)
-    end
-    return succeeded and true or false
-end
-
 function c403.condition(e,tp,eg,ep,ev,re,r,rp)
     if Duel.IsPlayerAffectedByEffect(tp,CARD_BLUEEYES_SPIRIT) then return false end
     return Duel.IsExistingMatchingCard(c403.spellcaster_filter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil)
@@ -202,49 +130,16 @@ end
 function c403.activate(e,tp,eg,ep,ev,re,r,rp)
     local c=e:GetHandler()
     local fid=c:GetFieldID()
-    local copied_target=c403.dm_copy_target[c]
-    local copy_mode=copied_target~=nil
-    local ft=copy_mode and (5-#Duel.GetPlayerFieldGroup(
-        copied_target:GetLogicalControler(),LOCATION_MZONE))
-        or Duel.GetLocationCount(tp,LOCATION_MZONE)
+    local ft=Duel.GetLocationCount(tp,LOCATION_MZONE)
     if Duel.IsPlayerAffectedByEffect(tp,CARD_BLUEEYES_SPIRIT) then return end
-        if not copy_mode then
-            c:RegisterFlagEffect(403,RESET_EVENT+RESETS_STANDARD_DISABLE,0,0,fid)
-        end
-        local g1
-        if copy_mode then
-            g1=Group.FromCards(copied_target)
-        else
-            Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_POSCHANGE)
-            g1=Duel.SelectMatchingCard(tp,c403.spellcaster_filter,tp,LOCATION_ONFIELD,0,1,1,nil)
-        end
+        c:RegisterFlagEffect(403,RESET_EVENT+RESETS_STANDARD_DISABLE,0,0,fid)
+        Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_POSCHANGE)
+        local g1=Duel.SelectMatchingCard(tp,c403.spellcaster_filter,tp,LOCATION_ONFIELD,0,1,1,nil)
         local hatm1=g1:GetFirst()
-        if not hatm1 then return end
-        --Both ordinary Magical Hats and a Dark Magician copy may select a
-        --Warrior/Spellcaster from another teammate's independent monster field.
-        --Calculate the actual chosen monster owner's space, NOT the current
-        --turn player's field occupancy.
-        local chosen_logical=nil
-        local own_group=nil
-        if Duel.GetActiveLogicalPlayerMask
-            and Duel.GetActiveLogicalPlayerMask()~=0 then
-            chosen_logical=hatm1:GetLogicalControler()
-            own_group=Duel.GetPlayerFieldGroup(chosen_logical,LOCATION_MZONE)
-            ft=5-#own_group
-        end
-        local ct=copy_mode and 0 or (own_group
-            and #own_group:Filter(Card.IsType,hatm1,TYPE_MONSTER)
-            or Duel.GetMatchingGroupCount(
-                Card.IsType,tp,LOCATION_ONFIELD,0,hatm1,TYPE_MONSTER))
-        if not copy_mode and ct>0 and Duel.SelectYesNo(tp,aux.Stringid(403,0)) then
+        local ct=Duel.GetMatchingGroupCount(Card.IsType,tp,LOCATION_ONFIELD,0,g1:GetFirst(),TYPE_MONSTER)
+        if hatm1 and ct>0 and Duel.SelectYesNo(tp,aux.Stringid(403,0)) then 
             Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_POSCHANGE)
-            local g2
-            if own_group then
-                local other_monsters=own_group:Filter(Card.IsType,hatm1,TYPE_MONSTER)
-                g2=other_monsters:Select(tp,1,math.min(3,#other_monsters),nil)
-            else
-                g2=Duel.SelectMatchingCard(tp,Card.IsType,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,3,hatm1,TYPE_MONSTER)
-            end
+            local g2=Duel.SelectMatchingCard(tp,Card.IsType,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,3,hatm1,TYPE_MONSTER)
             g1:Merge(g2)
             g1:KeepAlive()
             for hatma in aux.Next(g2) do
@@ -292,27 +187,11 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
     end
     local zone=4-#g1
     if ft<zone then
-        if not copy_mode then Duel.Destroy(c,REASON_EFFECT) end
-        return
-    else
-        local placed=Group.CreateGroup()
+        Duel.Destroy(e:GetHandler(),REASON_EFFECT) 
+    else	
         for i=1,zone do
-            local other_team_field=chosen_logical~=nil and
-                (copy_mode or c:GetLogicalOwner()~=chosen_logical)
-            local hat=other_team_field and Duel.CreateTokenPlayer(
-                chosen_logical,511005062)
-                or Duel.CreateToken(tp,511005062)
-            local ok=hat and Duel.MoveToField(
-                hat,tp,tp,LOCATION_MZONE,POS_FACEDOWN_DEFENSE,true)
-            if not ok or not hat:IsLocation(LOCATION_MZONE) then
-                if #placed>0 then Duel.SendtoGrave(placed,REASON_RULE) end
-                if not copy_mode then
-                    c:ResetFlagEffect(403)
-                    Duel.Destroy(c,REASON_EFFECT)
-                end
-                return -- Never hide a teammate's monster with 0/1/2 hats.
-            end
-            placed:AddCard(hat)
+            local hat=Duel.CreateToken(tp,511005062)
+            Duel.MoveToField(hat,tp,tp,LOCATION_MZONE,POS_FACEDOWN_DEFENSE,true)
             local e1=Effect.CreateEffect(c)
             e1:SetType(EFFECT_TYPE_SINGLE)
             e1:SetCode(EFFECT_CHANGE_TYPE)
@@ -432,10 +311,6 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
         e8:SetCode(EFFECT_UNRELEASABLE_NONSUM)
         hatm1:RegisterEffect(e8)
         hatm1:RegisterFlagEffect(403+1,RESET_EVENT+RESETS_STANDARD,0,0,fid)
-        if copy_mode then
-            c:RegisterFlagEffect(403,RESET_EVENT+RESETS_STANDARD_DISABLE,0,0,fid)
-            c403.dm_copy_success[c]=true
-        end
         local gs1=Duel.GetMatchingGroup(c403.gsfilter,tp,LOCATION_ONFIELD,0,nil,fid)
         Duel.ChangePosition(gs1,POS_FACEDOWN_DEFENSE)
         Duel.ShuffleSetCard(gs1)
@@ -1256,12 +1131,7 @@ function c403.ac3op(e,tp,eg,ep,ev,re,r,rp)
     Duel.Destroy(e:GetHandler(),REASON_EFFECT)
 end
 function c403.descon(e)
-    local c=e:GetHandler()
-    if c403.dm_copy_setup[c] then return false end
-    local fid=c:GetFlagEffectLabel(403)
-    if not fid then return false end
-    return not Duel.IsExistingMatchingCard(
-        c403.refilter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil,fid)
+    return not Duel.IsExistingMatchingCard(c403.refilter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil,fid) 
 end
 function c403.ac4con(e,tp,eg,ep,ev,re,r,rp)
     local fid = e:GetLabel()
