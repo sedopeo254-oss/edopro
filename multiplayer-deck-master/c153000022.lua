@@ -53,9 +53,12 @@ function s.dmcon(e,tp,eg,ep,ev,re,r,rp)
     if mask==0 then
         return Duel.IsTurnPlayer(tp) and Duel.IsDeckMaster(tp,id)
     end
-    return Duel.IsTurnPlayer(tp) and Duel.IsLogicalPlayerActive(logical)
+    -- The merger belongs exclusively to Big Five: check the actual
+    -- physical turn player, not the registering effect's callback tp.
+    return Duel.IsLogicalPlayerActive(logical)
         and Duel.GetLogicalPlayerSide(logical)==1
-        and Duel.GetLogicalPlayer(tp)==logical
+        and Duel.GetTurnPlayer()==1
+        and Duel.GetLogicalPlayer(1)==logical
         and Duel.IsDeckMasterPlayer(logical,id)
 end
 
