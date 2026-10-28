@@ -13,25 +13,7 @@ function s.initial_effect(c)
 	dme1:SetOperation(s.op)
 	DeckMaster.RegisterAbilities(c,dme1)
 
-	aux.GlobalCheck(s,function()
-		s.usedSpell=Group.CreateGroup()
-		s.usedSpell:KeepAlive()
-		local ge1=Effect.CreateEffect(c)
-		ge1:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
-		ge1:SetCode(EVENT_CHAINING)
-		ge1:SetOperation(s.checkop)
-		Duel.RegisterEffect(ge1,0)
-		aux.AddValuesReset(function()
-			s.usedSpell:Clear()
-		end)
-	end)
-end
 
-function s.checkop(e,tp,eg,ep,ev,re,r,rp)
-	if re and re:IsActiveType(TYPE_SPELL)
-		and re:IsHasType(EFFECT_TYPE_ACTIVATE) then
-		s.usedSpell:AddCard(re:GetHandler())
-	end
 end
 
 function s.ownturn(c,tp)
@@ -83,17 +65,29 @@ function s.filter(c,e,tp)
 	return s.copy_recipient(e:GetOwner():GetLogicalOwner(),c:GetOriginalCode())~=nil
 end
 
+function s.sources(e,tp)
+	if s.is_multiplayer() then
+		return Duel.GetPlayerFieldGroup(e:GetOwner():GetLogicalOwner(),
+			LOCATION_GRAVE|LOCATION_ONFIELD)
+	end
+	return Duel.GetFieldGroup(tp,LOCATION_GRAVE|LOCATION_ONFIELD,0)
+end
+
+function s.available(e,tp)
+	return s.sources(e,tp):IsExists(s.filter,1,nil,e,tp)
+end
+
 function s.con(e,tp,eg,ep,ev,re,r,rp)
 	local c=e:GetOwner()
 	return DeckMaster.IsAbilityActiveCard(c) and s.ownturn(c,tp)
 		and Duel.IsMainPhase() and Duel.CheckLPCost(tp,1000)
-		and s.usedSpell:IsExists(s.filter,1,nil,e,tp)
+		and s.available(e,tp)
 end
 
 function s.op(e,tp,eg,ep,ev,re,r,rp)
 	if not Duel.SelectYesNo(tp,aux.Stringid(id,0)) then return end
 	Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_EFFECT)
-	local g=s.usedSpell:FilterSelect(tp,s.filter,1,1,nil,e,tp)
+	local g=s.sources(e,tp):FilterSelect(tp,s.filter,1,1,nil,e,tp)
 	local original=g:GetFirst()
 	if not original then return end
 	local code=original:GetOriginalCode()
@@ -102,20 +96,25 @@ function s.op(e,tp,eg,ep,ev,re,r,rp)
 	local side=s.is_multiplayer() and Duel.GetLogicalPlayerSide(target) or tp
 	if side==nil then return end
 
-	--Use a genuine Spell owned by the teammate. The source in the graveyard
-	--or on the field stays untouched; c403.lua is not called manually.
+	-- A real Spell copy belongs to the teammate and remains on their field.
+	-- Duel.Activate() alone does NOT move a copied Spell out of the hand:
+	-- it would chain from the hand, then leave the field-bound c403 effects inert.
 	local copy=s.is_multiplayer() and Duel.CreateTokenPlayer(target,code)
 		or Duel.CreateToken(side,code)
 	if not copy then return end
-	if Duel.SendtoHand(copy,side,REASON_EFFECT)==0 then return end
 	local te=copy:GetActivateEffect()
-	if not te then
+	if not te then return end
+	if not Duel.MoveToField(copy,side,side,LOCATION_SZONE,POS_FACEDOWN,true) then
+		return
+	end
+	-- Preserve the copied card's own activation requirements and effects.
+	if not copy:CheckActivateEffect(false,false,false) then
 		Duel.SendtoGrave(copy,REASON_RULE)
 		return
 	end
 	Duel.PayLPCost(tp,1000)
 	Duel.Hint(HINT_CARD,tp,id)
 	Duel.Hint(HINT_CARD,side,code)
-	--Native Spell activation: correct logical owner, normal Chain and replay.
+	-- The actual teammate-owned Spell begins a native Chain, visible in replay.
 	Duel.Activate(te)
 end
