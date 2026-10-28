@@ -77,9 +77,44 @@ function c403.spellcaster_filter(c)
         and (c:IsRace(RACE_SPELLCASTER) or c:IsRace(RACE_WARRIOR))
         and not c:IsLocation(LOCATION_PZONE)
 end
+-- Keep the original Magical Hats effects, but resolve its field and
+-- selections against the logical owner of a copied card in multiplayer.
+function c403.is_multiplayer()
+    return Duel.GetActiveLogicalPlayerMask and Duel.GetActiveLogicalPlayerMask()~=0
+end
+function c403.owner_cards(e,location)
+    if c403.is_multiplayer() then
+        return Duel.GetPlayerFieldGroup(e:GetHandler():GetLogicalOwner(),location)
+    end
+    return Duel.GetFieldGroup(e:GetHandlerPlayer(),location,0)
+end
+function c403.select_owned(e,tp,candidates,min,max)
+    local selected=Group.CreateGroup()
+    if #candidates<min then return selected end
+    if not c403.is_multiplayer() then
+        return candidates:Select(tp,min,math.min(max,#candidates),nil)
+    end
+    local cards,codes={},{}
+    for tc in aux.Next(candidates) do
+        cards[#cards+1]=tc
+        codes[#codes+1]=tc:GetOriginalCode()
+    end
+    -- Route the choice to the recipient, not to the teammate whose turn it is.
+    -- Return-index mode preserves identity even with duplicate card names.
+    local logical=e:GetHandler():GetLogicalOwner()
+    local choices={Duel.SelectCardsFromCodesPlayer(
+        logical,min,math.min(max,#codes),false,true,table.unpack(codes))}
+    for _,choice in ipairs(choices) do
+        if type(choice)=="table" and cards[choice[2]] then
+            selected:AddCard(cards[choice[2]])
+        end
+    end
+    return selected
+end
+
 function c403.condition(e,tp,eg,ep,ev,re,r,rp)
     if Duel.IsPlayerAffectedByEffect(tp,CARD_BLUEEYES_SPIRIT) then return false end
-    return Duel.IsExistingMatchingCard(c403.spellcaster_filter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil)
+    return c403.owner_cards(e,LOCATION_MZONE):IsExists(c403.spellcaster_filter,1,nil)
 end
 function c403.tgfilter(c)
     return c:IsType(TYPE_MONSTER)
@@ -88,8 +123,8 @@ local c403_chain_with_10000020 = false
 function c403.target(e,tp,eg,ep,ev,re,r,rp,chk,chkc)
     if chkc then return chkc:IsLocation(LOCATION_ONFIELD) and chkc:IsControler(tp) and c403.tgfilter(chkc,tp) end
     if chk==0 then return not Duel.IsPlayerAffectedByEffect(tp,CARD_BLUEEYES_SPIRIT)
-     and Duel.IsExistingMatchingCard(c403.spellcaster_filter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil) end
-    local ct=Duel.GetMatchingGroupCount(Card.IsType,tp,LOCATION_ONFIELD,0,nil,TYPE_MONSTER)
+     and c403.owner_cards(e,LOCATION_MZONE):IsExists(c403.spellcaster_filter,1,nil) end
+    local ct=c403.owner_cards(e,LOCATION_MZONE):FilterCount(Card.IsType,nil,TYPE_MONSTER)
     Duel.SetOperationInfo(0,CATEGORY_POSITION,nil,ct,0,0)
     Duel.SetOperationInfo(0,CATEGORY_TOKEN,nil,3-ct,0,0)
     Duel.SetOperationInfo(0,CATEGORY_SPECIAL_SUMMON,nil,3-ct,0,0)
@@ -130,16 +165,27 @@ end
 function c403.activate(e,tp,eg,ep,ev,re,r,rp)
     local c=e:GetHandler()
     local fid=c:GetFieldID()
-    local ft=Duel.GetLocationCount(tp,LOCATION_MZONE)
+    local logical=c403.is_multiplayer() and c:GetLogicalOwner() or nil
+    -- A 2v1 teammate may have free zones even when the active teammate does not.
+    -- Query availability using a token owned by the actual recipient.
+    local first_hat=logical and Duel.CreateTokenPlayer(logical,511005062) or nil
+    local ft=first_hat and Duel.GetLocationCount(tp,LOCATION_MZONE,nil,nil,nil,first_hat)
+        or Duel.GetLocationCount(tp,LOCATION_MZONE)
     if Duel.IsPlayerAffectedByEffect(tp,CARD_BLUEEYES_SPIRIT) then return end
         c:RegisterFlagEffect(403,RESET_EVENT+RESETS_STANDARD_DISABLE,0,0,fid)
         Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_POSCHANGE)
-        local g1=Duel.SelectMatchingCard(tp,c403.spellcaster_filter,tp,LOCATION_ONFIELD,0,1,1,nil)
+        local owned=c403.owner_cards(e,LOCATION_MZONE)
+        local g1=c403.select_owned(e,tp,owned:Filter(c403.spellcaster_filter,nil),1,1)
         local hatm1=g1:GetFirst()
-        local ct=Duel.GetMatchingGroupCount(Card.IsType,tp,LOCATION_ONFIELD,0,g1:GetFirst(),TYPE_MONSTER)
-        if hatm1 and ct>0 and Duel.SelectYesNo(tp,aux.Stringid(403,0)) then 
+        if not hatm1 then return end
+        local ct=owned:FilterCount(Card.IsType,hatm1,TYPE_MONSTER)
+        local want_extras=ct>0 and (c403.is_multiplayer()
+            and Duel.SelectYesNoPlayer(logical,aux.Stringid(403,0))
+            or Duel.SelectYesNo(tp,aux.Stringid(403,0)))
+        if want_extras then
             Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_POSCHANGE)
-            local g2=Duel.SelectMatchingCard(tp,Card.IsType,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,3,hatm1,TYPE_MONSTER)
+            local extras=owned:Filter(Card.IsType,hatm1,TYPE_MONSTER)
+            local g2=c403.select_owned(e,tp,extras,1,3)
             g1:Merge(g2)
             g1:KeepAlive()
             for hatma in aux.Next(g2) do
@@ -190,7 +236,9 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
         Duel.Destroy(e:GetHandler(),REASON_EFFECT) 
     else	
         for i=1,zone do
-            local hat=Duel.CreateToken(tp,511005062)
+            local hat=(first_hat and i==1) and first_hat
+                or (logical and Duel.CreateTokenPlayer(logical,511005062)
+                    or Duel.CreateToken(tp,511005062))
             Duel.MoveToField(hat,tp,tp,LOCATION_MZONE,POS_FACEDOWN_DEFENSE,true)
             local e1=Effect.CreateEffect(c)
             e1:SetType(EFFECT_TYPE_SINGLE)
@@ -311,7 +359,7 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
         e8:SetCode(EFFECT_UNRELEASABLE_NONSUM)
         hatm1:RegisterEffect(e8)
         hatm1:RegisterFlagEffect(403+1,RESET_EVENT+RESETS_STANDARD,0,0,fid)
-        local gs1=Duel.GetMatchingGroup(c403.gsfilter,tp,LOCATION_ONFIELD,0,nil,fid)
+        local gs1=c403.owner_cards(e,LOCATION_MZONE):Filter(c403.gsfilter,nil,fid)
         Duel.ChangePosition(gs1,POS_FACEDOWN_DEFENSE)
         Duel.ShuffleSetCard(gs1)
         c403.retarget_previous_chain(e,tp,hatm1,gs1)
@@ -460,7 +508,7 @@ function c403.tdfilter(c,fid)
 end
 function c403.hdescon(e)
     local fid=e:GetLabel()
-    return not Duel.IsExistingMatchingCard(c403.tdfilter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil,fid)
+    return not c403.owner_cards(e,LOCATION_ONFIELD):IsExists(c403.tdfilter,1,nil,fid)
 end
 function c403.gsfilter(c,fid)
     return c:IsFacedown() and (c:GetFlagEffectLabel(403+1)==fid or c:GetFlagEffectLabel(403+2)==fid or c:GetFlagEffectLabel(403+3)==fid or c:GetFlagEffectLabel(403+4)==fid)
@@ -804,7 +852,7 @@ function c403.stop(e,tp,eg,ep,ev,re,r,rp)
     ac6:SetOperation(c403.ac5op)
     ac6:SetReset(RESET_EVENT+RESETS_STANDARD)
     c:RegisterEffect(ac6)
-    local gs1=Duel.GetMatchingGroup(c403.gsfilter,tp,LOCATION_ONFIELD,0,nil,fid)
+    local gs1=c403.owner_cards(e,LOCATION_MZONE):Filter(c403.gsfilter,nil,fid)
     Duel.ChangePosition(gs1,POS_FACEDOWN_DEFENSE)
     Duel.ShuffleSetCard(gs1)
 end
@@ -1131,7 +1179,9 @@ function c403.ac3op(e,tp,eg,ep,ev,re,r,rp)
     Duel.Destroy(e:GetHandler(),REASON_EFFECT)
 end
 function c403.descon(e)
-    return not Duel.IsExistingMatchingCard(c403.refilter,e:GetHandlerPlayer(),LOCATION_ONFIELD,0,1,nil,fid) 
+    local fid=e:GetHandler():GetFlagEffectLabel(403)
+    if not fid then return false end
+    return not c403.owner_cards(e,LOCATION_MZONE):IsExists(c403.refilter,1,nil,fid)
 end
 function c403.ac4con(e,tp,eg,ep,ev,re,r,rp)
     local fid = e:GetLabel()
