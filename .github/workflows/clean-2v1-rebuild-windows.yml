@@ -204,6 +204,8 @@ jobs:
           assert 'player[1].start_lp = 8000;' in core_field
           assert 'teammate_fusion_extra_only' in core_field
           assert 'multiplayer_shared_tofield_limit' in core_field
+          assert 'preserve_new_logical_token' in core_field
+          assert 'used_location = get_logical_used_location(playerid, target_duelist)' in core_field
           libduel = Path('ocgcore/libduel.cpp').read_text(encoding='utf-8')
           assert 'get_useable_count(lua_get<card*>(L, 6), playerid, location' in libduel
           assert 'limit + active_used - target_used' in core_field
