@@ -681,4 +681,57 @@ replace_once(
     "pduel->game_field->get_useable_count(lua_get<card*>(L, 6), playerid, location, uplayer, reason, zone, &list)",
 )
 
+
+# New logical-player tokens are created outside any physical card zone.
+# Preserve the token's assigned duelist when it moves directly from location
+# zero to its owner's field; otherwise a Joey-owned hat is put in Yugi's field.
+replace_once(
+    "field.cpp",
+    '''	const bool preserve_private_duelist = multiplayer.enabled() && preplayer == playerid
+		&& (pcard->current.location & (LOCATION_DECK | LOCATION_HAND | LOCATION_GRAVE
+			| LOCATION_REMOVED | LOCATION_EXTRA))
+		&& pcard->current.duelist < multiplayer.field_count(playerid);
+''',
+    '''	const bool preserve_new_logical_token =
+		multiplayer.mode() == MultiplayerMode::TWO_V_ONE
+		&& pcard->current.location == 0 && pcard->owner == playerid
+		&& pcard->owner_duelist < multiplayer.field_count(playerid);
+	const bool preserve_private_duelist = multiplayer.enabled() && preplayer == playerid
+		&& ((pcard->current.location & (LOCATION_DECK | LOCATION_HAND | LOCATION_GRAVE
+			| LOCATION_REMOVED | LOCATION_EXTRA)) || preserve_new_logical_token)
+		&& pcard->current.duelist < multiplayer.field_count(playerid);
+''',
+)
+
+# Count free slots from the recipient's logical field, not the active
+# teammate's projection. The existing limit correction below then applies
+# EFFECT_MAX_MZONE/SZONE without accidentally capping Joey to Yugi's space.
+replace_once(
+    "field.cpp",
+    '''int32_t field::get_tofield_count(card* pcard, uint8_t playerid, uint8_t location, uint32_t uplayer, uint32_t reason, uint32_t zone, uint32_t* list) {
+	if (location != LOCATION_MZONE && location != LOCATION_SZONE)
+		return 0;
+	uint32_t flag = player[playerid].disabled_location | player[playerid].used_location;
+''',
+    '''int32_t field::get_tofield_count(card* pcard, uint8_t playerid, uint8_t location, uint32_t uplayer, uint32_t reason, uint32_t zone, uint32_t* list) {
+	if (location != LOCATION_MZONE && location != LOCATION_SZONE)
+		return 0;
+	uint32_t used_location = player[playerid].used_location;
+	if(playerid == 0 && pcard && multiplayer.enabled()
+			&& (multiplayer.mode() == MultiplayerMode::TWO_V_ONE
+				|| multiplayer.mode() == MultiplayerMode::THREE_V_ONE)) {
+		uint8_t target_duelist = player[playerid].current_duelist;
+		if(pcard->current.controler == playerid
+				&& pcard->current.duelist < multiplayer.field_count(playerid))
+			target_duelist = pcard->current.duelist;
+		else if(pcard->owner == playerid
+				&& pcard->owner_duelist < multiplayer.field_count(playerid))
+			target_duelist = pcard->owner_duelist;
+		if(target_duelist != player[playerid].current_duelist)
+			used_location = get_logical_used_location(playerid, target_duelist);
+	}
+	uint32_t flag = player[playerid].disabled_location | used_location;
+''',
+)
+
 print("Applied clean generic 2 vs 1 Core mode")
