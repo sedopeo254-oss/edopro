@@ -16,7 +16,7 @@ function s.initial_effect(c)
 	local dme2=Effect.CreateEffect(c)
 	dme2:SetDescription(aux.Stringid(id,1))
 	dme2:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
-	dme2:SetCode(EVENT_PREDRAW)
+	dme2:SetCode(EVENT_PHASE_START+PHASE_DRAW)
 	dme2:SetCountLimit(1)
 	dme2:SetTarget(s.target)
 	dme2:SetCondition(s.dmcon)
@@ -66,9 +66,13 @@ function s.dmcon(e,tp,eg,ep,ev,re,r,rp)
     if mask==0 then
         return Duel.IsTurnPlayer(tp) and Duel.IsDeckMaster(tp,id)
     end
-    return Duel.IsTurnPlayer(tp) and Duel.IsLogicalPlayerActive(logical)
+    -- Use the actual current turn seat, not the effect callback player.
+    -- In 2v1, tp may be the teammate side even while Big Five owns the turn.
+    local turn_side=Duel.GetTurnPlayer()
+    return Duel.IsLogicalPlayerActive(logical)
         and Duel.GetLogicalPlayerSide(logical)==1
-        and Duel.GetLogicalPlayer(tp)==logical
+        and turn_side==Duel.GetLogicalPlayerSide(logical)
+        and Duel.GetLogicalPlayer(turn_side)==logical
         and Duel.IsDeckMasterPlayer(logical,id)
 end
 
