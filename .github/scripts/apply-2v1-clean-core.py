@@ -671,4 +671,14 @@ replace_once(
 )
 
 
+
+# Permit an optional card context when Lua checks MZONE/SZONE availability.
+# No-card calls are unchanged; c403 supplies a recipient-owned hat token so
+# get_useable_count uses that teammate's logical field, not the active teammate.
+replace_once(
+    "libduel.cpp",
+    "pduel->game_field->get_useable_count(nullptr, playerid, location, uplayer, reason, zone, &list)",
+    "pduel->game_field->get_useable_count(lua_get<card*>(L, 6), playerid, location, uplayer, reason, zone, &list)",
+)
+
 print("Applied clean generic 2 vs 1 Core mode")
