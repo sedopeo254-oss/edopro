@@ -1290,6 +1290,37 @@ if "focus_two_v_one_private_effect" not in effect_block:
 
 write("gframe/duelclient.cpp", dc)
 
+
+# Replay a copied Spell on its actual owner's visible field. A chain can begin
+# during Yugi's turn with a Joey-owned c403 Spell in Joey's SZONE. The replay
+# must switch focus before GetCard, or MSG_CHAINING silently drops the visual.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''		const bool private_location = IsPrivatePileLocation(info.location);
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+''',
+    '''		const bool private_location = IsPrivatePileLocation(info.location);
+		// focus_two_v_one_replay_chain: reveal the actual allied source field
+		// for native Deck Master-copied Spell chains without faking messages.
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& info_core_player == 0
+				&& (info.location == LOCATION_MZONE
+					|| info.location == LOCATION_SZONE)
+				&& info.duelist < mainGame->dInfo.team1) {
+			const auto source_logical = mainGame->dInfo.GetLogicalPlayer(
+				info_core_player, info.duelist);
+			if(source_logical < mainGame->dInfo.team1
+					&& source_logical
+						!= mainGame->dInfo.GetFocusedLogicalPlayer(0))
+				SetThreeVsOneView(source_logical);
+		}
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+''',
+)
+
 # Generic location mapping must never accidentally map a hidden P2 private
 # sequence onto P1's currently displayed private pile.
 replace_once(
