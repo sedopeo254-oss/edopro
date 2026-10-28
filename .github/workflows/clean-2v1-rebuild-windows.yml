@@ -304,7 +304,7 @@ jobs:
           assert 'Duel.SelectCardsFromCodesPlayer(' in magical_hats
           assert 'Duel.CreateTokenPlayer(logical,511005062)' in magical_hats
           assert 'Duel.GetLocationCount(tp,LOCATION_MZONE,nil,nil,nil,first_hat)' in magical_hats
-          assert 'Duel.IsExistingMatchingCard(c403.spellcaster_filter' in magical_hats
+          assert 'c403.owner_cards(e,LOCATION_MZONE):IsExists(c403.spellcaster_filter' in magical_hats
           assert 'MagicalHatsAnime_DeckMasterCopy' not in magical_hats
           assert 'c403.dm_copy_setup' not in magical_hats
           assert 'function c403.activate' in magical_hats
