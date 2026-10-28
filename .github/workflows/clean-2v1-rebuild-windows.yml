@@ -347,6 +347,7 @@ jobs:
           attack_client = duelclient[duelclient.index('case MSG_ATTACK:'):]
           assert 'ResolveLogicalTarget' in attack_client
           assert 'SetThreeVsOneView(attacker_logical, attack_target_logical)' in attack_client
+          assert 'focus_two_v_one_replay_chain' in duelclient
 
           # No legacy Big Five mode is part of the clean implementation.
           for p in ['.github/scripts/apply-2v1-clean-core.py',
