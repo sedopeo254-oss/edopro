@@ -42,90 +42,80 @@ function s.ownturn(c,tp)
 	return Duel.IsTurnPlayer(tp)
 end
 
+function s.is_multiplayer()
+	return Duel.GetActiveLogicalPlayerMask and Duel.GetActiveLogicalPlayerMask()~=0
+end
+
+function s.spell_candidate(c,tp)
+	return c:IsSpell() and c:IsLocation(LOCATION_GRAVE|LOCATION_ONFIELD)
+		and c:IsControler(tp) and c:GetActivateEffect()~=nil
+end
+
+function s.hats_target(c)
+	return c:IsFaceup() and c:IsType(TYPE_MONSTER)
+		and (c:IsRace(RACE_SPELLCASTER) or c:IsRace(RACE_WARRIOR))
+		and not c:IsLocation(LOCATION_PZONE)
+end
+
+function s.can_receive_copy(logical,code)
+	if code~=403 then return true end
+	--The teammate needs a legal monster and three slots for the four hats.
+	local g=Duel.GetPlayerFieldGroup(logical,LOCATION_MZONE)
+	return #g<=4 and g:IsExists(s.hats_target,1,nil)
+end
+
+function s.copy_recipient(owner,code)
+	if not s.is_multiplayer() then return owner end
+	local side=Duel.GetLogicalPlayerSide(owner)
+	if side==nil then return nil end
+	for p=0,3 do
+		if p~=owner and Duel.IsLogicalPlayerActive(p)
+			and Duel.GetLogicalPlayerSide(p)==side
+			and s.can_receive_copy(p,code) then
+			return p
+		end
+	end
+	return nil
+end
+
 function s.filter(c,e,tp)
-	if not c:IsSpell()
-		or not c:IsLocation(LOCATION_GRAVE|LOCATION_ONFIELD)
-		or not c:IsControler(tp) then
-		return false
-	end
-	if c:IsCode(403) then
-		return MagicalHatsAnime_CanDeckMasterCopy
-			and MagicalHatsAnime_CanDeckMasterCopy(c,e,tp) or false
-	end
-	return c:GetActivateEffect()~=nil
+	if not s.spell_candidate(c,tp) then return false end
+	return s.copy_recipient(e:GetOwner():GetLogicalOwner(),c:GetOriginalCode())~=nil
 end
 
 function s.con(e,tp,eg,ep,ev,re,r,rp)
 	local c=e:GetOwner()
-	return DeckMaster.IsAbilityActiveCard(c)
-		and s.ownturn(c,tp)
-		and Duel.IsMainPhase()
-		and Duel.CheckLPCost(tp,1000)
+	return DeckMaster.IsAbilityActiveCard(c) and s.ownturn(c,tp)
+		and Duel.IsMainPhase() and Duel.CheckLPCost(tp,1000)
 		and s.usedSpell:IsExists(s.filter,1,nil,e,tp)
-end
-
-function s.can_run(te,tp,eg,ep,ev,re,r,rp)
-	if not te then return false end
-	local con=te:GetCondition()
-	local co=te:GetCost()
-	local tg=te:GetTarget()
-	if con and not con(te,tp,eg,ep,ev,re,r,rp) then return false end
-	if co and not co(te,tp,eg,ep,ev,re,r,rp,0) then return false end
-	if tg and not tg(te,tp,eg,ep,ev,re,r,rp,0) then return false end
-	return true
-end
-
-function s.replay_spell(tc,e,tp,eg,ep,ev,re,r,rp)
-	local te=tc:GetActivateEffect()
-	if not te then return false end
-	--Magical Hats copies require a new independent card/FieldID for the ally.
-	--Replaying the same original c403 would corrupt Yugi's four hats.
-	if tc:IsCode(403) then
-		return MagicalHatsAnime_DeckMasterCopy
-			and MagicalHatsAnime_DeckMasterCopy(tc,e,tp,eg,ep,ev,re,r,rp)
-			or false
-	end
-	local was_grave=tc:IsLocation(LOCATION_GRAVE)
-	if was_grave then
-		local loc=tc:IsType(TYPE_FIELD) and LOCATION_FZONE or LOCATION_SZONE
-		if loc==LOCATION_SZONE and Duel.GetLocationCount(tp,LOCATION_SZONE)<=0 then
-			return false
-		end
-		if not Duel.MoveToField(tc,tp,tp,loc,POS_FACEUP,true) then
-			return false
-		end
-	end
-	if not s.can_run(te,tp,eg,ep,ev,re,r,rp) then
-		if was_grave and tc:IsOnField() then
-			Duel.SendtoGrave(tc,REASON_RULE)
-		end
-		return false
-	end
-	local co=te:GetCost()
-	local tg=te:GetTarget()
-	local op=te:GetOperation()
-	Duel.Hint(HINT_CARD,tp,tc:GetOriginalCode())
-	Duel.BreakEffect()
-	Duel.ClearTargetCard()
-	if co then co(te,tp,eg,ep,ev,re,r,rp,1) end
-	if tg then tg(te,tp,eg,ep,ev,re,r,rp,1) end
-	if op then op(te,tp,eg,ep,ev,re,r,rp) end
-	if was_grave and tc:IsLocation(LOCATION_SZONE)
-		and (tc:GetOriginalType()&(TYPE_CONTINUOUS|TYPE_EQUIP|TYPE_FIELD))==0
-		and not tc:IsHasEffect(EFFECT_REMAIN_FIELD) then
-		Duel.SendtoGrave(tc,REASON_RULE)
-	end
-	return true
 end
 
 function s.op(e,tp,eg,ep,ev,re,r,rp)
 	if not Duel.SelectYesNo(tp,aux.Stringid(id,0)) then return end
 	Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_EFFECT)
-	local sg=s.usedSpell:FilterSelect(tp,s.filter,1,1,nil,e,tp)
-	local tc=sg:GetFirst()
-	if not tc then return end
+	local g=s.usedSpell:FilterSelect(tp,s.filter,1,1,nil,e,tp)
+	local original=g:GetFirst()
+	if not original then return end
+	local code=original:GetOriginalCode()
+	local target=s.copy_recipient(e:GetOwner():GetLogicalOwner(),code)
+	if target==nil then return end
+	local side=s.is_multiplayer() and Duel.GetLogicalPlayerSide(target) or tp
+	if side==nil then return end
+
+	--Use a genuine Spell owned by the teammate. The source in the graveyard
+	--or on the field stays untouched; c403.lua is not called manually.
+	local copy=s.is_multiplayer() and Duel.CreateTokenPlayer(target,code)
+		or Duel.CreateToken(side,code)
+	if not copy then return end
+	if Duel.SendtoHand(copy,side,REASON_EFFECT)==0 then return end
+	local te=copy:GetActivateEffect()
+	if not te then
+		Duel.SendtoGrave(copy,REASON_RULE)
+		return
+	end
 	Duel.PayLPCost(tp,1000)
 	Duel.Hint(HINT_CARD,tp,id)
-	Duel.Hint(HINT_CARD,1-tp,id)
-	s.replay_spell(tc,e,tp,eg,ep,ev,re,r,rp)
+	Duel.Hint(HINT_CARD,side,code)
+	--Native Spell activation: correct logical owner, normal Chain and replay.
+	Duel.Activate(te)
 end
