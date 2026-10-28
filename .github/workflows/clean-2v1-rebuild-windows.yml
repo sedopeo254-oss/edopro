@@ -282,10 +282,10 @@ jobs:
           assert 'DeckMaster.IsAbilityActiveCard(c)' in dark_magician_dm
           assert 'Duel.GetLogicalPlayer(tp)==c:GetLogicalOwner()' in dark_magician_dm
           assert 'LOCATION_GRAVE|LOCATION_ONFIELD' in dark_magician_dm
-          assert 'function s.replay_spell' in dark_magician_dm
-          assert 'Duel.PayLPCost(tp,1000)' in dark_magician_dm
-          assert 'MagicalHatsAnime_CanDeckMasterCopy' in dark_magician_dm
-          assert 'MagicalHatsAnime_DeckMasterCopy' in dark_magician_dm
+          assert 'Duel.CreateTokenPlayer(target,code)' in dark_magician_dm
+          assert 'Duel.SendtoHand(copy,side,REASON_EFFECT)' in dark_magician_dm
+          assert 'Duel.Activate(te)' in dark_magician_dm
+          assert 'MagicalHatsAnime_DeckMasterCopy' not in dark_magician_dm
           assert '120000030' not in dark_magician_dm
 
           flame_dm = Path('multiplayer-deck-master/c153000007.lua').read_text(encoding='utf-8')
@@ -295,17 +295,23 @@ jobs:
           magical_hats = Path('multiplayer-anime-cards/c403.lua').read_text(encoding='utf-8')
           assert '--Magical Hats (Anime)' in magical_hats
           assert 'local c403,id=GetID()' in magical_hats
-          assert 'MagicalHatsAnime_DeckMasterCopy' in magical_hats
-          assert 'Duel.CreateTokenPlayer(logical,403)' in magical_hats
-          assert 'c403.dm_copy_setup' in magical_hats
-          assert 'c403.dm_copy_target' in magical_hats
-          assert 'if not ok or not hat:IsLocation(LOCATION_MZONE)' in magical_hats
-          assert 'RACE_WARRIOR' in magical_hats
-          assert 'chosen_logical=hatm1:GetLogicalControler()' in magical_hats
-          assert 'Duel.GetPlayerFieldGroup(chosen_logical,LOCATION_MZONE)' in magical_hats
-          assert 'other_team_field=chosen_logical~=nil' in magical_hats
-          assert 'local fid=c:GetFlagEffectLabel(403)' in magical_hats
-          assert 'c403.copy_fid_override' not in magical_hats
+          assert '(c:IsRace(RACE_SPELLCASTER) or c:IsRace(RACE_WARRIOR))' in magical_hats
+          assert 'Duel.IsExistingMatchingCard(c403.spellcaster_filter' in magical_hats
+          assert 'MagicalHatsAnime_DeckMasterCopy' not in magical_hats
+          assert 'c403.dm_copy_setup' not in magical_hats
+          assert 'function c403.activate' in magical_hats
+          assert 'Duel.ShuffleSetCard(gs1)' in magical_hats
+
+          assert 'is_big_five_solo' in dm
+          assert 'for code=153000020,153000024' in dm
+          for code in range(153000020,153000025):
+              script = Path(f'multiplayer-deck-master/c{code}.lua').read_text(encoding='utf-8')
+              assert 'Duel.IsLogicalPlayerActive(logical)' in script
+              assert 'Duel.GetLogicalPlayerSide(logical)==1' in script
+              assert 'Duel.SelectYesNoPlayer' in script
+              assert 'Duel.SelectCardsFromCodesPlayer' in script
+              assert 'Duel.SetDeckMasterPlayerState(logical,chosen,true)' in script
+              assert 'for z=0,0 do' not in script
 
           deal = Path('multiplayer-anime-cards/c99900043.lua').read_text(encoding='utf-8')
           assert 'EVENT_PRE_DAMAGE_CALCULATE' in deal
@@ -352,7 +358,7 @@ jobs:
             sources+=("$source")
           done
           cc -std=c99 -O2 -I"$LUA" "${sources[@]}" -ldl -lm -o "$BUILD/lua"
-          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-anime-cards/c511013020.lua             multiplayer-anime-cards/c403.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153000007.lua             multiplayer-deck-master/c153000015.lua             multiplayer-deck-master/c153999999.lua; do
+          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-anime-cards/c511013020.lua             multiplayer-anime-cards/c403.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153000007.lua             multiplayer-deck-master/c153000015.lua             multiplayer-deck-master/c153000020.lua             multiplayer-deck-master/c153000021.lua             multiplayer-deck-master/c153000022.lua             multiplayer-deck-master/c153000023.lua             multiplayer-deck-master/c153000024.lua             multiplayer-deck-master/c153999999.lua; do
             "$BUILD/lua" -e "assert(loadfile('$script'))"
           done
 
@@ -460,6 +466,11 @@ jobs:
           cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
           cp multiplayer-deck-master/c153000007.lua deploy/expansions/script/c153000007.lua
           cp multiplayer-deck-master/c153000015.lua deploy/expansions/script/c153000015.lua
+          cp multiplayer-deck-master/c153000020.lua deploy/expansions/script/c153000020.lua
+          cp multiplayer-deck-master/c153000021.lua deploy/expansions/script/c153000021.lua
+          cp multiplayer-deck-master/c153000022.lua deploy/expansions/script/c153000022.lua
+          cp multiplayer-deck-master/c153000023.lua deploy/expansions/script/c153000023.lua
+          cp multiplayer-deck-master/c153000024.lua deploy/expansions/script/c153000024.lua
           cp multiplayer-anime-cards/c13722870.lua deploy/expansions/script/c13722870.lua
           cp multiplayer-anime-cards/c120000336.lua deploy/expansions/script/c120000336.lua
           cp multiplayer-anime-cards/c99900043.lua deploy/expansions/script/c99900043.lua
@@ -470,6 +481,11 @@ jobs:
           test -f deploy/expansions/script/c153000000.lua
           test -f deploy/expansions/script/c153000007.lua
           test -f deploy/expansions/script/c153000015.lua
+          test -f deploy/expansions/script/c153000020.lua
+          test -f deploy/expansions/script/c153000021.lua
+          test -f deploy/expansions/script/c153000022.lua
+          test -f deploy/expansions/script/c153000023.lua
+          test -f deploy/expansions/script/c153000024.lua
           test -f deploy/expansions/script/c13722870.lua
           test -f deploy/expansions/script/c120000336.lua
           test -f deploy/expansions/script/c99900043.lua
