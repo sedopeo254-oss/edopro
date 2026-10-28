@@ -179,9 +179,14 @@ function c403.activate(e,tp,eg,ep,ev,re,r,rp)
         local hatm1=g1:GetFirst()
         if not hatm1 then return end
         local ct=owned:FilterCount(Card.IsType,hatm1,TYPE_MONSTER)
-        local want_extras=ct>0 and (c403.is_multiplayer()
-            and Duel.SelectYesNoPlayer(logical,aux.Stringid(403,0))
-            or Duel.SelectYesNo(tp,aux.Stringid(403,0)))
+        local want_extras=false
+        if ct>0 then
+            if c403.is_multiplayer() then
+                want_extras=Duel.SelectYesNoPlayer(logical,aux.Stringid(403,0))
+            else
+                want_extras=Duel.SelectYesNo(tp,aux.Stringid(403,0))
+            end
+        end
         if want_extras then
             Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_POSCHANGE)
             local extras=owned:Filter(Card.IsType,hatm1,TYPE_MONSTER)
