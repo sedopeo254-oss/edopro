@@ -204,6 +204,8 @@ jobs:
           assert 'player[1].start_lp = 8000;' in core_field
           assert 'teammate_fusion_extra_only' in core_field
           assert 'multiplayer_shared_tofield_limit' in core_field
+          libduel = Path('ocgcore/libduel.cpp').read_text(encoding='utf-8')
+          assert 'get_useable_count(lua_get<card*>(L, 6), playerid, location' in libduel
           assert 'limit + active_used - target_used' in core_field
           assert 'pcard->data.type & TYPE_FUSION' in core_field
 
@@ -283,7 +285,9 @@ jobs:
           assert 'Duel.GetLogicalPlayer(tp)==c:GetLogicalOwner()' in dark_magician_dm
           assert 'LOCATION_GRAVE|LOCATION_ONFIELD' in dark_magician_dm
           assert 'Duel.CreateTokenPlayer(target,code)' in dark_magician_dm
-          assert 'Duel.SendtoHand(copy,side,REASON_EFFECT)' in dark_magician_dm
+          assert 'Duel.MoveToField(copy,side,side,LOCATION_SZONE,POS_FACEDOWN,true)' in dark_magician_dm
+          assert 'Duel.GetPlayerFieldGroup' in dark_magician_dm
+          assert 's.usedSpell' not in dark_magician_dm
           assert 'Duel.Activate(te)' in dark_magician_dm
           assert 'MagicalHatsAnime_DeckMasterCopy' not in dark_magician_dm
           assert '120000030' not in dark_magician_dm
@@ -296,6 +300,10 @@ jobs:
           assert '--Magical Hats (Anime)' in magical_hats
           assert 'local c403,id=GetID()' in magical_hats
           assert '(c:IsRace(RACE_SPELLCASTER) or c:IsRace(RACE_WARRIOR))' in magical_hats
+          assert 'Duel.GetPlayerFieldGroup(e:GetHandler():GetLogicalOwner(),location)' in magical_hats
+          assert 'Duel.SelectCardsFromCodesPlayer(' in magical_hats
+          assert 'Duel.CreateTokenPlayer(logical,511005062)' in magical_hats
+          assert 'Duel.GetLocationCount(tp,LOCATION_MZONE,nil,nil,nil,first_hat)' in magical_hats
           assert 'Duel.IsExistingMatchingCard(c403.spellcaster_filter' in magical_hats
           assert 'MagicalHatsAnime_DeckMasterCopy' not in magical_hats
           assert 'c403.dm_copy_setup' not in magical_hats
@@ -307,6 +315,8 @@ jobs:
           for code in range(153000020,153000025):
               script = Path(f'multiplayer-deck-master/c{code}.lua').read_text(encoding='utf-8')
               assert 'Duel.IsLogicalPlayerActive(logical)' in script
+              assert 'Duel.GetTurnPlayer()==1' in script
+              assert 'Duel.GetLogicalPlayer(1)==logical' in script
               assert 'Duel.GetLogicalPlayerSide(logical)==1' in script
               assert 'Duel.SelectYesNoPlayer' in script
               assert 'Duel.SelectCardsFromCodesPlayer' in script
