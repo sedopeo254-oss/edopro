@@ -211,6 +211,8 @@ jobs:
           assert 'multiplayer.mode() == MultiplayerMode::TWO_V_ONE' in libduel
           assert 'context_card = handler' in libduel
           assert 'replay_hat_shuffle_2v1' in libduel
+          assert 'LUA_STATIC_FUNCTION(GetLogicalTurnPlayer)' in libduel
+          assert 'state.current_player()' in libduel
           assert 'get_local_sequence(tp, loc, ms[ct]->current.sequence)' in libduel
           assert 'current.duelist != hat_duelist' in libduel
           assert 'requested_duelist != 0xff' in core_field
@@ -261,6 +263,17 @@ jobs:
           assert 'DeckMaster.CanCallDragonRevivalMasters' in dm
           assert 'DeckMaster.CallDragonRevivalMasters' in dm
           assert 'DeckMaster.FinishDragonRevival' in dm
+          assert 'DeckMaster.AssignFieldDeckMaster' in dm
+          assert 'FinishDragonRevival(p,merged,successor)' in dm
+          assert 'EVENT_TURN_END' in dm
+          assert 'Duel.GetLogicalTurnPlayer and Duel.GetLogicalTurnPlayer()' in dm
+          assert 'DeckMaster.materialWasDeckMaster' in dm
+          assert 'DeckMaster.usedDeckMasterMaterial' in dm
+          assert 'Duel.SelectCardsFromCodesPlayer(' in dm
+          loss_section = dm[dm.index('function DeckMaster.loss('):]
+          assert 'dragon_revival_merged or' not in loss_section
+          assert 'local has_dm=shared_team_master' in loss_section
+          assert Path('.github/tests/deck_master_phase24_test.lua').is_file()
           for code in ['153000020','153000021','153000022','153000023','153000024',
                        '153000013','153000003','153000005','153000008','153000009']:
               assert code in dm
@@ -271,6 +284,7 @@ jobs:
           assert 'Duel.Release(' in dragon_ritual
           assert 'released~=5' in dragon_ritual
           assert 'FinishDragonRevival' in dragon_ritual
+          assert 'FinishDragonRevival(logical,res>0,res>0 and fhd or nil)' in dragon_ritual
           assert 'RESET_SELF_TURN,5' not in dragon_ritual
           assert 'AnnounceAttribute' not in dragon_ritual
           assert 'BIG_FIVE_RITUAL_ATTRIBUTE' not in dragon_ritual
@@ -341,6 +355,13 @@ jobs:
           assert 'if IsLogicalMultiplayer() then' in destruction
           assert 'function s.discard_and_draw_player' in destruction
           assert Path('.github/tests/card_destruction_2v1_test.lua').is_file()
+          drop_off = Path('multiplayer-anime-cards/c55773067.lua').read_text(encoding='utf-8')
+          assert 'Duel.GetTurnPlayer()==ep' in drop_off
+          assert 'Duel.GetCurrentPhase()==PHASE_DRAW' in drop_off
+          assert 'Duel.SetTargetCard(drawn)' in drop_off
+          assert 'c:IsRelateToEffect(e)' in drop_off
+          assert 'Duel.SendtoGrave(chosen,REASON_EFFECT|REASON_DISCARD)' in drop_off
+          assert Path('.github/tests/drop_off_draw_phase_test.lua').is_file()
 
           # Judge Man applies exact banish-based damage to each independent
           # allied field (P1 and P2), not one combined physical side.
@@ -428,12 +449,14 @@ jobs:
             sources+=("$source")
           done
           cc -std=c99 -O2 -I"$LUA" "${sources[@]}" -ldl -lm -o "$BUILD/lua"
-          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-anime-cards/c511013020.lua             multiplayer-anime-cards/c403.lua             multiplayer-anime-cards/c8050010.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153000007.lua             multiplayer-deck-master/c153000015.lua             multiplayer-deck-master/c153000020.lua             multiplayer-deck-master/c153000021.lua             multiplayer-deck-master/c153000022.lua             multiplayer-deck-master/c153000023.lua             multiplayer-deck-master/c153000024.lua             multiplayer-deck-master/c153999999.lua; do
+          for script in             multiplayer-anime-cards/c13722870.lua             multiplayer-anime-cards/c120000336.lua             multiplayer-anime-cards/c99900043.lua             multiplayer-anime-cards/c120000016.lua             multiplayer-anime-cards/c511013020.lua             multiplayer-anime-cards/c403.lua             multiplayer-anime-cards/c55773067.lua             multiplayer-anime-cards/c8050010.lua             multiplayer-deck-master/c153000000.lua             multiplayer-deck-master/c153000007.lua             multiplayer-deck-master/c153000015.lua             multiplayer-deck-master/c153000020.lua             multiplayer-deck-master/c153000021.lua             multiplayer-deck-master/c153000022.lua             multiplayer-deck-master/c153000023.lua             multiplayer-deck-master/c153000024.lua             multiplayer-deck-master/c153999999.lua; do
             "$BUILD/lua" -e "assert(loadfile('$script'))"
           done
           # Execute the real c8050010.lua logic with isolated logical-player
           # Deck/Hand mock APIs, covering 2v1/OUT/empty hands/Standard behavior.
           "$BUILD/lua" .github/tests/card_destruction_2v1_test.lua
+          "$BUILD/lua" .github/tests/drop_off_draw_phase_test.lua
+          "$BUILD/lua" .github/tests/deck_master_phase24_test.lua
           # Test real Judge Man Lua with separate P1/P2 damage, banish
           # replacement effects, 1000 LP cost, OUT teammates and legacy modes.
           "$BUILD/lua" .github/tests/judge_man_2v1_damage_test.lua
@@ -553,6 +576,7 @@ jobs:
           cp multiplayer-anime-cards/c120000016.lua deploy/expansions/script/c120000016.lua
           cp multiplayer-anime-cards/c511013020.lua deploy/expansions/script/c511013020.lua
           cp multiplayer-anime-cards/c403.lua deploy/expansions/script/c403.lua
+          cp multiplayer-anime-cards/c55773067.lua deploy/expansions/script/c55773067.lua
           cp multiplayer-anime-cards/c8050010.lua deploy/expansions/script/c8050010.lua
           test -f deploy/expansions/script/c153999999.lua
           test -f deploy/expansions/script/c153000000.lua
@@ -569,6 +593,7 @@ jobs:
           test -f deploy/expansions/script/c120000016.lua
           test -f deploy/expansions/script/c511013020.lua
           test -f deploy/expansions/script/c403.lua
+          test -f deploy/expansions/script/c55773067.lua
           test -f deploy/expansions/script/c8050010.lua
 
           cat > deploy/mode-info/2-vs-1-clean.txt <<'EOF'
