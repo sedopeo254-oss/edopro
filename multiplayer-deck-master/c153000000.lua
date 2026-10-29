@@ -225,12 +225,26 @@ if not DeckMaster then
 		return sg
 	end
 
-	function DeckMaster.FinishDragonRevival(p,merged)
+	-- Never let a completed Ritual grant permanent Deck Master immunity.
+	-- The replacement MONSTER must physically remain on the field.
+	function DeckMaster.AssignFieldDeckMaster(p,monster)
+		if not monster or not monster:IsLocation(LOCATION_MZONE)
+			or monster:GetLogicalControler()~=p then return false end
+		if monster:GetFlagEffect(FLAG_DECK_MASTER)==0 then
+			monster:RegisterFlagEffect(FLAG_DECK_MASTER,
+				RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
+				EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+		end
+		DeckMaster.FieldAbilityCards[monster]=p
+		return true
+	end
+
+	function DeckMaster.FinishDragonRevival(p,merged,successor)
 		local side=player_side(p)
-		if merged then
-			local consumed=DeckMaster.DragonRevivalConsumed[side] or {}
+		local consumed=DeckMaster.DragonRevivalConsumed[side] or {}
+		if merged and successor and DeckMaster.AssignFieldDeckMaster(p,successor) then
 			for q,_ in pairs(consumed) do
-				DeckMaster.DragonRevivalMerged[q]=true
+				DeckMaster.DragonRevivalMerged[q]=successor
 			end
 		end
 		DeckMaster.DragonRevivalConsumed[side]=nil
@@ -534,8 +548,10 @@ if not DeckMaster then
 					local shared_team_master=side==0
 						and DeckMaster.TeamSharedMode
 						and DeckMaster.TeamSharedCode[side]~=nil
-					local dragon_revival_merged=DeckMaster.DragonRevivalMerged[p] or false
-					local has_dm=dragon_revival_merged or shared_team_master
+					-- DragonRevivalMerged is historical state, NOT a Deck Master.
+					-- After FHD/Berserk Dragon leaves the field, ownership must
+					-- be determined from the Deck Master Zone or a live monster.
+					local has_dm=shared_team_master
 						or Duel.GetDeckMasterPlayer(p)~=nil
 					if side==0 then
 						active_allies=active_allies+1
