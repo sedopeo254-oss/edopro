@@ -422,10 +422,14 @@ if not DeckMaster then
 					DeckMaster.TeamSharedCode[side]=dmc
 					DeckMaster.TeamSharedOwner[side]=p
 				end
-				local dg=get_player_cards(p,LOCATION_ALL):Filter(Card.IsOriginalCode,nil,dmc)
-				local remove_copy=#dg==3
-					or (#dg>0 and Duel.SelectYesNoPlayer(p,aux.Stringid(FLAG_DECK_MASTER,3)))
-				if remove_copy then Duel.SendtoDeck(dg:GetFirst(),nil,-2,REASON_RULE) end
+				-- If the declared Deck Master exists in this player's
+				-- Deck/Extra Deck, take one copy out as their Deck Master.
+				-- Otherwise create it from outside the Duel as before.
+				local dg=get_player_cards(p,LOCATION_DECK|LOCATION_EXTRA)
+					:Filter(Card.IsOriginalCode,nil,dmc)
+				if #dg>0 then
+					Duel.SendtoDeck(dg:GetFirst(),nil,-2,REASON_RULE)
+				end
 				local t=Duel.CreateTokenPlayer(p,dmc)
 				t:MoveToDeckMasterZone(p,dmc)
 				local e1=Effect.CreateEffect(t)
@@ -441,6 +445,8 @@ if not DeckMaster then
 		--back onto all allied Deck Master indicators as the authoritative one.
 		refresh_shared_team_states()
 
+		-- A phase-start check audits the END of the preceding phase,
+		-- not the middle of a phase when a replacement can still be Summoned.
 		for _,phase in ipairs({
 			PHASE_DRAW,PHASE_STANDBY,PHASE_MAIN1,
 			PHASE_BATTLE_START,PHASE_MAIN2,PHASE_END
@@ -453,6 +459,13 @@ if not DeckMaster then
 			e:SetOperation(DeckMaster.loss)
 			Duel.RegisterEffect(e,0)
 		end
+		-- Include the end-of-turn boundary (after the last End Phase).
+		local final_check=Effect.GlobalEffect()
+		final_check:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
+		final_check:SetCode(EVENT_TURN_END)
+		final_check:SetProperty(EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_UNCOPYABLE)
+		final_check:SetOperation(DeckMaster.loss)
+		Duel.RegisterEffect(final_check,0)
 
 		local e9=Effect.GlobalEffect()
 		e9:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
@@ -477,13 +490,21 @@ if not DeckMaster then
 		local dm=DeckMasterZone[p]
 		local side=player_side(p)
 		local ignore_condition=dm and is_shared_code(dm:GetOriginalCode()) or false
-		return Duel.IsMainPhase() and is_active_player(p) and dm
+		-- In 2v1 only the actual current logical duelist may summon
+		-- from their Deck Master Zone on their own Main Phase.
+		local turn_owner=Duel.GetLogicalTurnPlayer and Duel.GetLogicalTurnPlayer()
+			or (Duel.GetLogicalPlayer(Duel.GetTurnPlayer()) or Duel.GetTurnPlayer())
+		return Duel.IsMainPhase() and turn_owner==p and is_active_player(p) and dm
 			and dm:IsCanBeSpecialSummoned(e,0,side,ignore_condition,false)
 			and Duel.GetLocationCount(side,LOCATION_MZONE)>0
 	end
 	function DeckMaster.spop(e,tp,eg,ep,ev,re,r,rp)
 		local p=e:GetLabel()
-		if not Duel.SelectYesNo(player_side(p),aux.Stringid(FLAG_DECK_MASTER,5)) then return end
+		if Duel.GetActiveLogicalPlayerMask()~=0 then
+			if not Duel.SelectYesNoPlayer(p,aux.Stringid(FLAG_DECK_MASTER,5)) then return end
+		elseif not Duel.SelectYesNo(player_side(p),aux.Stringid(FLAG_DECK_MASTER,5)) then
+			return
+		end
 		Duel.SummonDeckMasterPlayer(p)
 	end
 
