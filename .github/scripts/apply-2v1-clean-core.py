@@ -765,4 +765,55 @@ replace_once(
 ''',
 )
 
+
+# A full Yugi Magical Hats set lives in encoded MZONE 7..11, not 0..4.
+# Duel.ShuffleSetCard used to reject those legitimate physical sequences,
+# so Yugi's original hats never produced MSG_SHUFFLE_SET_CARD in the replay.
+# Validate the *local* 0..4 index, retain encoded indices in the field list,
+# and never shuffle cards that belong to two different allied duelists.
+replace_once(
+    "libduel.cpp",
+    '''	uint8_t tp = ms[ct]->current.controler;
+	if(tp > 1)
+		return 0;
+	if(ms[ct]->current.position & POS_FACEUP)
+		return 0;
+	if(ms[ct]->current.sequence > 4)
+		return 0;
+	seq[ct] = ms[ct]->current.sequence;
+''',
+    '''	uint8_t tp = ms[ct]->current.controler;
+	if(tp > 1)
+		return 0;
+	const bool replay_hat_shuffle_2v1 =
+		pduel->game_field->multiplayer.mode() == MultiplayerMode::TWO_V_ONE && tp == 0;
+	const uint8_t hat_duelist = ms[ct]->current.duelist;
+	if(ms[ct]->current.position & POS_FACEUP)
+		return 0;
+	if((replay_hat_shuffle_2v1
+			? pduel->game_field->get_local_sequence(tp, loc, ms[ct]->current.sequence)
+			: ms[ct]->current.sequence) > 4)
+		return 0;
+	seq[ct] = ms[ct]->current.sequence;
+''',
+)
+replace_once(
+    "libduel.cpp",
+    '''		if(current.sequence > 4)
+			return 0;
+		if(current.controler != tp)
+			return 0;
+		ms[ct] = pcard;
+''',
+    '''		if((replay_hat_shuffle_2v1
+				? pduel->game_field->get_local_sequence(tp, loc, current.sequence)
+				: current.sequence) > 4)
+			return 0;
+		if(current.controler != tp
+				|| (replay_hat_shuffle_2v1 && current.duelist != hat_duelist))
+			return 0;
+		ms[ct] = pcard;
+''',
+)
+
 print("Applied clean generic 2 vs 1 Core mode")
