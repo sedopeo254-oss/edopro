@@ -432,34 +432,23 @@ if draw_repl not in dc:
 
 write("gframe/duelclient.cpp", dc)
 
-# Card Destruction can draw for P1/P2/P3 in a single Chain even though only
-# one logical player's private piles are projected. The original 2v1 draw
-# patch above handles MSG_DRAW; off-turn teammates use MSG_MULTIPLAYER_DRAW.
-# Apply the same snapshot/presentation policy for both packet types so the
-# hidden hands never become another teammate's cards, live or in replay.
+# MSG_MULTIPLAYER_DRAW already has the live 2v1 logical snapshot handling
+# above. Extend its replay branch too, so Card Destruction drawing for the
+# inactive/projected teammate updates only that teammate's actual hand.
 dc = read("gframe/duelclient.cpp")
 draw_start = dc.index("case MSG_MULTIPLAYER_DRAW: {")
 draw_end = dc.index("case MSG_MULTIPLAYER_PRIVATE_PILES: {", draw_start)
 draw_block = dc[draw_start:draw_end]
-old = '''		uint32_t sounds = count;
-		if(mainGame->dInfo.isReplay) {
+old_live = '''		uint32_t sounds = count;
+		if(!mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
 '''
-new = '''		uint32_t sounds = count;
+new_live = '''		uint32_t sounds = count;
 		// two_vs_one_logical_draw: never mutate the visible teammate's Deck.
 		if(!mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
-			if(logical_player < mainGame->dField.multiplayer_private_piles_valid.size()
-					&& mainGame->dField.multiplayer_private_piles_valid[logical_player]) {
-				mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
-				const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
-				if(core_side < 2
-						&& mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player)
-					mainGame->dField.ApplyTwoVsOnePrivatePile(logical_player, false);
-			}
-		} else if(mainGame->dInfo.isReplay) {
 '''
-if draw_block.count(old) != 1:
-    raise SystemExit("MSG_MULTIPLAYER_DRAW sounds anchor missing")
-draw_block = draw_block.replace(old, new, 1)
+if draw_block.count(old_live) != 1:
+    raise SystemExit("MSG_MULTIPLAYER_DRAW existing live 2v1 anchor missing")
+draw_block = draw_block.replace(old_live, new_live, 1)
 old_replay = '''			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
 '''
 new_replay = '''			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
