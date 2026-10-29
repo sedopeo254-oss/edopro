@@ -432,6 +432,45 @@ if draw_repl not in dc:
 
 write("gframe/duelclient.cpp", dc)
 
+# Card Destruction can draw for P1/P2/P3 in a single Chain even though only
+# one logical player's private piles are projected. The original 2v1 draw
+# patch above handles MSG_DRAW; off-turn teammates use MSG_MULTIPLAYER_DRAW.
+# Apply the same snapshot/presentation policy for both packet types so the
+# hidden hands never become another teammate's cards, live or in replay.
+dc = read("gframe/duelclient.cpp")
+draw_start = dc.index("case MSG_MULTIPLAYER_DRAW: {")
+draw_end = dc.index("case MSG_MULTIPLAYER_PRIVATE_PILES: {", draw_start)
+draw_block = dc[draw_start:draw_end]
+old = '''		uint32_t sounds = count;
+		if(mainGame->dInfo.isReplay) {
+'''
+new = '''		uint32_t sounds = count;
+		// two_vs_one_logical_draw: never mutate the visible teammate's Deck.
+		if(!mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
+			if(logical_player < mainGame->dField.multiplayer_private_piles_valid.size()
+					&& mainGame->dField.multiplayer_private_piles_valid[logical_player]) {
+				mainGame->dField.UpdateMultiplayerPrivateDraw(logical_player, drawn_cards);
+				const auto core_side = mainGame->dInfo.GetLogicalCoreSide(logical_player);
+				if(core_side < 2
+						&& mainGame->dInfo.GetFocusedLogicalPlayer(core_side) == logical_player)
+					mainGame->dField.ApplyTwoVsOnePrivatePile(logical_player, false);
+			}
+		} else if(mainGame->dInfo.isReplay) {
+'''
+if draw_block.count(old) != 1:
+    raise SystemExit("MSG_MULTIPLAYER_DRAW sounds anchor missing")
+draw_block = draw_block.replace(old, new, 1)
+old_replay = '''			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+'''
+new_replay = '''			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+'''
+if draw_block.count(old_replay) != 1:
+    raise SystemExit("MSG_MULTIPLAYER_DRAW replay branch anchor missing")
+draw_block = draw_block.replace(old_replay, new_replay, 1)
+dc = dc[:draw_start] + draw_block + dc[draw_end:]
+write("gframe/duelclient.cpp", dc)
+
 # Server-side multiplayer recognition and snapshot routing.
 replace_once(
     "gframe/generic_duel.cpp",
