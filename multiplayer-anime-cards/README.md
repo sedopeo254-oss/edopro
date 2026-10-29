@@ -26,3 +26,10 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
   - checks each active player's ability to draw before activation, skips empty and eliminated hands, and excludes the activating card if still in hand;
   - uses the original script's non-multiplayer Tag/Standard path without modifying other anime card effects.
 
+- `c55773067.lua` — Drop Off (Anime / Multiplayer)
+  - activates only when the opponent draws during their own Draw Phase;
+  - discards the actual card drawn by that event, not another hand card;
+  - if more than one card was drawn, the opponent picks one of those draws;
+  - does not assume an ordinary-rule draw: effects that draw during the
+    opponent's Draw Phase also work.
+
