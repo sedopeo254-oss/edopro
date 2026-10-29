@@ -19,3 +19,10 @@ These scripts are packaged into `expansions/script/` by the clean 2v1 Windows wo
   - effect destruction summons Berserk Dragon after the destruction event.
 
 Dark Flare Knight and both supported Mirage Knight codes are also selectable as Deck Masters. When one is selected by the allied side in multiplayer, Deck Master loss is disabled for the entire allied team for that duel.
+
+- `c8050010.lua` — Card Destruction (Anime / Tag)
+  - in 2v1, discards every active logical duelist's entire hand into their own Graveyard, then draws exactly the number actually discarded from their own Deck;
+  - P1, P2 and solo P3 are processed independently, with no `TagSwap` or private-pile mixing;
+  - checks each active player's ability to draw before activation, skips empty and eliminated hands, and excludes the activating card if still in hand;
+  - uses the original script's non-multiplayer Tag/Standard path without modifying other anime card effects.
+
