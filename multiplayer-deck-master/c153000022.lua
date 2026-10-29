@@ -25,16 +25,71 @@ function s.initial_effect(c)
 	dme3:SetOperation(s.dmop)
 	DeckMaster.RegisterAbilities(c,dme1,dme2,dme3)
 end
+-- Dedicated 2 vs 1 mode; do not change Standard, 3v1 or Battle Royale.
+local TWO_VS_ONE_FLAG=0x8000000000
+
+function s.is_two_vs_one()
+	return Duel.IsDuelType(TWO_VS_ONE_FLAG)
+end
+
+function s.team_monsters()
+	-- These groups refer to the actual, independent P1 and P2 fields,
+	-- regardless of whose field is currently projected on screen.
+	local p1=Duel.GetPlayerFieldGroup(0,LOCATION_MZONE):Filter(Card.IsAbleToRemove,nil)
+	local p2=Duel.GetPlayerFieldGroup(1,LOCATION_MZONE):Filter(Card.IsAbleToRemove,nil)
+	return p1,p2
+end
+
 function s.con(e,tp,eg,ep,ev,re,r,rp)
+	if s.is_two_vs_one() then
+		if not Duel.CheckLPCost(tp,1000) or not Duel.IsDeckMaster(tp,id) then
+			return false
+		end
+		local p1,p2=s.team_monsters()
+		return #p1+#p2>0
+	end
+	-- Preserve the original condition verbatim outside the 2v1 mode.
 	return Duel.IsExistingMatchingCard(Card.IsAbleToRemove,tp,0,LOCATION_MZONE,1,nil)
 		and Duel.CheckLPCost(tp,1000) and Duel.IsDeckMaster(tp,id)
 end
 function s.op(e,tp,eg,ep,ev,re,r,rp)
-	if not Duel.SelectYesNo(tp,aux.Stringid(id,0)) then return end
+	local two_vs_one=s.is_two_vs_one()
+	if two_vs_one then
+		-- Only Big Five (the Deck Master owner) answers this prompt.
+		if not Duel.SelectYesNoPlayer(e:GetOwner():GetLogicalOwner(),aux.Stringid(id,0)) then return end
+	elseif not Duel.SelectYesNo(tp,aux.Stringid(id,0)) then
+		return
+	end
 	Duel.PayLPCost(tp,1000)
 	Duel.Hint(HINT_CARD,tp,id)
 	Duel.Hint(HINT_CARD,1-tp,id)
 	Duel.BreakEffect()
+
+	if two_vs_one then
+		local p1,p2=s.team_monsters()
+		local all=Group.CreateGroup()
+		all:Merge(p1)
+		all:Merge(p2)
+		if #all==0 or Duel.Remove(all,POS_FACEUP,REASON_EFFECT)==0 then return end
+
+		-- Count cards actually banished, separated by their pre-banish field.
+		-- Do not assign combined team damage to only one logical player.
+		local removed=Duel.GetOperatedGroup()
+		for player=0,1 do
+			local field_group=(player==0) and p1 or p2
+			local count=removed:FilterCount(function(tc,g)
+				return tc:IsLocation(LOCATION_REMOVED) and g:IsContains(tc)
+			end,nil,field_group)
+			if count>0 and Duel.IsLogicalPlayerActive(player) then
+				-- Last 'false' disables Let Me Take It redirection:
+				-- damage belongs strictly to this monster's controller.
+				Duel.DamagePlayer(player,count*500,REASON_EFFECT,false,tp,false)
+			end
+		end
+		return
+	end
+
+	-- Original effect is completely unchanged outside 2 vs 1.
 	local g=Duel.GetMatchingGroup(Card.IsAbleToRemove,tp,0,LOCATION_MZONE,nil)
 	if Duel.Remove(g,POS_FACEUP,REASON_EFFECT)>0 then
 		local og=Duel.GetOperatedGroup()
