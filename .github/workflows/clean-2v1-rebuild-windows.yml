@@ -341,6 +341,21 @@ jobs:
           assert 'if IsLogicalMultiplayer() then' in destruction
           assert 'function s.discard_and_draw_player' in destruction
           assert Path('.github/tests/card_destruction_2v1_test.lua').is_file()
+
+          # Judge Man applies exact banish-based damage to each independent
+          # allied field (P1 and P2), not one combined physical side.
+          judge = Path('multiplayer-deck-master/c153000022.lua').read_text(encoding='utf-8')
+          assert 'local TWO_VS_ONE_FLAG=0x8000000000' in judge
+          assert 'Duel.IsDuelType(TWO_VS_ONE_FLAG)' in judge
+          assert 'Duel.GetPlayerFieldGroup(0,LOCATION_MZONE)' in judge
+          assert 'Duel.GetPlayerFieldGroup(1,LOCATION_MZONE)' in judge
+          assert 'Duel.GetOperatedGroup()' in judge
+          assert 'g:IsContains(tc)' in judge
+          assert 'Duel.DamagePlayer(player,count*500,REASON_EFFECT,false,tp,false)' in judge
+          assert 'Duel.PayLPCost(tp,1000)' in judge
+          assert 'Duel.SelectCardsFromCodesPlayer(' in judge
+          assert 'Duel.SetDeckMasterPlayerState(logical,chosen,true)' in judge
+          assert Path('.github/tests/judge_man_2v1_damage_test.lua').is_file()
           replay_regression = Path('.github/tests/two_vs_one_clean_field_test.cpp').read_text(encoding='utf-8')
           assert 'Oct 29 Magical Hats replay regression' in replay_regression
           assert 'all three copied Magical Hats tokens must occupy Joey' in replay_regression
@@ -419,6 +434,9 @@ jobs:
           # Execute the real c8050010.lua logic with isolated logical-player
           # Deck/Hand mock APIs, covering 2v1/OUT/empty hands/Standard behavior.
           "$BUILD/lua" .github/tests/card_destruction_2v1_test.lua
+          # Test real Judge Man Lua with separate P1/P2 damage, banish
+          # replacement effects, 1000 LP cost, OUT teammates and legacy modes.
+          "$BUILD/lua" .github/tests/judge_man_2v1_damage_test.lua
 
       - name: Compile and run clean 2v1 Core integration
         shell: bash
