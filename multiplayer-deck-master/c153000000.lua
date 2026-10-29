@@ -519,22 +519,33 @@ if not DeckMaster then
 			if is_shared_code(tc:GetOriginalCode()) then
 				mark_team_shared_master(tc:GetLogicalControler(),tc,tc:GetOriginalCode())
 			end
-			if tc:GetReason()&REASON_BATTLE==0 and tc:GetReasonCard() then
-				local rc=tc:GetReasonCard()
-				rc:RegisterFlagEffect(FLAG_DECK_MASTER,
-					RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
-					EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
-				DeckMaster.FieldAbilityCards[rc]=rc:GetLogicalControler()
+			-- Transfer a material Deck Master only to an actual Summoned
+			-- MONSTER, never the Spell that performed the Ritual/Fusion.
+			local rc=tc:GetReasonCard()
+			if (tc:GetReason()&REASON_MATERIAL)~=0 and rc
+				and rc:IsType(TYPE_MONSTER) and rc:IsLocation(LOCATION_MZONE) then
+				DeckMaster.AssignFieldDeckMaster(rc:GetLogicalControler(),rc)
 				mark_team_shared_master(rc:GetLogicalControler(),rc,rc:GetOriginalCode())
 			end
 		end
+	end
+	function DeckMaster.materialWasDeckMaster(c)
+		-- A material's on-field flag may reset when sent to the Graveyard;
+		-- the card's FieldAbilityCards identity survives that move.
+		return DeckMaster.FieldAbilityCards[c]~=nil
+			or c:GetFlagEffect(FLAG_DECK_MASTER)>0
+	end
+	function DeckMaster.usedDeckMasterMaterial(c)
+		local materials=c:GetMaterial()
+		return materials and materials:IsExists(DeckMaster.materialWasDeckMaster,1,nil)
 	end
 	function DeckMaster.inheritFilter(c)
 		local p=c:GetLogicalControler()
 		local side=player_side(p)
 		if DeckMaster.DragonRevivalResolving[side] then return false end
-		return not Duel.GetDeckMasterPlayer(p)
-			and c:GetControler()==c:GetSummonPlayer()
+		return c:GetControler()==c:GetSummonPlayer()
+			and (DeckMaster.usedDeckMasterMaterial(c)
+				or not Duel.GetDeckMasterPlayer(p))
 	end
 	function DeckMaster.inheritcon2(e,tp,eg,ep,ev,re,r,rp)
 		return eg:IsExists(DeckMaster.inheritFilter,1,nil)
@@ -547,12 +558,38 @@ if not DeckMaster then
 					return c:GetLogicalControler()==lp
 				end,nil,p)
 				if #dg>0 then
-					local dm=dg:GetFirst()
-					dm:RegisterFlagEffect(FLAG_DECK_MASTER,
-						RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
-						EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
-					DeckMaster.FieldAbilityCards[dm]=p
-					mark_team_shared_master(p,dm,dm:GetOriginalCode())
+					local material_successors=dg:Filter(
+						DeckMaster.usedDeckMasterMaterial,nil)
+					if #material_successors>0 then
+						-- Every monster Summoned with Deck Master material
+						-- inherits that status, even if another master exists.
+						for tc in aux.Next(material_successors) do
+							DeckMaster.AssignFieldDeckMaster(p,tc)
+							mark_team_shared_master(p,tc,tc:GetOriginalCode())
+						end
+					elseif not Duel.GetDeckMasterPlayer(p) then
+						-- If several monsters arrive at once and no master
+						-- remains, the logical player chooses the successor.
+						local dm=dg:GetFirst()
+						if #dg>1 then
+							if Duel.GetActiveLogicalPlayerMask()~=0 then
+								local cards,codes={},{}
+								for tc in aux.Next(dg) do
+									cards[#cards+1]=tc
+									codes[#codes+1]=tc:GetOriginalCode()
+								end
+								local chosen=Duel.SelectCardsFromCodesPlayer(
+									p,1,1,false,true,table.unpack(codes))
+								if chosen and chosen[2] and cards[chosen[2]] then
+									dm=cards[chosen[2]]
+								end
+							else
+								dm=dg:Select(p,1,1,nil):GetFirst() or dm
+							end
+						end
+						DeckMaster.AssignFieldDeckMaster(p,dm)
+						mark_team_shared_master(p,dm,dm:GetOriginalCode())
+					end
 				end
 			end
 		end
