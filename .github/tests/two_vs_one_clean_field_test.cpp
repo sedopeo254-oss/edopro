@@ -226,6 +226,27 @@ int main() {
     expect(field.get_useable_count(p1_hat_spell, 0, LOCATION_SZONE, 0,
             LOCATION_REASON_TOFIELD, 0x1f) == 5,
         "P1's SZONE must not inherit the active P2's four occupied spell slots");
+    // Oct 29 Magical Hats replay regression: P2/Yugi's projected field
+    // already contains five monsters while P1/Joey still has three free slots.
+    // Old code checked Yugi's local zone mask when placing Joey's tokens, so
+    // all three MSG_MOVE results remained LOCATION_NONE instead of MZONE.
+    for(uint8_t seq = 1; seq <= 3; ++seq) {
+        auto* joey_hat = game.new_card(511005062);
+        joey_hat->owner = 0;
+        joey_hat->owner_duelist = 0;
+        joey_hat->current.controler = 0;
+        joey_hat->current.duelist = 0;
+        joey_hat->current.location = 0;
+        expect(field.move_card(0, joey_hat, LOCATION_MZONE, seq, false),
+            "Joey hat token move must be accepted during Yugi's turn");
+        expect(joey_hat->current.location == LOCATION_MZONE
+                && joey_hat->current.duelist == 0
+                && joey_hat->current.sequence == seq
+                && field.player[0].list_mzone[seq] == joey_hat,
+            "all three copied Magical Hats tokens must occupy Joey's MZONE");
+    }
+    expect(field.player[0].list_mzone[7 + 4] != nullptr,
+        "Yugi's full field must remain unchanged by Joey's three hats");
     expect(field.tag_swap_to(0, 0),
         "restore P1 projection after independent MZONE/SZONE capacity checks");
 
