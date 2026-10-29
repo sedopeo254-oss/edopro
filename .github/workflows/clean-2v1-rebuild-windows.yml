@@ -210,6 +210,9 @@ jobs:
           assert 'get_useable_count(context_card, playerid, location' in libduel
           assert 'multiplayer.mode() == MultiplayerMode::TWO_V_ONE' in libduel
           assert 'context_card = handler' in libduel
+          assert 'replay_hat_shuffle_2v1' in libduel
+          assert 'get_local_sequence(tp, loc, ms[ct]->current.sequence)' in libduel
+          assert 'current.duelist != hat_duelist' in libduel
           assert 'requested_duelist != 0xff' in core_field
           assert 'is_location_useable(playerid, location, sequence, target_duelist)' in core_field
           assert 'is_location_useable(playerid, location, availability_sequence, logical_duelist)' in core_field
