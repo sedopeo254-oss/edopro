@@ -32,3 +32,20 @@ as the opponent.
 
 Setting a Spell/Trap through Super Roboyarou does not override that card's
 normal activation timing or activation conditions.
+
+## Deck Master phase-boundary and succession rules (2v1 and 3v1)
+
+- The first eligible monster Summoned after losing a Deck Master inherits its
+  status; when several are Summoned simultaneously, the logical owner chooses.
+- A monster Special Summoned using Deck Master material also inherits the status.
+- Dragon Revival Ritual transfers Big Five's Deck Master status to the real
+  Five-Headed Dragon, rather than permanently protecting the player. If that
+  dragon leaves and Berserk Dragon is Summoned next, Berserk becomes the
+  replacement; if Berserk is destroyed, Big Five loses at the next phase
+  boundary unless another replacement exists.
+- All active logical players are checked independently at the boundary between
+  phases, including the final End Phase; simultaneous loss on both sides draws.
+- A Deck Master can be Special Summoned from its zone in its owner's personal
+  Main Phase only. The anime-specific shared Dark Flare Knight/Mirage Knight
+  team protection and all five Big Five switch abilities remain unchanged.
+
