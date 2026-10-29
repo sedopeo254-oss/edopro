@@ -816,4 +816,28 @@ replace_once(
 ''',
 )
 
+
+# A Deck Master skill must know the true logical TURN owner, not the owner
+# of the effect currently being evaluated. Duel.GetLogicalPlayer(tp) can
+# refer to that effect's handler instead of the current teammate in 2v1.
+replace_once(
+    "libduel.cpp",
+    '''LUA_STATIC_FUNCTION(GetTurnPlayer) {
+	lua_pushinteger(L, pduel->game_field->infos.turn_player);
+	return 1;
+}
+''',
+    '''LUA_STATIC_FUNCTION(GetTurnPlayer) {
+	lua_pushinteger(L, pduel->game_field->infos.turn_player);
+	return 1;
+}
+LUA_STATIC_FUNCTION(GetLogicalTurnPlayer) {
+	const auto& state = pduel->game_field->multiplayer;
+	lua_pushinteger(L, state.enabled()
+		? state.current_player() : pduel->game_field->infos.turn_player);
+	return 1;
+}
+''',
+)
+
 print("Applied clean generic 2 vs 1 Core mode")
