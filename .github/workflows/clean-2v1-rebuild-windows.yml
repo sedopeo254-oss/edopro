@@ -207,7 +207,14 @@ jobs:
           assert 'preserve_unplaced_duelist' in core_field
           assert 'get_logical_used_location(playerid, logical_duelist)' in core_field
           libduel = Path('ocgcore/libduel.cpp').read_text(encoding='utf-8')
-          assert 'get_useable_count(lua_get<card*>(L, 6), playerid, location' in libduel
+          assert 'get_useable_count(context_card, playerid, location' in libduel
+          assert 'multiplayer.mode() == MultiplayerMode::TWO_V_ONE' in libduel
+          assert 'context_card = handler' in libduel
+          assert 'requested_duelist != 0xff' in core_field
+          assert 'is_location_useable(playerid, location, sequence, target_duelist)' in core_field
+          assert 'is_location_useable(playerid, location, availability_sequence, logical_duelist)' in core_field
+          field_h = Path('ocgcore/field.h').read_text(encoding='utf-8')
+          assert 'uint8_t requested_duelist = 0xff' in field_h
           assert 'limit + active_used - target_used' in core_field
           assert 'pcard->data.type & TYPE_FUSION' in core_field
 
@@ -302,15 +309,26 @@ jobs:
           assert '--Magical Hats (Anime)' in magical_hats
           assert 'local c403,id=GetID()' in magical_hats
           assert '(c:IsRace(RACE_SPELLCASTER) or c:IsRace(RACE_WARRIOR))' in magical_hats
-          assert 'Duel.GetPlayerFieldGroup(e:GetHandler():GetLogicalOwner(),location)' in magical_hats
-          assert 'Duel.SelectCardsFromCodesPlayer(' in magical_hats
-          assert 'Duel.CreateTokenPlayer(logical,511005062)' in magical_hats
-          assert 'Duel.GetLocationCount(tp,LOCATION_MZONE,nil,nil,nil,first_hat)' in magical_hats
-          assert 'c403.owner_cards(e,LOCATION_MZONE):IsExists(c403.spellcaster_filter' in magical_hats
+          # Preserve EXACT original anime c403, with Warrior addition only.
+          # Its effects, face-down hat handling and self-destruction must not
+          # be silently rewritten to solve an engine's zone ownership bug.
+          import subprocess
+          original_hats_blob = subprocess.check_output(
+              ['git', 'hash-object', 'multiplayer-anime-cards/c403.lua'],
+              text=True).strip()
+          assert original_hats_blob == '7a0e9704ba64a9028d99d2ce6e0cbf58d509c62c'
+          assert 'function c403.owner_cards' not in magical_hats
+          assert 'function c403.select_owned' not in magical_hats
+          assert 'Duel.SelectMatchingCard(tp,c403.spellcaster_filter' in magical_hats
+          assert 'Duel.CreateToken(tp,511005062)' in magical_hats
+          assert 'local ft=Duel.GetLocationCount(tp,LOCATION_MZONE)' in magical_hats
           assert 'MagicalHatsAnime_DeckMasterCopy' not in magical_hats
           assert 'c403.dm_copy_setup' not in magical_hats
           assert 'function c403.activate' in magical_hats
           assert 'Duel.ShuffleSetCard(gs1)' in magical_hats
+          replay_regression = Path('.github/tests/two_vs_one_clean_field_test.cpp').read_text(encoding='utf-8')
+          assert 'Oct 29 Magical Hats replay regression' in replay_regression
+          assert 'all three copied Magical Hats tokens must occupy Joey' in replay_regression
 
           assert 'is_big_five_solo' in dm
           assert 'for code=153000020,153000024' in dm
