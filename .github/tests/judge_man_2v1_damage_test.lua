@@ -50,8 +50,10 @@ local e={owner={GetLogicalOwner=function() return 2 end}}
 function e:GetOwner() return self.owner end
 local fields,legacy_monsters,events,removed,lp,active_mask,mode,can_use_master,accept
 local function monster(controller,can_banish,replacement)
-    return {controller=controller,location=LOCATION_MZONE,
+    local c={controller=controller,location=LOCATION_MZONE,
         can_banish=can_banish~=false,replacement=replacement}
+    function c:IsLocation(location) return self.location==location end
+    return c
 end
 local function setup(p1,p2,solo,options)
     options=options or {}
