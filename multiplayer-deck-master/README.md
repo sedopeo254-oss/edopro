@@ -13,6 +13,13 @@ The bundled CI packages them automatically.
 - `c153000009.lua` — **Robotic Knight**: every discarded Machine assigns exactly
   500 damage to one opponent. Three discarded Machines against three opponents
   deal 500 to each opponent, not 1500 to every opponent.
+- `c153000022.lua` — **Judge Man**: in 2v1, Big Five pays the original
+  1000 LP to banish all removable monsters on the two allied fields.
+  Each active teammate takes 500 damage for each of their own monsters
+  actually banished (two for P1 = 1000 damage, three for P2 = 1500).
+  Damage is sent to each logical player directly, without damage interception.
+  The original effect for Standard, 3v1, and Battle Royale and the existing
+  Big Five Deck Master-merger selection are unchanged.
 - `c153000012.lua` — **Super Roboyarou**: when an opponent declares an attack,
   it can be Special Summoned from the Deck Master zone in Attack Position and
   redirect that attack to itself. Afterward, its controller Sets one Spell/Trap
