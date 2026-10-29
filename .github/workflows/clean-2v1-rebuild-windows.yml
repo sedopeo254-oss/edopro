@@ -381,6 +381,15 @@ jobs:
           assert 'ResolveLogicalTarget' in attack_client
           assert 'SetThreeVsOneView(attacker_logical, attack_target_logical)' in attack_client
           assert 'focus_two_v_one_replay_chain' in duelclient
+          # Card Destruction: off-turn draws use MSG_MULTIPLAYER_DRAW rather
+          # than normal MSG_DRAW; both must keep each logical hand private.
+          logical_draw_start = duelclient.index('case MSG_MULTIPLAYER_DRAW:')
+          logical_draw_end = duelclient.index('case MSG_MULTIPLAYER_PRIVATE_PILES:', logical_draw_start)
+          logical_draw = duelclient[logical_draw_start:logical_draw_end]
+          assert 'two_vs_one_logical_draw' in logical_draw
+          assert 'UpdateMultiplayerPrivateDraw(logical_player, drawn_cards)' in logical_draw
+          assert 'ApplyTwoVsOnePrivatePile(logical_player, false)' in logical_draw
+          assert 'ApplyThreeVsOneReplayPrivateDraw(' in logical_draw
 
           # No legacy Big Five mode is part of the clean implementation.
           for p in ['.github/scripts/apply-2v1-clean-core.py',
