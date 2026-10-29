@@ -73,7 +73,7 @@ function s.activate(e,tp,eg,ep,ev,re,r,rp)
 		five,REASON_EFFECT|REASON_MATERIAL|REASON_RITUAL)
 	if released~=5 then
 		if DeckMaster.FinishDragonRevival then
-			DeckMaster.FinishDragonRevival(logical,true)
+			DeckMaster.FinishDragonRevival(logical,false)
 		end
 		return
 	end
@@ -84,6 +84,8 @@ function s.activate(e,tp,eg,ep,ev,re,r,rp)
 		fhd,SUMMON_TYPE_RITUAL,tp,tp,true,true,POS_FACEUP)
 	if res>0 then fhd:CompleteProcedure() end
 	if DeckMaster.FinishDragonRevival then
-		DeckMaster.FinishDragonRevival(logical,true)
+		-- FHD is the successor of the five material Deck Masters.
+		-- Store the real card, not a permanent exemption from losing.
+		DeckMaster.FinishDragonRevival(logical,res>0,res>0 and fhd or nil)
 	end
 end
