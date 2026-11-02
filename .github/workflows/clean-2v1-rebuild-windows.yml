@@ -356,11 +356,18 @@ jobs:
           assert 'function s.discard_and_draw_player' in destruction
           assert Path('.github/tests/card_destruction_2v1_test.lua').is_file()
           drop_off = Path('multiplayer-anime-cards/c55773067.lua').read_text(encoding='utf-8')
+          assert 'e1:SetType(EFFECT_TYPE_ACTIVATE)' in drop_off
+          assert 'e1:SetCode(EVENT_DRAW)' in drop_off
+          assert 'e1:SetProperty(EFFECT_FLAG_DELAY)' in drop_off
           assert 'Duel.GetTurnPlayer()==ep' in drop_off
           assert 'Duel.GetCurrentPhase()==PHASE_DRAW' in drop_off
+          assert '(r&REASON_EFFECT)~=0' in drop_off
+          assert 're~=nil' in drop_off
           assert 'Duel.SetTargetCard(drawn)' in drop_off
+          assert 'Duel.SetOperationInfo(0,CATEGORY_HANDES,drawn,#drawn,ep,LOCATION_HAND)' in drop_off
           assert 'c:IsRelateToEffect(e)' in drop_off
-          assert 'Duel.SendtoGrave(chosen,REASON_EFFECT|REASON_DISCARD)' in drop_off
+          assert 'Duel.SendtoGrave(drawn,REASON_EFFECT|REASON_DISCARD)' in drop_off
+          assert 'drawn:Select' not in drop_off
           assert Path('.github/tests/drop_off_draw_phase_test.lua').is_file()
 
           # Judge Man applies exact banish-based damage to each independent
