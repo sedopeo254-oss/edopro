@@ -1,10 +1,14 @@
 --はたき落とし
---Drop Off (Anime / multiplayer-compatible)
+--Drop Off (Anime / fast draw response / multiplayer)
 local s,id=GetID()
 
 function s.initial_effect(c)
+    -- Quick Trap activation after an opponent's draw event.
+    -- EFFECT_FLAG_DELAY prevents effect-based draws in a resolving Chain
+    -- from missing their activation window.
     local e1=Effect.CreateEffect(c)
     e1:SetType(EFFECT_TYPE_ACTIVATE)
+    e1:SetProperty(EFFECT_FLAG_DELAY)
     e1:SetCategory(CATEGORY_TOGRAVE+CATEGORY_HANDES)
     e1:SetCode(EVENT_DRAW)
     e1:SetCondition(s.condition)
@@ -13,16 +17,19 @@ function s.initial_effect(c)
     c:RegisterEffect(e1)
 end
 
--- The drawn card must come from the current opponent during THEIR Draw Phase.
--- Do not require REASON_RULE: an additional draw by an effect during the
--- opponent's Draw Phase is still a card drawn during that phase.
+-- Activate after either:
+-- 1) a draw during the opponent's own Draw Phase (including normal draw);
+-- 2) a draw caused by an effect, in ANY phase or on either player's turn.
+-- A normal/rule-based draw outside those windows is not a valid trigger.
 function s.condition(e,tp,eg,ep,ev,re,r,rp)
-    return ep~=tp
-        and Duel.GetTurnPlayer()==ep
+    if ep==tp or not eg or #eg==0 then return false end
+    local their_draw_phase=Duel.GetTurnPlayer()==ep
         and Duel.GetCurrentPhase()==PHASE_DRAW
-        and eg and #eg>0
+    local effect_draw=(r and (r&REASON_EFFECT)~=0) or re~=nil
+    return their_draw_phase or effect_draw
 end
 
+-- Never touch another card previously held by the opponent.
 function s.drawn_filter(c,ep)
     return c:IsLocation(LOCATION_HAND) and c:IsControler(ep)
 end
@@ -30,10 +37,10 @@ end
 function s.target(e,tp,eg,ep,ev,re,r,rp,chk)
     local drawn=eg:Filter(s.drawn_filter,nil,ep)
     if chk==0 then return #drawn>0 end
-    -- Target only cards from this exact Draw event, not another card the
-    -- opponent already held. The engine tracks their relation through Chain.
+    -- Remember the exact cards from this EVENT_DRAW across the Chain.
     Duel.SetTargetCard(drawn)
-    Duel.SetOperationInfo(0,CATEGORY_HANDES,drawn,1,ep,LOCATION_HAND)
+    Duel.SetOperationInfo(0,CATEGORY_TOGRAVE,drawn,#drawn,ep,LOCATION_HAND)
+    Duel.SetOperationInfo(0,CATEGORY_HANDES,drawn,#drawn,ep,LOCATION_HAND)
 end
 
 function s.relate_filter(c,e,ep)
@@ -41,14 +48,10 @@ function s.relate_filter(c,e,ep)
 end
 
 function s.activate(e,tp,eg,ep,ev,re,r,rp)
+    -- If 1 was drawn, discard 1; if 3 were drawn, discard all 3.
+    -- Do not allow a selection from the opponent's pre-existing hand.
     local drawn=eg:Filter(s.relate_filter,nil,e,ep)
-    if #drawn==0 then return end
-    -- If an effect drew multiple cards at once during Draw Phase,
-    -- the opponent chooses one of those drawn cards, not any old hand card.
-    local chosen=drawn
-    if #drawn>1 then
-        Duel.Hint(HINT_SELECTMSG,ep,HINTMSG_TOGRAVE)
-        chosen=drawn:Select(ep,1,1,nil)
+    if #drawn>0 then
+        Duel.SendtoGrave(drawn,REASON_EFFECT|REASON_DISCARD)
     end
-    Duel.SendtoGrave(chosen,REASON_EFFECT|REASON_DISCARD)
 end
