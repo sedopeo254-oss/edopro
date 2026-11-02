@@ -90,7 +90,7 @@ local function activate(e,tp,eg,ep,r)
     assert(e.target(e,tp,eg,ep,#eg,nil,r,ep,0),
         "Canonical target must ALWAYS permit the normal draw prompt")
     e.target(e,tp,eg,ep,#eg,nil,r,ep,1)
-    assert(targets==eg and handes.count==1 and handes.player==1-tp)
+    assert(targets==eg and handes.count==0 and handes.player==1-tp)
     e.operation(e,tp,eg,ep,#eg,nil,r,ep)
 end
 
