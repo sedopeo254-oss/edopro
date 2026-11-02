@@ -26,10 +26,13 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
   - checks each active player's ability to draw before activation, skips empty and eliminated hands, and excludes the activating card if still in hand;
   - uses the original script's non-multiplayer Tag/Standard path without modifying other anime card effects.
 
-- `c55773067.lua` — Drop Off (Anime / Multiplayer)
-  - activates only when the opponent draws during their own Draw Phase;
-  - discards the actual card drawn by that event, not another hand card;
-  - if more than one card was drawn, the opponent picks one of those draws;
-  - does not assume an ordinary-rule draw: effects that draw during the
-    opponent's Draw Phase also work.
+- `c55773067.lua` — Drop Off (Anime / Fast multiplayer response)
+  - may activate after the opponent's regular Draw Phase draw OR any
+    opponent draw caused by a card effect in any phase, including your turn;
+  - discards ALL cards just drawn by the event (one draw = one discard,
+    three draws = three discards) to the appropriate player's Graveyard;
+  - never selects cards from the opponent's pre-existing hand, and
+    never triggers off a teammate's draw on the same physical side;
+  - retains a Normal Trap's reaction/activation timing, with delayed
+    event eligibility so effect-based draws can trigger the Trap.
 
