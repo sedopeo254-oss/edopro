@@ -142,31 +142,23 @@ if not DeckMaster then
 		end
 	end
 
-	--Dragon Revival Ritual: call the five Big Five monsters immediately.
-	--A matching real Deck Master Zone card is used first; otherwise the
-	--requested 153000020-153000024 card is created from outside the duel.
+	-- Dragon Revival Ritual summons only these five exact anime Deck Masters.
+	-- A live card in this side's Deck Master Zone is reused by identity.
+	-- Any missing card comes directly from outside the Duel, never the Deck.
 	DeckMaster.DragonRevivalDeckMasters={
-		{field_code=153000020,zone_codes={153000020,153000013}}, --Jinzo
-		{field_code=153000021,zone_codes={153000021,153000003}}, --Deepsea Warrior
-		{field_code=153000022,zone_codes={153000022,153000005}}, --Nightmare Penguin
-		{field_code=153000023,zone_codes={153000023,153000008}}, --Judge Man
-		{field_code=153000024,zone_codes={153000024,153000009}}  --Robotic Knight
+		153000020, -- Jinzo
+		153000021, -- Deepsea Warrior
+		153000022, -- Nightmare Penguin
+		153000023, -- Judge Man
+		153000024  -- Robotic Knight
 	}
 
-	local function dragon_revival_zone_match(c,entry)
-		if not c then return false end
-		for _,code in ipairs(entry.zone_codes) do
-			if c:IsOriginalCode(code) then return true end
-		end
-		return false
-	end
-
-	local function find_dragon_revival_zone_master(entry,side)
-		for p=0,3 do
-			if player_side(p)==side then
-				local dm=DeckMasterZone[p]
-				if dragon_revival_zone_match(dm,entry) then
-					return p,dm
+	local function find_dragon_revival_zone_master(code,side)
+		for owner=0,3 do
+			if is_active_player(owner) and player_side(owner)==side then
+				local dm=DeckMasterZone[owner]
+				if dm and dm:IsOriginalCode(code) then
+					return owner,dm
 				end
 			end
 		end
@@ -174,12 +166,15 @@ if not DeckMaster then
 	end
 
 	function DeckMaster.CanCallDragonRevivalMasters(p,e)
+		if not is_active_player(p) then return false end
 		local side=player_side(p)
 		if side~=0 and side~=1 then return false end
+		-- Five free slots are required for all five monsters at once.
+		-- Use this Duel Core's logical side capacity rather than a teammate's.
 		if Duel.GetLocationCount(side,LOCATION_MZONE)<5 then return false end
-		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
-			local _,dm=find_dragon_revival_zone_master(entry,side)
-			if dm and not dm:IsCanBeSpecialSummoned(e,0,side,true,false) then
+		for _,code in ipairs(DeckMaster.DragonRevivalDeckMasters) do
+			local _,existing=find_dragon_revival_zone_master(code,side)
+			if existing and not existing:IsCanBeSpecialSummoned(e,0,side,true,false) then
 				return false
 			end
 		end
@@ -189,40 +184,52 @@ if not DeckMaster then
 	function DeckMaster.CallDragonRevivalMasters(p,e)
 		if not DeckMaster.CanCallDragonRevivalMasters(p,e) then return nil end
 		local side=player_side(p)
-		DeckMaster.DragonRevivalResolving[side]=true
-		local g=Group.CreateGroup()
-		local clear_players={}
-		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
-			local zone_owner,dm=find_dragon_revival_zone_master(entry,side)
+		local summoned=Group.CreateGroup()
+		local zone_sources={}
+		local multiplayer=Duel.GetActiveLogicalPlayerMask()~=0
+		for _,code in ipairs(DeckMaster.DragonRevivalDeckMasters) do
+			local owner,dm=find_dragon_revival_zone_master(code,side)
 			if dm then
-				clear_players[zone_owner]=true
+				zone_sources[owner]=dm
 			else
-				dm=Duel.CreateTokenPlayer(p,entry.field_code)
+				-- No copy of a Deck Master that is already in the Zone.
+				dm=multiplayer and Duel.CreateTokenPlayer(p,code)
+					or Duel.CreateToken(side,code)
 			end
-			if not dm then
-				DeckMaster.DragonRevivalResolving[side]=nil
-				DeckMaster.DragonRevivalConsumed[side]=nil
-				return nil
+			if not dm then return nil end
+			summoned:AddCard(dm)
+		end
+		if #summoned~=5 then return nil end
+
+		-- Stop the automatic "first monster Summoned becomes Deck Master"
+		-- handler from turning these five temporary monsters into a new Zone DM.
+		DeckMaster.DragonRevivalResolving[side]=true
+		local count=Duel.SpecialSummon(
+			summoned,0,side,side,true,false,POS_FACEUP_ATTACK)
+		local on_field=summoned:Filter(Card.IsLocation,nil,LOCATION_MZONE)
+		if count~=5 or #on_field~=5 then
+			-- Clear only Zone pointers for cards that physically moved.
+			for owner,dm in pairs(zone_sources) do
+				if dm:IsLocation(LOCATION_MZONE) and DeckMasterZone[owner]==dm then
+					Duel.ClearDeckMasterZonePlayer(owner)
+				end
 			end
-			g:AddCard(dm)
-		end
-		DeckMaster.DragonRevivalConsumed[side]=clear_players
-		for q,_ in pairs(clear_players) do
-			Duel.ClearDeckMasterZonePlayer(q)
-		end
-		local ct=Duel.SpecialSummon(g,0,side,side,true,false,POS_FACEUP_ATTACK)
-		if ct~=5 then
 			DeckMaster.DragonRevivalResolving[side]=nil
 			DeckMaster.DragonRevivalConsumed[side]=nil
 			return nil
 		end
-		local sg=g:Filter(Card.IsLocation,nil,LOCATION_MZONE)
-		if #sg~=5 then
-			DeckMaster.DragonRevivalResolving[side]=nil
-			DeckMaster.DragonRevivalConsumed[side]=nil
-			return nil
+
+		local consumed={}
+		for owner,dm in pairs(zone_sources) do
+			-- Remove the *original* Deck Master Zone indicator only AFTER
+			-- its real card has successfully entered the Monster Zone.
+			if DeckMasterZone[owner]==dm then
+				Duel.ClearDeckMasterZonePlayer(owner)
+				consumed[owner]=true
+			end
 		end
-		return sg
+		DeckMaster.DragonRevivalConsumed[side]=consumed
+		return on_field
 	end
 
 	-- Never let a completed Ritual grant permanent Deck Master immunity.
@@ -243,6 +250,12 @@ if not DeckMaster then
 		local side=player_side(p)
 		local consumed=DeckMaster.DragonRevivalConsumed[side] or {}
 		if merged and successor and DeckMaster.AssignFieldDeckMaster(p,successor) then
+			-- Five-Headed Dragon becomes a field Deck Master only. Never
+			-- create or retain a second copy in the Deck Master Zone.
+			local zone_copy=DeckMasterZone[p]
+			if zone_copy and zone_copy:IsOriginalCode(successor:GetOriginalCode()) then
+				Duel.ClearDeckMasterZonePlayer(p)
+			end
 			for q,_ in pairs(consumed) do
 				DeckMaster.DragonRevivalMerged[q]=successor
 			end
