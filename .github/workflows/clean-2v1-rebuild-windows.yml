@@ -274,9 +274,21 @@ jobs:
           assert 'dragon_revival_merged or' not in loss_section
           assert 'local has_dm=shared_team_master' in loss_section
           assert Path('.github/tests/deck_master_phase24_test.lua').is_file()
-          for code in ['153000020','153000021','153000022','153000023','153000024',
-                       '153000013','153000003','153000005','153000008','153000009']:
+          for code in ['153000020','153000021','153000022','153000023','153000024']:
               assert code in dm
+          dragon_section = dm[
+              dm.index('DeckMaster.DragonRevivalDeckMasters={'):
+              dm.index('function DeckMaster.AssignFieldDeckMaster', dm.index('DeckMaster.DragonRevivalDeckMasters={'))]
+          for legacy_code in ['153000013','153000003','153000005','153000008','153000009']:
+              assert legacy_code not in dragon_section
+          assert 'zone_sources[owner]=dm' in dragon_section
+          assert 'Duel.CreateTokenPlayer(p,code)' in dragon_section
+          assert 'Duel.CreateToken(side,code)' in dragon_section
+          assert 'DeckMasterZone[owner]==dm' in dragon_section
+          assert 'if count~=5 or #on_field~=5 then' in dragon_section
+          assert 'local zone_copy=DeckMasterZone[p]' in dm
+          assert 'Duel.ClearDeckMasterZonePlayer(p)' in dm
+          assert Path('.github/tests/dragon_revival_exact_five_test.lua').is_file()
 
           dragon_ritual = Path('multiplayer-anime-cards/c120000016.lua').read_text(encoding='utf-8')
           assert 'DeckMaster.CallDragonRevivalMasters' in dragon_ritual
@@ -290,6 +302,12 @@ jobs:
           assert 'BIG_FIVE_RITUAL_ATTRIBUTE' not in dragon_ritual
           assert 'MakeFieldDeckMaster' not in dragon_ritual
           assert 'SetDeckMasterPlayerState' not in dragon_ritual
+          assert 'Duel.GetPlayerFieldGroup(logical,LOCATION_HAND|LOCATION_DECK)' in dragon_ritual
+          assert 'fhd:SetMaterial(five)' in dragon_ritual
+          assert 'Duel.CreateTokenPlayer' not in dragon_ritual
+          assert 'Duel.CreateToken(' not in dragon_ritual
+          assert 'MoveToDeckMasterZone' not in dragon_ritual
+          assert 'DeckMaster.FinishDragonRevival(logical,res>0,res>0 and fhd or nil)' in dragon_ritual
 
           fhd = Path('multiplayer-anime-cards/c511013020.lua').read_text(encoding='utf-8')
           assert 'Five-Headed Dragon (Anime)' in fhd
@@ -355,25 +373,21 @@ jobs:
           assert 'if IsLogicalMultiplayer() then' in destruction
           assert 'function s.discard_and_draw_player' in destruction
           assert Path('.github/tests/card_destruction_2v1_test.lua').is_file()
+          # The user's new Drop Off effect adds exactly +0 ATK and +0 DEF
+          # to ALL monsters in the independent 2v1/3v1 fields. Never turn it
+          # back into a draw-discard Trap in this branch.
           drop_off = Path('multiplayer-anime-cards/c55773067.lua').read_text(encoding='utf-8')
-          # Normal rule-based draw MUST keep the exact canonical EDOPro
-          # activation window; an EFFECT_FLAG_DELAY property or extra
-          # target check used on this activation previously prevented
-          # the user's Draw Phase prompt. Effect draws use a separate Clone.
-          assert 'e1:SetType(EFFECT_TYPE_ACTIVATE)' in drop_off
-          assert 'e1:SetCode(EVENT_DRAW)' in drop_off
-          assert 'e1:SetCondition(s.normal_draw)' in drop_off
-          assert 'return ep~=tp and (r&REASON_RULE)~=0' in drop_off
-          assert 'e2=e1:Clone()' in drop_off
-          assert 'e2:SetProperty(EFFECT_FLAG_DELAY)' in drop_off
-          assert 'e2:SetCondition(s.effect_draw)' in drop_off
-          assert '(r&REASON_EFFECT)~=0' in drop_off
-          assert 'Duel.SetTargetCard(eg)' in drop_off
-          assert 'if chk==0 then return true end' in drop_off
-          assert 'Duel.SendtoGrave(hand,REASON_EFFECT|REASON_DISCARD)' in drop_off
-          assert 'Duel.GetCurrentPhase()' not in drop_off
-          assert 'drawn:Select' not in drop_off
-          assert Path('.github/tests/drop_off_draw_phase_test.lua').is_file()
+          assert 'e1:SetCode(EVENT_FREE_CHAIN)' in drop_off
+          assert 'e1:SetCategory(CATEGORY_ATKCHANGE+CATEGORY_DEFCHANGE)' in drop_off
+          assert 'Duel.GetActiveLogicalPlayerMask()' in drop_off
+          assert 'Duel.GetPlayerFieldGroup(p,LOCATION_MZONE)' in drop_off
+          assert 'Duel.GetFieldGroup(tp,LOCATION_MZONE,LOCATION_MZONE)' in drop_off
+          assert 'atk:SetCode(EFFECT_UPDATE_ATTACK)' in drop_off
+          assert 'def:SetCode(EFFECT_UPDATE_DEFENSE)' in drop_off
+          assert 'atk:SetValue(0)' in drop_off
+          assert 'EVENT_DRAW' not in drop_off
+          assert 'Duel.SendtoGrave' not in drop_off
+          assert Path('.github/tests/drop_off_zero_stats_test.lua').is_file()
 
           # Judge Man applies exact banish-based damage to each independent
           # allied field (P1 and P2), not one combined physical side.
@@ -467,7 +481,8 @@ jobs:
           # Execute the real c8050010.lua logic with isolated logical-player
           # Deck/Hand mock APIs, covering 2v1/OUT/empty hands/Standard behavior.
           "$BUILD/lua" .github/tests/card_destruction_2v1_test.lua
-          "$BUILD/lua" .github/tests/drop_off_draw_phase_test.lua
+          "$BUILD/lua" .github/tests/drop_off_zero_stats_test.lua
+          "$BUILD/lua" .github/tests/dragon_revival_exact_five_test.lua
           "$BUILD/lua" .github/tests/deck_master_phase24_test.lua
           # Test real Judge Man Lua with separate P1/P2 damage, banish
           # replacement effects, 1000 LP cost, OUT teammates and legacy modes.
