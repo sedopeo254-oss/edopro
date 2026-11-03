@@ -1,60 +1,56 @@
 --はたき落とし
---Drop Off (Anime / multiplayer-compatible)
--- The NORMAL Draw Phase response intentionally matches the canonical
--- Project Ignis/EDOPro card script. The separate delayed activation below
--- supports the requested additional effect-draw rule without interfering.
+--Drop Off (Custom Anime): all monsters gain 0 ATK and 0 DEF.
+-- Intentionally NO longer reacts to the Draw Phase or any draw effect.
 local s,id=GetID()
 
 function s.initial_effect(c)
-    -- Original response to the opponent's normal draw in Draw Phase.
-    -- IMPORTANT: no EFFECT_FLAG_DELAY and no extra target-side legality
-    -- check here. Both can interfere with the standard draw window.
-    local e1=Effect.CreateEffect(c)
-    e1:SetType(EFFECT_TYPE_ACTIVATE)
-    e1:SetCategory(CATEGORY_TOGRAVE+CATEGORY_HANDES)
-    e1:SetCode(EVENT_DRAW)
-    e1:SetCondition(s.normal_draw)
-    e1:SetTarget(s.target)
-    e1:SetOperation(s.activate)
-    c:RegisterEffect(e1)
-
-    -- Custom anime extension: respond to cards drawn by effects, including
-    -- effect draws during another phase or during your own turn.
-    local e2=e1:Clone()
-    e2:SetProperty(EFFECT_FLAG_DELAY)
-    e2:SetCondition(s.effect_draw)
-    c:RegisterEffect(e2)
+	local e1=Effect.CreateEffect(c)
+	e1:SetType(EFFECT_TYPE_ACTIVATE)
+	e1:SetCode(EVENT_FREE_CHAIN)
+	e1:SetCategory(CATEGORY_ATKCHANGE+CATEGORY_DEFCHANGE)
+	e1:SetTarget(s.target)
+	e1:SetOperation(s.activate)
+	c:RegisterEffect(e1)
 end
 
-function s.normal_draw(e,tp,eg,ep,ev,re,r,rp)
-    -- Identical event condition to the original EDOPro Drop Off script.
-    return ep~=tp and (r&REASON_RULE)~=0
-end
-
-function s.effect_draw(e,tp,eg,ep,ev,re,r,rp)
-    -- The rule-based draw is handled exclusively by the original activation.
-    -- Never present duplicate prompts on the normal Draw Phase draw.
-    return ep~=tp and (r&REASON_RULE)==0
-        and ((r&REASON_EFFECT)~=0 or re~=nil)
+function s.monsters(tp)
+	local g=Group.CreateGroup()
+	local mask=Duel.GetActiveLogicalPlayerMask
+		and Duel.GetActiveLogicalPlayerMask() or 0
+	if mask~=0 then
+		-- 2v1/3v1 have independent monster fields for each logical player.
+		for p=0,3 do
+			if (mask&(1<<p))~=0 then
+				g:Merge(Duel.GetPlayerFieldGroup(p,LOCATION_MZONE))
+			end
+		end
+	else
+		g:Merge(Duel.GetFieldGroup(tp,LOCATION_MZONE,LOCATION_MZONE))
+	end
+	return g
 end
 
 function s.target(e,tp,eg,ep,ev,re,r,rp,chk)
-    -- Original activation check returns true: the Draw event provides
-    -- the target group, even if its cards are not visible to this player.
-    if chk==0 then return true end
-    Duel.SetTargetCard(eg)
-    Duel.SetOperationInfo(0,CATEGORY_HANDES,nil,0,1-tp,1)
+	local g=s.monsters(tp)
+	if chk==0 then return #g>0 end
+	Duel.SetOperationInfo(0,CATEGORY_ATKCHANGE,g,#g,0,0)
+	Duel.SetOperationInfo(0,CATEGORY_DEFCHANGE,g,#g,0,0)
 end
 
 function s.activate(e,tp,eg,ep,ev,re,r,rp)
-    -- Only cards from THIS draw event and still related to this activation.
-    -- Never discard unrelated cards that were already in the opponent's hand.
-    local drawn=eg:Filter(Card.IsRelateToEffect,nil,e)
-    if #drawn==0 then return end
-    local hand=drawn:Filter(Card.IsLocation,nil,LOCATION_HAND)
-    if #hand>0 then
-        -- Custom anime behavior: if multiple cards were drawn at once,
-        -- discard all of the drawn cards; standard draw discards one.
-        Duel.SendtoGrave(hand,REASON_EFFECT|REASON_DISCARD)
-    end
+	local g=s.monsters(tp)
+	for tc in aux.Next(g) do
+		if not tc:IsImmuneToEffect(e) then
+			local atk=Effect.CreateEffect(e:GetHandler())
+			atk:SetType(EFFECT_TYPE_SINGLE)
+			atk:SetCode(EFFECT_UPDATE_ATTACK)
+			atk:SetValue(0)
+			atk:SetReset(RESET_EVENT+RESETS_STANDARD+RESET_PHASE+PHASE_END)
+			tc:RegisterEffect(atk)
+
+			local def=atk:Clone()
+			def:SetCode(EFFECT_UPDATE_DEFENSE)
+			tc:RegisterEffect(def)
+		end
+	end
 end
