@@ -26,13 +26,23 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
   - checks each active player's ability to draw before activation, skips empty and eliminated hands, and excludes the activating card if still in hand;
   - uses the original script's non-multiplayer Tag/Standard path without modifying other anime card effects.
 
-- `c55773067.lua` — Drop Off (Anime / Fast multiplayer response)
-  - may activate after the opponent's regular Draw Phase draw OR any
-    opponent draw caused by a card effect in any phase, including your turn;
-  - discards ALL cards just drawn by the event (one draw = one discard,
-    three draws = three discards) to the appropriate player's Graveyard;
-  - never selects cards from the opponent's pre-existing hand, and
-    never triggers off a teammate's draw on the same physical side;
-  - retains a Normal Trap's reaction/activation timing, with delayed
-    event eligibility so effect-based draws can trigger the Trap.
+- `c55773067.lua` — Drop Off (custom zero-stat ability)
+  - replaces its previous draw/discard effect entirely;
+  - when activated, every monster across all active logical fields gains
+    exactly +0 ATK and +0 DEF until the End Phase, without changing stats;
+  - uses independent P1/P2/P3/P4 monster groups in 2v1/3v1/Battle Royale
+    and both physical monster fields in Standard duels;
+  - unaffected monsters do not receive the temporary effects.
+
+- `c120000016.lua` — Dragon Revival Ritual (five Big Five monsters)
+  - requires the activating player's original Five-Headed Dragon (511013020)
+    in their Hand or Deck, plus five free Monster Zones;
+  - summons exactly 153000020, 153000021, 153000022, 153000023 and
+    153000024: reuses a real matching Deck Master Zone card and creates
+    only the missing cards from outside the Duel;
+  - Tributes all five immediately, then Ritual Summons the selected
+    Five-Headed Dragon from the Hand/Deck with no attribute or five-turn
+    requirement; the original Five-Headed Dragon card effects stay intact;
+  - the result inherits Deck Master status on the field, without creating
+    an extra Five-Headed Dragon in the Deck Master Zone.
 
