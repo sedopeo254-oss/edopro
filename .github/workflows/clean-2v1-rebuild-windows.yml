@@ -51,6 +51,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import subprocess
 
           mp = Path('ocgcore/multiplayer.cpp').read_text(encoding='utf-8')
           assert 'MultiplayerMode::TWO_V_ONE' in mp
