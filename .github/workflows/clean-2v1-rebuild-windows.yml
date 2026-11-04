@@ -319,30 +319,36 @@ jobs:
           assert 'local zone_copy=DeckMasterZone[p]' in dm
           assert Path('.github/tests/dragon_revival_exact_five_test.lua').is_file()
 
+          # Rebuilt Dragon Revival is SELF-CONTAINED: exact 5 material IDs,
+          # use the existing DM-Zone card (never a duplicate token), create
+          # tokens for missing monsters, Tribute all 5, then summon the real
+          # FHD from the caster's own logical Hand or Deck, FIELD-ONLY.
           dragon_ritual = Path('multiplayer-anime-cards/c120000016.lua').read_text(encoding='utf-8')
-          assert 'DeckMaster.CallDragonRevivalMasters' in dragon_ritual
-          assert 'LOCATION_HAND|LOCATION_DECK' in dragon_ritual
-          assert 'Duel.Release(' in dragon_ritual
-          assert 'released~=5' in dragon_ritual
-          assert 'FinishDragonRevival' in dragon_ritual
-          assert 'FinishDragonRevival(logical,res>0,res>0 and fhd or nil)' in dragon_ritual
-          assert 'RESET_SELF_TURN,5' not in dragon_ritual
-          assert 'AnnounceAttribute' not in dragon_ritual
-          assert 'BIG_FIVE_RITUAL_ATTRIBUTE' not in dragon_ritual
-          assert 'MakeFieldDeckMaster' not in dragon_ritual
-          assert 'SetDeckMasterPlayerState' not in dragon_ritual
-          assert 'DeckMaster.CanActivateDragonRevivalRitual(logical,e)' in dragon_ritual
-          assert 'DeckMaster.GetDragonRevivalTargets(logical)' in dragon_ritual
-          assert 'local c=e and e.GetHandler and e:GetHandler()' in dragon_ritual
-          assert 'c:GetLogicalOwner()' in dragon_ritual
-          assert 'Duel.IsExistingMatchingCard(' not in dragon_ritual
-          assert 'Duel.SelectMatchingCard(' not in dragon_ritual
-          assert 'IsCanBeSpecialSummoned(' not in dragon_ritual
-          assert 'fhd:SetMaterial(five)' in dragon_ritual
-          assert 'Duel.CreateTokenPlayer' not in dragon_ritual
-          assert 'Duel.CreateToken(' not in dragon_ritual
+          assert 'local FIVE={153000020,153000021,153000022,153000023,153000024}' in dragon_ritual
+          assert 'function s.plan(e,tp,p)' in dragon_ritual
+          assert 'DeckMasterZone[p]' in dragon_ritual
+          assert 'zone:IsOriginalCode(code)' in dragon_ritual
+          assert 'Duel.GetPlayerFieldGroup(p,location)' in dragon_ritual
+          assert 'Duel.GetLocationCount(tp,LOCATION_MZONE)<missing' in dragon_ritual
+          assert 'Duel.CreateTokenPlayer(p,source.code)' in dragon_ritual
+          assert 'Duel.CreateToken(tp,source.code)' in dragon_ritual
+          assert 'if source.origin=="zone" then' in dragon_ritual
+          assert 'Duel.ClearDeckMasterZonePlayer(owner)' in dragon_ritual
+          assert dragon_ritual.index('Duel.ClearDeckMasterZonePlayer(owner)') < dragon_ritual.index(
+              'Duel.SpecialSummon(new,0,tp,tp,true,false,POS_FACEUP_ATTACK)')
+          assert 'dragon:SetMaterial(materials)' in dragon_ritual
+          assert 'Duel.Release(materials,' in dragon_ritual
+          assert 'REASON_EFFECT|REASON_MATERIAL|REASON_RITUAL' in dragon_ritual
+          assert 'dragon,SUMMON_TYPE_RITUAL,tp,tp,true,true,POS_FACEUP_ATTACK' in dragon_ritual
+          assert 'DeckMaster.FinishDragonRevival(' in dragon_ritual
           assert 'MoveToDeckMasterZone' not in dragon_ritual
-          assert 'DeckMaster.FinishDragonRevival(logical,res>0,res>0 and fhd or nil)' in dragon_ritual
+          assert 'Duel.CreateTokenPlayer(p,FHD)' not in dragon_ritual
+          assert 'Duel.IsExistingMatchingCard(' not in dragon_ritual
+          assert 'DeckMaster.CallDragonRevivalMasters(' not in dragon_ritual
+          assert 'AnnounceAttribute' not in dragon_ritual
+          assert 'RESET_SELF_TURN,5' not in dragon_ritual
+          assert 'function s.fhdfilter' not in dragon_ritual
+          assert Path('.github/tests/dragon_revival_exact_five_test.lua').is_file()
 
           fhd = Path('multiplayer-anime-cards/c511013020.lua').read_text(encoding='utf-8')
           assert 'Five-Headed Dragon (Anime)' in fhd
