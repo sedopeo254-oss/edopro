@@ -85,7 +85,9 @@ function Duel.IsLogicalPlayerActive(p)
  return mask==0 and p<2 or (mask&(1<<p))~=0
 end
 function Duel.GetLogicalPlayer(side)
- return mask==0 and side or logical
+ -- Simulate the 2v1/3v1 physical side projecting the WRONG logical
+ -- teammate. The activating Ritual Spell's own logical owner must win.
+ return mask==0 and side or (side==1 and 2 or 0)
 end
 function Duel.GetPlayerFieldGroup(p,locations)
  local out={}
@@ -200,7 +202,10 @@ local function put(p,c)
  return c
 end
 local function cast(p)
- local e={}
+ local e={handler=card(p,120000016,LOCATION_HAND)}
+ function e:GetHandler() return self.handler end
+ assert(dm.CanActivateDragonRevivalRitual(p,e),
+    "Deck Master MUST register Ritual activation for Big Five")
  assert(spell.target(e,sides[p],nil,nil,nil,nil,nil,nil,0),
     "Must be able to activate when FHD is in own hand/deck and slots are free")
  spell.activate(e,sides[p])
@@ -239,8 +244,12 @@ end
 -- 2v1 P3: take the ACTUAL Jinzo card from the Big Five's DM Zone.
 reset("2v1",2)
 local jinzo=card(2,153000020,0)
+-- Older IsCanBeSpecialSummoned preflight on an unplaced Zone card was
+-- one cause of a false activation check, despite ignore=true on summon.
+jinzo.cannot_summon=true
 DeckMasterZone[2]=jinzo
 local fhd=put(2,card(2,511013020,LOCATION_HAND))
+fhd.cannot_summon=true
 cast(2)
 assert(jinzo.location==LOCATION_GRAVE and created[1].code==153000021)
 check_five(fhd,2,153000020,4)
