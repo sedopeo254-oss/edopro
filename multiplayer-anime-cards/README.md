@@ -36,7 +36,9 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
 
 - `c120000016.lua` — Dragon Revival Ritual (five Big Five monsters)
   - requires the activating player's original Five-Headed Dragon (511013020)
-    in their Hand or Deck, plus five free Monster Zones;
+    in their Hand or Deck, and enough free Monster Zones for the MISSING
+    materials only; Jinzo (or another required Big Five monster) already
+    on that player's field counts as a material without a duplicate summon;
   - summons exactly 153000020, 153000021, 153000022, 153000023 and
     153000024: reuses a real matching Deck Master Zone card and creates
     only the missing cards from outside the Duel;
