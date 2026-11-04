@@ -261,6 +261,17 @@ jobs:
           assert 'DeckMaster.DragonRevivalResolving' in dm
           assert 'DeckMaster.DragonRevivalConsumed' in dm
           assert 'DeckMaster.CanCallDragonRevivalMasters' in dm
+          # Activation MUST be registered in the Deck Master system itself.
+          # A summoned/zone Deck Master may report unplaced summon legality
+          # incorrectly before Ritual resolves; don't preflight those cards.
+          assert 'DeckMaster.DragonRevivalRitualCode=120000016' in dm
+          assert 'DeckMaster.DragonRevivalDragonCode=511013020' in dm
+          assert 'function DeckMaster.GetDragonRevivalTargets(p)' in dm
+          assert 'function DeckMaster.CanActivateDragonRevivalRitual(p,e)' in dm
+          assert 'get_player_cards(p,LOCATION_HAND|LOCATION_DECK)' in dm
+          can_call = dm[dm.index('function DeckMaster.CanCallDragonRevivalMasters('):
+                        dm.index('function DeckMaster.CallDragonRevivalMasters(')]
+          assert 'IsCanBeSpecialSummoned(' not in can_call
           assert 'DeckMaster.CallDragonRevivalMasters' in dm
           assert 'DeckMaster.FinishDragonRevival' in dm
           assert 'DeckMaster.AssignFieldDeckMaster' in dm
@@ -309,9 +320,13 @@ jobs:
           assert 'BIG_FIVE_RITUAL_ATTRIBUTE' not in dragon_ritual
           assert 'MakeFieldDeckMaster' not in dragon_ritual
           assert 'SetDeckMasterPlayerState' not in dragon_ritual
-          assert 'Duel.IsExistingMatchingCard(' in dragon_ritual
-          assert 'Duel.SelectMatchingCard(' in dragon_ritual
-          assert 'function s.fhdgroup' not in dragon_ritual
+          assert 'DeckMaster.CanActivateDragonRevivalRitual(logical,e)' in dragon_ritual
+          assert 'DeckMaster.GetDragonRevivalTargets(logical)' in dragon_ritual
+          assert 'local c=e and e.GetHandler and e:GetHandler()' in dragon_ritual
+          assert 'c:GetLogicalOwner()' in dragon_ritual
+          assert 'Duel.IsExistingMatchingCard(' not in dragon_ritual
+          assert 'Duel.SelectMatchingCard(' not in dragon_ritual
+          assert 'IsCanBeSpecialSummoned(' not in dragon_ritual
           assert 'fhd:SetMaterial(five)' in dragon_ritual
           assert 'Duel.CreateTokenPlayer' not in dragon_ritual
           assert 'Duel.CreateToken(' not in dragon_ritual
