@@ -96,7 +96,10 @@ function Duel.GetPlayerFieldGroup(p,locations)
 end
 function Duel.GetMatchingGroup(f,tp,loc_self,loc_other,except,e,player)
  local out={}
- for _,c in ipairs(piles[tp]) do
+ -- Core's native group search resolves the invoking logical duelist's
+ -- private hand/deck, even when tp is physical field side 1.
+ local source=(mask~=0) and logical or tp
+ for _,c in ipairs(piles[source]) do
   if (c.location&loc_self)~=0 and f(c,e,player) then
    out[#out+1]=c
   end
