@@ -2,6 +2,9 @@
 --Independent logical-player implementation for normal duels, 2v1 and 3v1
 local s,id=GetID()
 
+-- Reserve a valid byte-sized win reason when an older core has no constant.
+local WIN_REASON_DECK_MASTER = WIN_REASON_DECK_MASTER or 0xe8
+
 function s.initial_effect(c)
 	--Loaded by Virtual World (153999999).
 end
