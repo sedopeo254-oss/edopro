@@ -602,4 +602,242 @@ fm = fm.replace(old_extra, new_extra, 1)
 write("field.cpp", field_text[:fm_start] + fm + field_text[fm_end:])
 
 
+
+# A summoned spell/token can belong to P1 while P2 is taking the turn.
+# The existing get_tofield_count already uses the card's logical duelist,
+# but get_useable_count_other still applied the *current teammate's* global
+# MZONE/SZONE occupancy limit, causing new hats for P1 to silently fail.
+# Adjust the destination's limit without relaxing maximum-zone effects.
+replace_once(
+    "field.cpp",
+    '''int32_t field::get_useable_count_other(card* pcard, uint8_t playerid, uint8_t location, uint8_t uplayer, uint32_t reason, uint32_t zone, uint32_t* list) {
+	int32_t count = get_tofield_count(pcard, playerid, location, uplayer, reason, zone, list);
+	int32_t limit;
+	if(location == LOCATION_MZONE)
+		limit = get_mzone_limit(playerid, uplayer, reason);
+	else
+		limit = get_szone_limit(playerid, uplayer, reason);
+	if(count > limit)
+		count = limit;
+	return count;
+}
+''',
+    '''int32_t field::get_useable_count_other(card* pcard, uint8_t playerid, uint8_t location, uint8_t uplayer, uint32_t reason, uint32_t zone, uint32_t* list) {
+	int32_t count = get_tofield_count(pcard, playerid, location, uplayer, reason, zone, list);
+	int32_t limit;
+	if(location == LOCATION_MZONE)
+		limit = get_mzone_limit(playerid, uplayer, reason);
+	else
+		limit = get_szone_limit(playerid, uplayer, reason);
+	// multiplayer_shared_tofield_limit: the destination teammate's MZONE/SZONE
+	// cap must not inherit the active teammate's occupied-zone count. Existing
+	// EFFECT_MAX_MZONE/EFFECT_MAX_SZONE limits are retained by applying only
+	// the difference in used slots; never grant extra slots beyond the limit.
+	if(playerid == 0 && pcard && multiplayer.enabled()
+			&& (multiplayer.mode() == MultiplayerMode::TWO_V_ONE
+				|| multiplayer.mode() == MultiplayerMode::THREE_V_ONE)
+			&& (location == LOCATION_MZONE || location == LOCATION_SZONE)) {
+		uint8_t duelist = player[playerid].current_duelist;
+		if(pcard->current.controler == playerid
+				&& pcard->current.duelist < multiplayer.field_count(playerid))
+			duelist = pcard->current.duelist;
+		else if(pcard->owner == playerid
+				&& pcard->owner_duelist < multiplayer.field_count(playerid))
+			duelist = pcard->owner_duelist;
+		if(duelist != player[playerid].current_duelist) {
+			const auto shift = location == LOCATION_MZONE ? 0u : 8u;
+			const auto active_mask = (player[playerid].used_location >> shift) & 0x1fu;
+			const auto target_mask = (get_logical_used_location(playerid, duelist) >> shift) & 0x1fu;
+			int32_t active_used = field_used_count[active_mask];
+			int32_t target_used = field_used_count[target_mask];
+			if(location == LOCATION_MZONE && is_flag(DUEL_EMZONE)) {
+				for(uint8_t sequence = 5; sequence <= 6; ++sequence) {
+					if(player[playerid].list_mzone[get_zone_sequence(playerid, LOCATION_MZONE, sequence,
+							player[playerid].current_duelist)])
+						++active_used;
+					if(player[playerid].list_mzone[get_zone_sequence(playerid, LOCATION_MZONE, sequence,
+							duelist)])
+						++target_used;
+				}
+			}
+			limit = std::max<int32_t>(0, limit + active_used - target_used);
+		}
+	}
+	if(count > limit)
+		count = limit;
+	return count;
+}
+''',
+)
+
+
+
+# Permit an optional card context when Lua checks MZONE/SZONE availability.
+# No-card calls are unchanged; c403 supplies a recipient-owned hat token so
+# get_useable_count uses that teammate's logical field, not the active teammate.
+replace_once(
+    "libduel.cpp",
+    "pduel->game_field->get_useable_count(nullptr, playerid, location, uplayer, reason, zone, &list)",
+    "pduel->game_field->get_useable_count(lua_get<card*>(L, 6), playerid, location, uplayer, reason, zone, &list)",
+)
+
+
+
+# Magical Hats regression (Oct 29 replay): P1 Joey has a free logical MZONE
+# while P2 Yugi's four Hats occupy the same local slot numbers.
+# get_zone_duelist() interprets small local sequences as the currently active
+# teammate, so move_card/add_card must pass their *known destination duelist*
+# to the occupancy check. No ordinary 2-player/BR/3v1 behavior is changed.
+replace_once(
+    "field.h",
+    "int32_t is_location_useable(uint32_t playerid, uint32_t location, uint32_t sequence);",
+    "int32_t is_location_useable(uint32_t playerid, uint32_t location, uint32_t sequence, uint8_t requested_duelist = 0xff);",
+)
+
+replace_once(
+    "field.cpp",
+    "int32_t field::is_location_useable(uint32_t playerid, uint32_t location, uint32_t sequence) {",
+    "int32_t field::is_location_useable(uint32_t playerid, uint32_t location, uint32_t sequence, uint8_t requested_duelist) {",
+)
+replace_once(
+    "field.cpp",
+    '''	const auto logical_duelist = get_zone_duelist(static_cast<uint8_t>(playerid), static_cast<uint8_t>(location), sequence);
+	sequence = get_local_sequence(static_cast<uint8_t>(playerid), static_cast<uint8_t>(location), sequence);
+''',
+    '''	// When explicitly moving a card to P1 while P2 is taking their turn,
+	// zone 0..6 is physically P1 even though the active projection is P2.
+	const auto logical_duelist =
+		multiplayer.mode() == MultiplayerMode::TWO_V_ONE && playerid == 0
+			&& requested_duelist != 0xff
+			? requested_duelist
+			: get_zone_duelist(static_cast<uint8_t>(playerid), static_cast<uint8_t>(location), sequence);
+	sequence = get_local_sequence(static_cast<uint8_t>(playerid), static_cast<uint8_t>(location), sequence);
+''',
+)
+replace_once(
+    "field.cpp",
+    '''	if(location == LOCATION_MZONE || location == LOCATION_SZONE)
+		sequence = static_cast<uint8_t>(get_zone_sequence(playerid, location, sequence, target_duelist));
+	if (!is_location_useable(playerid, location, sequence))
+		return false;
+''',
+    '''	if(location == LOCATION_MZONE || location == LOCATION_SZONE)
+		sequence = static_cast<uint8_t>(get_zone_sequence(playerid, location, sequence, target_duelist));
+	if (!is_location_useable(playerid, location, sequence, target_duelist))
+		return false;
+''',
+)
+replace_once(
+    "field.cpp",
+    '''	const auto availability_sequence = (location & LOCATION_ONFIELD)
+		? get_zone_sequence(playerid, location, sequence, logical_duelist) : sequence;
+	if (!is_location_useable(playerid, location, availability_sequence))
+		return;
+''',
+    '''	const auto availability_sequence = (location & LOCATION_ONFIELD)
+		? get_zone_sequence(playerid, location, sequence, logical_duelist) : sequence;
+	if (!is_location_useable(playerid, location, availability_sequence, logical_duelist))
+		return;
+''',
+)
+
+# Original c403 calls Duel.GetLocationCount(tp, LOCATION_MZONE) without a card
+# parameter. Infer its activating card *only* in 2v1 when calculating the
+# caller's own main zones; do not change the anime script or opponent searches.
+replace_once(
+    "libduel.cpp",
+    '''	uint32_t list = 0;
+	lua_pushinteger(L, pduel->game_field->get_useable_count(lua_get<card*>(L, 6), playerid, location, uplayer, reason, zone, &list));
+	lua_pushinteger(L, list);
+''',
+    '''	uint32_t list = 0;
+	card* context_card = lua_get<card*>(L, 6);
+	if(!context_card && playerid == 0
+			&& (location == LOCATION_MZONE || location == LOCATION_SZONE)
+			&& pduel->game_field->multiplayer.mode() == MultiplayerMode::TWO_V_ONE
+			&& pduel->game_field->core.reason_effect) {
+		auto* handler = pduel->game_field->core.reason_effect->get_handler();
+		if(handler && handler->current.controler == playerid)
+			context_card = handler;
+	}
+	lua_pushinteger(L, pduel->game_field->get_useable_count(context_card, playerid, location, uplayer, reason, zone, &list));
+	lua_pushinteger(L, list);
+''',
+)
+
+
+# A full Yugi Magical Hats set lives in encoded MZONE 7..11, not 0..4.
+# Duel.ShuffleSetCard used to reject those legitimate physical sequences,
+# so Yugi's original hats never produced MSG_SHUFFLE_SET_CARD in the replay.
+# Validate the *local* 0..4 index, retain encoded indices in the field list,
+# and never shuffle cards that belong to two different allied duelists.
+replace_once(
+    "libduel.cpp",
+    '''	uint8_t tp = ms[ct]->current.controler;
+	if(tp > 1)
+		return 0;
+	if(ms[ct]->current.position & POS_FACEUP)
+		return 0;
+	if(ms[ct]->current.sequence > 4)
+		return 0;
+	seq[ct] = ms[ct]->current.sequence;
+''',
+    '''	uint8_t tp = ms[ct]->current.controler;
+	if(tp > 1)
+		return 0;
+	const bool replay_hat_shuffle_2v1 =
+		pduel->game_field->multiplayer.mode() == MultiplayerMode::TWO_V_ONE && tp == 0;
+	const uint8_t hat_duelist = ms[ct]->current.duelist;
+	if(ms[ct]->current.position & POS_FACEUP)
+		return 0;
+	if((replay_hat_shuffle_2v1
+			? pduel->game_field->get_local_sequence(tp, loc, ms[ct]->current.sequence)
+			: ms[ct]->current.sequence) > 4)
+		return 0;
+	seq[ct] = ms[ct]->current.sequence;
+''',
+)
+replace_once(
+    "libduel.cpp",
+    '''		if(current.sequence > 4)
+			return 0;
+		if(current.controler != tp)
+			return 0;
+		ms[ct] = pcard;
+''',
+    '''		if((replay_hat_shuffle_2v1
+				? pduel->game_field->get_local_sequence(tp, loc, current.sequence)
+				: current.sequence) > 4)
+			return 0;
+		if(current.controler != tp
+				|| (replay_hat_shuffle_2v1 && current.duelist != hat_duelist))
+			return 0;
+		ms[ct] = pcard;
+''',
+)
+
+
+# A Deck Master skill must know the true logical TURN owner, not the owner
+# of the effect currently being evaluated. Duel.GetLogicalPlayer(tp) can
+# refer to that effect's handler instead of the current teammate in 2v1.
+replace_once(
+    "libduel.cpp",
+    '''LUA_STATIC_FUNCTION(GetTurnPlayer) {
+	lua_pushinteger(L, pduel->game_field->infos.turn_player);
+	return 1;
+}
+''',
+    '''LUA_STATIC_FUNCTION(GetTurnPlayer) {
+	lua_pushinteger(L, pduel->game_field->infos.turn_player);
+	return 1;
+}
+LUA_STATIC_FUNCTION(GetLogicalTurnPlayer) {
+	const auto& state = pduel->game_field->multiplayer;
+	lua_pushinteger(L, state.enabled()
+		? state.current_player() : pduel->game_field->infos.turn_player);
+	return 1;
+}
+''',
+)
+
 print("Applied clean generic 2 vs 1 Core mode")

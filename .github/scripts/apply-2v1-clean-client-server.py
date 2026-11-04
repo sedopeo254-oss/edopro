@@ -432,6 +432,34 @@ if draw_repl not in dc:
 
 write("gframe/duelclient.cpp", dc)
 
+# MSG_MULTIPLAYER_DRAW already has the live 2v1 logical snapshot handling
+# above. Extend its replay branch too, so Card Destruction drawing for the
+# inactive/projected teammate updates only that teammate's actual hand.
+dc = read("gframe/duelclient.cpp")
+draw_start = dc.index("case MSG_MULTIPLAYER_DRAW: {")
+draw_end = dc.index("case MSG_MULTIPLAYER_PRIVATE_PILES: {", draw_start)
+draw_block = dc[draw_start:draw_end]
+old_live = '''		uint32_t sounds = count;
+		if(!mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
+'''
+new_live = '''		uint32_t sounds = count;
+		// two_vs_one_logical_draw: never mutate the visible teammate's Deck.
+		if(!mainGame->dInfo.isReplay && mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)) {
+'''
+if draw_block.count(old_live) != 1:
+    raise SystemExit("MSG_MULTIPLAYER_DRAW existing live 2v1 anchor missing")
+draw_block = draw_block.replace(old_live, new_live, 1)
+old_replay = '''			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+'''
+new_replay = '''			if(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+					|| mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
+'''
+if draw_block.count(old_replay) != 1:
+    raise SystemExit("MSG_MULTIPLAYER_DRAW replay branch anchor missing")
+draw_block = draw_block.replace(old_replay, new_replay, 1)
+dc = dc[:draw_start] + draw_block + dc[draw_end:]
+write("gframe/duelclient.cpp", dc)
+
 # Server-side multiplayer recognition and snapshot routing.
 replace_once(
     "gframe/generic_duel.cpp",
@@ -1289,6 +1317,37 @@ if "focus_two_v_one_private_effect" not in effect_block:
     dc = dc[:effect_start] + effect_block + dc[effect_end:]
 
 write("gframe/duelclient.cpp", dc)
+
+
+# Replay a copied Spell on its actual owner's visible field. A chain can begin
+# during Yugi's turn with a Joey-owned c403 Spell in Joey's SZONE. The replay
+# must switch focus before GetCard, or MSG_CHAINING silently drops the visual.
+replace_once(
+    "gframe/duelclient.cpp",
+    '''		const bool private_location = IsPrivatePileLocation(info.location);
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+''',
+    '''		const bool private_location = IsPrivatePileLocation(info.location);
+		// focus_two_v_one_replay_chain: reveal the actual allied source field
+		// for native Deck Master-copied Spell chains without faking messages.
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_2_V_1)
+				&& info_core_player == 0
+				&& (info.location == LOCATION_MZONE
+					|| info.location == LOCATION_SZONE)
+				&& info.duelist < mainGame->dInfo.team1) {
+			const auto source_logical = mainGame->dInfo.GetLogicalPlayer(
+				info_core_player, info.duelist);
+			if(source_logical < mainGame->dInfo.team1
+					&& source_logical
+						!= mainGame->dInfo.GetFocusedLogicalPlayer(0))
+				SetThreeVsOneView(source_logical);
+		}
+		if(mainGame->dInfo.isReplay
+				&& mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+''',
+)
 
 # Generic location mapping must never accidentally map a hidden P2 private
 # sequence onto P1's currently displayed private pile.

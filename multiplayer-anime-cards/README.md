@@ -20,10 +20,35 @@ These scripts are packaged into `expansions/script/` by the clean 2v1 Windows wo
 
 Dark Flare Knight and both supported Mirage Knight codes are also selectable as Deck Masters. When one is selected by the allied side in multiplayer, Deck Master loss is disabled for the entire allied team for that duel.
 
-## Anime Ritual scripts retained with rollback to 35a46160
+- `c8050010.lua` — Card Destruction (Anime / Tag)
+  - in 2v1, discards every active logical duelist's entire hand into their own Graveyard, then draws exactly the number actually discarded from their own Deck;
+  - P1, P2 and solo P3 are processed independently, with no `TagSwap` or private-pile mixing;
+  - checks each active player's ability to draw before activation, skips empty and eliminated hands, and excludes the activating card if still in hand;
+  - uses the original script's non-multiplayer Tag/Standard path without modifying other anime card effects.
 
-- `c120000016.lua` restores the October 30, 2026 working Dragon Revival Ritual Lua version for the anime Five-Headed Dragon (511013020). It uses the five Big Five Deck Masters as Ritual materials and retains the old Deck Master integration.
-- `c511013020.lua` restores the original anime Five-Headed Dragon abilities: destruction on Summon, battle protection and its same-turn attack restriction.
-- `c99267150.lua` remains the older base version's normal Five-Headed Dragon compatibility script.
+- `c55773067.lua` — Drop Off (custom zero-stat ability)
+  - replaces its previous draw/discard effect entirely;
+  - when activated, every monster across all active logical fields gains
+    exactly +0 ATK and +0 DEF until the End Phase, without changing stats;
+  - uses independent P1/P2/P3/P4 monster groups in 2v1/3v1/Battle Royale
+    and both physical monster fields in Standard duels;
+  - unaffected monsters do not receive the temporary effects.
 
-The rollback restores all other project files exactly to commit `35a46160bb079657fd7ce96b082a8a978d993950`. A backup branch preserves the later changes.
+- `c120000016.lua` — Dragon Revival Ritual (restored Oct 30 version)
+  - the card script is preserved exactly from commit
+    `2fceee298ccde23d89cb26555ac9f92fff9df12d`;
+  - it activates using the original EDOPro matching-card mechanism,
+    summons the Big Five Deck Masters through the restored backup Deck Master
+    System, Tributes all five, and summons anime Five-Headed Dragon
+    (`511013020`) from the Hand/Deck;
+  - the latest backed-up Deck Master System, including its modern 2v1 and
+    3v1 improvements, remains in place without script-level alterations;
+  - `c511013020.lua` is also preserved byte-for-byte with its original
+    anime destruction, battle-protection and attack-restriction abilities.
+
+## Backup restoration
+All project files are restored from `backup/pre-35a46160-rollback-20261104`
+except `c120000016.lua` (the user-selected Oct 30 working Ritual), the
+documentation and compatibility tests. `c511013020.lua` was already identical
+to the selected older version. This keeps the Magical Hats Warrior fix,
+Card Destruction, Drop Off +0, Judge Man, Deck Master and 2v1/3v1 protections.
