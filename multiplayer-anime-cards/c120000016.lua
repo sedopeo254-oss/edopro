@@ -20,25 +20,24 @@ s.listed_names={
 	153000013,153000003,153000005,153000008,153000009
 }
 
-function s.logical_player(tp)
+function s.logical_player(e,tp)
 	if Duel.GetActiveLogicalPlayerMask and Duel.GetActiveLogicalPlayerMask()~=0 then
+		-- The Spell's actual owner is authoritative for a 2v1/3v1
+		-- private Deck/Hand, even during another player's field focus.
+		local c=e and e.GetHandler and e:GetHandler()
+		if c and c.GetLogicalOwner then return c:GetLogicalOwner() end
 		return Duel.GetLogicalPlayer(tp) or tp
 	end
 	return tp
 end
 
-function s.fhdfilter(c,e,tp)
-	return c:IsCode(FHD_ANIME)
-		and c:IsCanBeSpecialSummoned(e,SUMMON_TYPE_RITUAL,tp,true,true)
-end
-
 function s.target(e,tp,eg,ep,ev,re,r,rp,chk)
-	local logical=s.logical_player(tp)
+	local logical=s.logical_player(e,tp)
 	if chk==0 then
-		return DeckMaster and DeckMaster.CanCallDragonRevivalMasters
-			and DeckMaster.CanCallDragonRevivalMasters(logical,e)
-			and Duel.IsExistingMatchingCard(
-				s.fhdfilter,tp,LOCATION_HAND|LOCATION_DECK,0,1,nil,e,tp)
+		-- Activation legality is resolved by c153000000.lua, which knows
+		-- the REAL logical player's Deck Master Zone and private Deck/Hand.
+		return DeckMaster and DeckMaster.CanActivateDragonRevivalRitual
+			and DeckMaster.CanActivateDragonRevivalRitual(logical,e)
 	end
 	Duel.SetOperationInfo(0,CATEGORY_SPECIAL_SUMMON,nil,6,tp,
 		LOCATION_HAND|LOCATION_DECK)
@@ -46,18 +45,19 @@ function s.target(e,tp,eg,ep,ev,re,r,rp,chk)
 end
 
 function s.activate(e,tp,eg,ep,ev,re,r,rp)
-	if not DeckMaster or not DeckMaster.CallDragonRevivalMasters then return end
-	local logical=s.logical_player(tp)
+	if not DeckMaster or not DeckMaster.CallDragonRevivalMasters
+		or not DeckMaster.GetDragonRevivalTargets then return end
+	local logical=s.logical_player(e,tp)
 
-	--Lock in Five-Headed Dragon first. If it disappeared before resolution,
-	--do not disturb any Deck Master Zone.
-	if not Duel.IsExistingMatchingCard(
-		s.fhdfilter,tp,LOCATION_HAND|LOCATION_DECK,0,1,nil,e,tp) then
+	-- Select the real FHD from THIS logical player's own Deck/Hand.
+	-- Do not filter it through IsCanBeSpecialSummoned before the five
+	-- Deck Masters have entered the field and become Ritual materials.
+	local choices=DeckMaster.GetDragonRevivalTargets(logical)
+	if #choices==0 or not DeckMaster.CanCallDragonRevivalMasters(logical,e) then
 		return
 	end
 	Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_SPSUMMON)
-	local fhd=Duel.SelectMatchingCard(
-		tp,s.fhdfilter,tp,LOCATION_HAND|LOCATION_DECK,0,1,1,nil,e,tp):GetFirst()
+	local fhd=choices:Select(tp,1,1,nil):GetFirst()
 	if not fhd then return end
 
 	local five=DeckMaster.CallDragonRevivalMasters(logical,e)
