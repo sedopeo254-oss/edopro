@@ -9,8 +9,6 @@ end
 if not DeckMaster then
 	DeckMaster={}
 	DeckMaster.Abilities={}
-	DeckMaster.AbilityContextCard=nil
-	DeckMaster.FieldAbilityCards={}
 	DeckMaster.TeamLossProtected={}
 	DeckMaster.TeamSharedCode={}
 	DeckMaster.TeamSharedOwner={}
@@ -161,144 +159,76 @@ if not DeckMaster then
 		return false
 	end
 
-	-- Existing Big Five monsters on the ACTIVATING logical player's field
-	-- are already available Ritual materials. Reuse the actual cards instead
-	-- of demanding five empty zones or creating duplicate Jinzo/Robotic Knights.
-	local function find_dragon_revival_field_master(entry,p,e)
-		local side=player_side(p)
-		for tc in aux.Next(get_player_cards(p,LOCATION_MZONE)) do
-			if dragon_revival_zone_match(tc,entry)
-				and tc:IsReleasableByEffect(e,side) then
-				return tc
-			end
-		end
-		return nil
-	end
-
 	local function find_dragon_revival_zone_master(entry,side)
-		for q=0,3 do
-			if is_active_player(q) and player_side(q)==side then
-				local dm=DeckMasterZone[q]
+		for p=0,3 do
+			if player_side(p)==side then
+				local dm=DeckMasterZone[p]
 				if dragon_revival_zone_match(dm,entry) then
-					return q,dm
+					return p,dm
 				end
 			end
 		end
 		return nil,nil
 	end
 
-	DeckMaster.DragonRevivalRitualCode=120000016
-	DeckMaster.DragonRevivalDragonCode=511013020
-
-	function DeckMaster.GetDragonRevivalTargets(p)
-		if not is_active_player(p) then return Group.CreateGroup() end
-		return get_player_cards(p,LOCATION_HAND|LOCATION_DECK)
-			:Filter(Card.IsCode,nil,DeckMaster.DragonRevivalDragonCode)
-	end
-
 	function DeckMaster.CanCallDragonRevivalMasters(p,e)
-		if not is_active_player(p) then return false end
 		local side=player_side(p)
 		if side~=0 and side~=1 then return false end
-		-- If one of the five (e.g. Jinzo) is already on the field, it
-		-- occupies a zone BUT is also one of the Ritual's five materials.
-		-- Count only the MISSING monsters against the available zones.
-		local missing=0
+		if Duel.GetLocationCount(side,LOCATION_MZONE)<5 then return false end
 		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
-			if not find_dragon_revival_field_master(entry,p,e) then
-				missing=missing+1
+			local _,dm=find_dragon_revival_zone_master(entry,side)
+			if dm and not dm:IsCanBeSpecialSummoned(e,0,side,true,false) then
+				return false
 			end
 		end
-		return Duel.GetLocationCount(side,LOCATION_MZONE)>=missing
-	end
-
-	function DeckMaster.CanActivateDragonRevivalRitual(p,e)
-		return DeckMaster.CanCallDragonRevivalMasters(p,e)
-			and #DeckMaster.GetDragonRevivalTargets(p)>0
+		return true
 	end
 
 	function DeckMaster.CallDragonRevivalMasters(p,e)
 		if not DeckMaster.CanCallDragonRevivalMasters(p,e) then return nil end
 		local side=player_side(p)
-		local materials=Group.CreateGroup()
-		local to_summon=Group.CreateGroup()
-		local clear_players={}
-		-- Keep all existing monsters on the field while preparing the
-		-- missing ones; none of the five may be represented twice.
-		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
-			local dm=find_dragon_revival_field_master(entry,p,e)
-			if not dm then
-				local zone_owner
-				zone_owner,dm=find_dragon_revival_zone_master(entry,side)
-				if dm then
-					clear_players[zone_owner]=true
-				elseif Duel.GetActiveLogicalPlayerMask()~=0 then
-					dm=Duel.CreateTokenPlayer(p,entry.field_code)
-				else
-					dm=Duel.CreateToken(side,entry.field_code)
-				end
-				if not dm then return nil end
-				to_summon:AddCard(dm)
-			end
-			materials:AddCard(dm)
-		end
-		if #materials~=5 then return nil end
-
-		-- Suppress automatic inheritance of the provisional five monsters.
-		-- Clear any genuine Deck Master Zone entries before special summon,
-		-- preserving the successful Oct 30 replay's ordering.
 		DeckMaster.DragonRevivalResolving[side]=true
-		DeckMaster.DragonRevivalConsumed[side]=clear_players
-		for q,_ in pairs(clear_players) do
-			Duel.ClearDeckMasterZonePlayer(q)
-		end
-		if #to_summon>0 then
-			local ct=Duel.SpecialSummon(to_summon,0,side,side,true,false,POS_FACEUP_ATTACK)
-			if ct~=#to_summon then
+		local g=Group.CreateGroup()
+		local clear_players={}
+		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
+			local zone_owner,dm=find_dragon_revival_zone_master(entry,side)
+			if dm then
+				clear_players[zone_owner]=true
+			else
+				dm=Duel.CreateTokenPlayer(p,entry.field_code)
+			end
+			if not dm then
 				DeckMaster.DragonRevivalResolving[side]=nil
 				DeckMaster.DragonRevivalConsumed[side]=nil
 				return nil
 			end
+			g:AddCard(dm)
 		end
-
-		-- Every material must now be on the field, whether already there
-		-- (Jinzo in the user's screenshot) or freshly summoned from Zone /
-		-- outside the Duel. The Ritual will Tribute these same five cards.
-		local real=materials:Filter(Card.IsLocation,nil,LOCATION_MZONE)
-		if #real~=5 then
+		DeckMaster.DragonRevivalConsumed[side]=clear_players
+		for q,_ in pairs(clear_players) do
+			Duel.ClearDeckMasterZonePlayer(q)
+		end
+		local ct=Duel.SpecialSummon(g,0,side,side,true,false,POS_FACEUP_ATTACK)
+		if ct~=5 then
 			DeckMaster.DragonRevivalResolving[side]=nil
 			DeckMaster.DragonRevivalConsumed[side]=nil
 			return nil
 		end
-		return real
-	end
-
-	-- Never let a completed Ritual grant permanent Deck Master immunity.
-	-- The replacement MONSTER must physically remain on the field.
-	function DeckMaster.AssignFieldDeckMaster(p,monster)
-		if not monster or not monster:IsLocation(LOCATION_MZONE)
-			or monster:GetLogicalControler()~=p then return false end
-		if monster:GetFlagEffect(FLAG_DECK_MASTER)==0 then
-			monster:RegisterFlagEffect(FLAG_DECK_MASTER,
-				RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
-				EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+		local sg=g:Filter(Card.IsLocation,nil,LOCATION_MZONE)
+		if #sg~=5 then
+			DeckMaster.DragonRevivalResolving[side]=nil
+			DeckMaster.DragonRevivalConsumed[side]=nil
+			return nil
 		end
-		DeckMaster.FieldAbilityCards[monster]=p
-		return true
+		return sg
 	end
 
-	function DeckMaster.FinishDragonRevival(p,merged,successor)
+	function DeckMaster.FinishDragonRevival(p,merged)
 		local side=player_side(p)
-		local consumed=DeckMaster.DragonRevivalConsumed[side] or {}
-		if merged and successor and DeckMaster.AssignFieldDeckMaster(p,successor) then
-			-- Five-Headed Dragon becomes a field Deck Master only. Never
-			-- create or retain a second copy in the Deck Master Zone.
-			local zone_copy=DeckMasterZone[p]
-			if zone_copy and zone_copy:IsOriginalCode(successor:GetOriginalCode()) then
-				Duel.ClearDeckMasterZonePlayer(p)
-			end
+		if merged then
+			local consumed=DeckMaster.DragonRevivalConsumed[side] or {}
 			for q,_ in pairs(consumed) do
-				DeckMaster.DragonRevivalMerged[q]=successor
+				DeckMaster.DragonRevivalMerged[q]=true
 			end
 		end
 		DeckMaster.DragonRevivalConsumed[side]=nil
@@ -306,30 +236,13 @@ if not DeckMaster then
 	end
 
 	function Card.IsDeckMaster(c)
-		if c:GetFlagEffect(FLAG_DECK_MASTER)>0 then return true end
-		local p=DeckMaster.FieldAbilityCards[c]
-		return p~=nil and c:IsLocation(LOCATION_MZONE)
+		return c:GetFlagEffect(FLAG_DECK_MASTER)>0
 	end
 	function Card.IsLogicalDeckMaster(c,p)
 		return c:IsDeckMaster() and c:GetLogicalControler()==p
 	end
 
-	--A Deck Master keeps its registered abilities after being Special Summoned
-	--to the Monster Zone. Face-down Deck Masters (for example under Magical Hats)
-	--also remain valid because the Deck Master flag itself is not removed.
-	function DeckMaster.IsAbilityActiveCard(c)
-		if not c then return false end
-		local p=c:GetLogicalOwner()
-		if DeckMasterZone[p]==c then return true end
-		return DeckMaster.FieldAbilityCards[c]==p and c:IsLocation(LOCATION_MZONE)
-	end
-
 	function Duel.GetDeckMasterPlayer(p)
-		local ctx=DeckMaster.AbilityContextCard
-		if ctx and DeckMaster.IsAbilityActiveCard(ctx)
-				and ctx:GetLogicalOwner()==p then
-			return ctx
-		end
 		local dm=DeckMasterZone[p]
 		if dm then return dm end
 		dm=get_player_cards(p,LOCATION_MZONE):Filter(Card.IsLogicalDeckMaster,nil,p):GetFirst()
@@ -387,10 +300,7 @@ if not DeckMaster then
 		local ignore_condition=is_shared_code(c:GetOriginalCode())
 		Duel.ClearDeckMasterZonePlayer(p)
 		local res=Duel.SpecialSummon(c,0,side,side,ignore_condition,false,POS_FACEUP)
-		if res>0 then
-			DeckMaster.FieldAbilityCards[c]=p
-			if ignore_condition then c:CompleteProcedure() end
-		end
+		if res>0 and ignore_condition then c:CompleteProcedure() end
 		c:RegisterFlagEffect(FLAG_DECK_MASTER,
 			RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
 			EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
@@ -413,33 +323,7 @@ if not DeckMaster then
 			if not DeckMaster.Abilities[logical][card_id] then
 				DeckMaster.Abilities[logical][card_id]=true
 				for _,eff in ipairs(deck_master_effects) do
-					local ce=eff:Clone()
-					local original_condition=ce:GetCondition()
-					local original_operation=ce:GetOperation()
-					ce:SetCondition(function(eff,tp,eg,ep,ev,re,r,rp)
-						local ability_card=eff:GetOwner()
-						if not DeckMaster.IsAbilityActiveCard(ability_card) then
-							return false
-						end
-						local old=DeckMaster.AbilityContextCard
-						DeckMaster.AbilityContextCard=ability_card
-						local ok=true
-						if original_condition then
-							ok=original_condition(eff,tp,eg,ep,ev,re,r,rp)
-						end
-						DeckMaster.AbilityContextCard=old
-						return ok
-					end)
-					if original_operation then
-						ce:SetOperation(function(eff,tp,eg,ep,ev,re,r,rp)
-							local ability_card=eff:GetOwner()
-							local old=DeckMaster.AbilityContextCard
-							DeckMaster.AbilityContextCard=ability_card
-							original_operation(eff,tp,eg,ep,ev,re,r,rp)
-							DeckMaster.AbilityContextCard=old
-						end)
-					end
-					Duel.RegisterEffect(ce,c:GetOwner())
+					Duel.RegisterEffect(eff:Clone(),c:GetOwner())
 				end
 			end
 			e:Reset()
@@ -447,27 +331,11 @@ if not DeckMaster then
 		Duel.RegisterEffect(e0,0)
 	end
 
-	local function is_big_five_solo(p)
-		if Duel.GetActiveLogicalPlayerMask()==0 or player_side(p)~=1 then return false end
-		local solo,allies=0,0
-		for q=0,3 do
-			if is_active_player(q) then
-				if player_side(q)==1 then solo=solo+1
-				elseif player_side(q)==0 then allies=allies+1 end
-			end
-		end
-		return solo==1 and allies>=2
-	end
 	function DeckMaster.RegisterRules(c)
 		for p=0,3 do
 			if is_active_player(p) then
-				local pool=DeckMasterTableSelect
-				if is_big_five_solo(p) then
-					pool={table.unpack(DeckMasterTableSelect)}
-					for code=153000020,153000024 do pool[#pool+1]=code end
-				end
 				local dmc=Duel.SelectCardsFromCodesPlayer(
-					p,1,1,false,false,table.unpack(pool))
+					p,1,1,false,false,table.unpack(DeckMasterTableSelect))
 				--Register the TEAM identity directly from the selected code. This is
 				--more reliable than waiting for token metadata to be queried later.
 				if team_shared_enabled_for(p) and is_shared_code(dmc) then
@@ -476,14 +344,10 @@ if not DeckMaster then
 					DeckMaster.TeamSharedCode[side]=dmc
 					DeckMaster.TeamSharedOwner[side]=p
 				end
-				-- If the declared Deck Master exists in this player's
-				-- Deck/Extra Deck, take one copy out as their Deck Master.
-				-- Otherwise create it from outside the Duel as before.
-				local dg=get_player_cards(p,LOCATION_DECK|LOCATION_EXTRA)
-					:Filter(Card.IsOriginalCode,nil,dmc)
-				if #dg>0 then
-					Duel.SendtoDeck(dg:GetFirst(),nil,-2,REASON_RULE)
-				end
+				local dg=get_player_cards(p,LOCATION_ALL):Filter(Card.IsOriginalCode,nil,dmc)
+				local remove_copy=#dg==3
+					or (#dg>0 and Duel.SelectYesNoPlayer(p,aux.Stringid(FLAG_DECK_MASTER,3)))
+				if remove_copy then Duel.SendtoDeck(dg:GetFirst(),nil,-2,REASON_RULE) end
 				local t=Duel.CreateTokenPlayer(p,dmc)
 				t:MoveToDeckMasterZone(p,dmc)
 				local e1=Effect.CreateEffect(t)
@@ -499,8 +363,6 @@ if not DeckMaster then
 		--back onto all allied Deck Master indicators as the authoritative one.
 		refresh_shared_team_states()
 
-		-- A phase-start check audits the END of the preceding phase,
-		-- not the middle of a phase when a replacement can still be Summoned.
 		for _,phase in ipairs({
 			PHASE_DRAW,PHASE_STANDBY,PHASE_MAIN1,
 			PHASE_BATTLE_START,PHASE_MAIN2,PHASE_END
@@ -513,13 +375,6 @@ if not DeckMaster then
 			e:SetOperation(DeckMaster.loss)
 			Duel.RegisterEffect(e,0)
 		end
-		-- Include the end-of-turn boundary (after the last End Phase).
-		local final_check=Effect.GlobalEffect()
-		final_check:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
-		final_check:SetCode(EVENT_TURN_END)
-		final_check:SetProperty(EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_UNCOPYABLE)
-		final_check:SetOperation(DeckMaster.loss)
-		Duel.RegisterEffect(final_check,0)
 
 		local e9=Effect.GlobalEffect()
 		e9:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
@@ -544,21 +399,13 @@ if not DeckMaster then
 		local dm=DeckMasterZone[p]
 		local side=player_side(p)
 		local ignore_condition=dm and is_shared_code(dm:GetOriginalCode()) or false
-		-- In 2v1 only the actual current logical duelist may summon
-		-- from their Deck Master Zone on their own Main Phase.
-		local turn_owner=Duel.GetLogicalTurnPlayer and Duel.GetLogicalTurnPlayer()
-			or (Duel.GetLogicalPlayer(Duel.GetTurnPlayer()) or Duel.GetTurnPlayer())
-		return Duel.IsMainPhase() and turn_owner==p and is_active_player(p) and dm
+		return Duel.IsMainPhase() and is_active_player(p) and dm
 			and dm:IsCanBeSpecialSummoned(e,0,side,ignore_condition,false)
 			and Duel.GetLocationCount(side,LOCATION_MZONE)>0
 	end
 	function DeckMaster.spop(e,tp,eg,ep,ev,re,r,rp)
 		local p=e:GetLabel()
-		if Duel.GetActiveLogicalPlayerMask()~=0 then
-			if not Duel.SelectYesNoPlayer(p,aux.Stringid(FLAG_DECK_MASTER,5)) then return end
-		elseif not Duel.SelectYesNo(player_side(p),aux.Stringid(FLAG_DECK_MASTER,5)) then
-			return
-		end
+		if not Duel.SelectYesNo(player_side(p),aux.Stringid(FLAG_DECK_MASTER,5)) then return end
 		Duel.SummonDeckMasterPlayer(p)
 	end
 
@@ -573,33 +420,21 @@ if not DeckMaster then
 			if is_shared_code(tc:GetOriginalCode()) then
 				mark_team_shared_master(tc:GetLogicalControler(),tc,tc:GetOriginalCode())
 			end
-			-- Transfer a material Deck Master only to an actual Summoned
-			-- MONSTER, never the Spell that performed the Ritual/Fusion.
-			local rc=tc:GetReasonCard()
-			if (tc:GetReason()&REASON_MATERIAL)~=0 and rc
-				and rc:IsType(TYPE_MONSTER) and rc:IsLocation(LOCATION_MZONE) then
-				DeckMaster.AssignFieldDeckMaster(rc:GetLogicalControler(),rc)
+			if tc:GetReason()&REASON_BATTLE==0 and tc:GetReasonCard() then
+				local rc=tc:GetReasonCard()
+				rc:RegisterFlagEffect(FLAG_DECK_MASTER,
+					RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
+					EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
 				mark_team_shared_master(rc:GetLogicalControler(),rc,rc:GetOriginalCode())
 			end
 		end
-	end
-	function DeckMaster.materialWasDeckMaster(c)
-		-- A material's on-field flag may reset when sent to the Graveyard;
-		-- the card's FieldAbilityCards identity survives that move.
-		return DeckMaster.FieldAbilityCards[c]~=nil
-			or c:GetFlagEffect(FLAG_DECK_MASTER)>0
-	end
-	function DeckMaster.usedDeckMasterMaterial(c)
-		local materials=c:GetMaterial()
-		return materials and materials:IsExists(DeckMaster.materialWasDeckMaster,1,nil)
 	end
 	function DeckMaster.inheritFilter(c)
 		local p=c:GetLogicalControler()
 		local side=player_side(p)
 		if DeckMaster.DragonRevivalResolving[side] then return false end
-		return c:GetControler()==c:GetSummonPlayer()
-			and (DeckMaster.usedDeckMasterMaterial(c)
-				or not Duel.GetDeckMasterPlayer(p))
+		return not Duel.GetDeckMasterPlayer(p)
+			and c:GetControler()==c:GetSummonPlayer()
 	end
 	function DeckMaster.inheritcon2(e,tp,eg,ep,ev,re,r,rp)
 		return eg:IsExists(DeckMaster.inheritFilter,1,nil)
@@ -612,38 +447,11 @@ if not DeckMaster then
 					return c:GetLogicalControler()==lp
 				end,nil,p)
 				if #dg>0 then
-					local material_successors=dg:Filter(
-						DeckMaster.usedDeckMasterMaterial,nil)
-					if #material_successors>0 then
-						-- Every monster Summoned with Deck Master material
-						-- inherits that status, even if another master exists.
-						for tc in aux.Next(material_successors) do
-							DeckMaster.AssignFieldDeckMaster(p,tc)
-							mark_team_shared_master(p,tc,tc:GetOriginalCode())
-						end
-					elseif not Duel.GetDeckMasterPlayer(p) then
-						-- If several monsters arrive at once and no master
-						-- remains, the logical player chooses the successor.
-						local dm=dg:GetFirst()
-						if #dg>1 then
-							if Duel.GetActiveLogicalPlayerMask()~=0 then
-								local cards,codes={},{}
-								for tc in aux.Next(dg) do
-									cards[#cards+1]=tc
-									codes[#codes+1]=tc:GetOriginalCode()
-								end
-								local chosen=Duel.SelectCardsFromCodesPlayer(
-									p,1,1,false,true,table.unpack(codes))
-								if chosen and chosen[2] and cards[chosen[2]] then
-									dm=cards[chosen[2]]
-								end
-							else
-								dm=dg:Select(p,1,1,nil):GetFirst() or dm
-							end
-						end
-						DeckMaster.AssignFieldDeckMaster(p,dm)
-						mark_team_shared_master(p,dm,dm:GetOriginalCode())
-					end
+					local dm=dg:GetFirst()
+					dm:RegisterFlagEffect(FLAG_DECK_MASTER,
+						RESET_EVENT+RESETS_STANDARD-RESET_TOFIELD+RESET_CONTROL,
+						EFFECT_FLAG_CLIENT_HINT,1,nil,aux.Stringid(FLAG_DECK_MASTER,0))
+					mark_team_shared_master(p,dm,dm:GetOriginalCode())
 				end
 			end
 		end
@@ -660,10 +468,8 @@ if not DeckMaster then
 					local shared_team_master=side==0
 						and DeckMaster.TeamSharedMode
 						and DeckMaster.TeamSharedCode[side]~=nil
-					-- DragonRevivalMerged is historical state, NOT a Deck Master.
-					-- After FHD/Berserk Dragon leaves the field, ownership must
-					-- be determined from the Deck Master Zone or a live monster.
-					local has_dm=shared_team_master
+					local dragon_revival_merged=DeckMaster.DragonRevivalMerged[p] or false
+					local has_dm=dragon_revival_merged or shared_team_master
 						or Duel.GetDeckMasterPlayer(p)~=nil
 					if side==0 then
 						active_allies=active_allies+1
