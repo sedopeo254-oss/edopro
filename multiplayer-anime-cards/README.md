@@ -34,17 +34,21 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
     and both physical monster fields in Standard duels;
   - unaffected monsters do not receive the temporary effects.
 
-- `c120000016.lua` — Dragon Revival Ritual (five Big Five monsters)
-  - requires the activating player's original Five-Headed Dragon (511013020)
-    in their Hand or Deck, and enough free Monster Zones for the MISSING
-    materials only; Jinzo (or another required Big Five monster) already
-    on that player's field counts as a material without a duplicate summon;
-  - summons exactly 153000020, 153000021, 153000022, 153000023 and
-    153000024: reuses a real matching Deck Master Zone card and creates
-    only the missing cards from outside the Duel;
-  - Tributes all five immediately, then Ritual Summons the selected
-    Five-Headed Dragon from the Hand/Deck with no attribute or five-turn
-    requirement; the original Five-Headed Dragon card effects stay intact;
-  - the result inherits Deck Master status on the field, without creating
-    an extra Five-Headed Dragon in the Deck Master Zone.
+- `c120000016.lua` — Dragon Revival Ritual (fully rebuilt, standalone)
+  - exact ritual materials: 153000020 Jinzo, 153000021 Deepsea Warrior,
+    153000022 Nightmare Penguin, 153000023 Judge Man and
+    153000024 Robotic Knight (no legacy-ID substitutes);
+  - each material's source priority is the real card in the caster's Deck
+    Master Zone, then an eligible identical card already on their own field,
+    otherwise a new token created from outside the Duel;
+  - summons only missing monsters, requires only that many free Monster
+    Zones, then Tributes exactly five materials and Ritual Summons the
+    original Five-Headed Dragon (511013020) from the caster's own
+    Hand or Deck, without any five-attribute or five-turn accumulation;
+  - the script no longer delegates token creation or the Ritual sequence
+    to the legacy DeckMaster.CallDragonRevivalMasters helper;
+  - the existing Deck Master System handles only temporary inheritance
+    suppression and registers the real Five-Headed Dragon on the field
+    at completion; it never creates an FHD token or Deck Master Zone copy;
+  - Five-Headed Dragon's original anime card script is unchanged.
 
