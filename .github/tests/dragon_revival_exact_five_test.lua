@@ -304,16 +304,17 @@ fhd=put(0,card(0,511013020,LOCATION_HAND))
 assert(not dm.CanActivateDragonRevivalRitual(0,{}),
  "Teammate Jinzo is not the activating player's own Ritual material")
 
--- An older Jinzo Deck Master code in a field zone is also eligible.
+-- The rebuilt effect specifically requires IDs 153000020..153000024.
+-- An older Jinzo-like code is NOT a substitute for 153000020.
 reset("2v1",2)
 put(2,card(2,153000013,LOCATION_MZONE))
 free=4
 fhd=put(2,card(2,511013020,LOCATION_DECK))
-assert(dm.CanActivateDragonRevivalRitual(2,{}))
-cast(2)
-assert(#summons==5 and #releases==5 and fhd:IsDeckMaster())
-assert(releases[1]==153000013 and summons[1]==153000021)
-assert(DeckMasterZone[2]==nil)
+local old_code_check={handler=card(2,120000016,LOCATION_HAND)}
+function old_code_check:GetHandler() return self.handler end
+assert(not spell.target(old_code_check,1,nil,nil,nil,nil,nil,nil,0),
+ "Only the five exact requested Deck Master IDs can be Ritual materials")
+assert(#created==0 and #summons==0 and #releases==0)
 
 -- 3v1 P4 Big Five: reuse existing Deepsea Warrior from Zone, no duplicate.
 reset("3v1",3)
