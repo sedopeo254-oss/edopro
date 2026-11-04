@@ -68,6 +68,9 @@ function Card:GetOriginalCode() return self.code end
 function Card:IsCanBeSpecialSummoned(e,typ,tp,ignore,ignore_limit)
  return not self.cannot_summon
 end
+function Card:IsReleasableByEffect(e,side)
+ return not self.cannot_release
+end
 function Card:IsLocation(loc) return self.location==loc end
 function Card:GetLogicalControler() return self.p end
 function Card:GetLogicalOwner() return self.p end
@@ -145,19 +148,23 @@ function Duel.SetOperationInfo(...) end
 function Duel.SpecialSummon(c,kind,side,recipient,ignore,ignore_limit,pos)
  assert(side==sides[logical] and recipient==side)
  if c.cards then
-  assert(#c==5 and kind==0)
-  -- The first five monsters appear physically before the Ritual Tribute.
+  assert(#c>=1 and #c<=5 and kind==0)
+  assert(free>=#c,"Cannot summon more than the available monster zones")
+  -- Already-present Jinzo counts as a Ritual material, not a new Summon.
   for _,tc in ipairs(c.cards) do
    assert(tc.p==logical and tc.location==0)
    tc.location=LOCATION_MZONE
    summons[#summons+1]=tc.code
   end
+  free=free-#c
   return #c
  end
  assert(c.code==511013020 and kind==SUMMON_TYPE_RITUAL)
  assert(c.p==logical and (c.location==LOCATION_HAND or c.location==LOCATION_DECK))
  assert(#c.material==5)
+ assert(free>0,"Five-Headed Dragon needs a zone after Tribute")
  c.location=LOCATION_MZONE
+ free=free-1
  summons[#summons+1]=c.code
  return 1
 end
@@ -169,6 +176,7 @@ function Duel.Release(g,reason)
   releases[#releases+1]=c.code
   c.location=LOCATION_GRAVE
  end
+ free=free+#g
  return #g
 end
 
@@ -259,6 +267,53 @@ reset("2v1",2)
 fhd=put(2,card(2,511013020,LOCATION_DECK))
 cast(2)
 check_five(fhd,2,nil,5)
+
+-- Screenshot regression: P1 Big Five has Jinzo on field, four free
+-- Monster Zones, and Dragon Revival Ritual + FHD in hand.
+reset("2v1",0)
+local field_jinzo=put(0,card(0,153000020,LOCATION_MZONE))
+free=4
+fhd=put(0,card(0,511013020,LOCATION_HAND))
+assert(dm.CanActivateDragonRevivalRitual(0,{}),
+ "P1 Big Five: on-field Jinzo is one of five Ritual materials")
+cast(0)
+assert(#summons==5 and #releases==5,
+ "Existing Jinzo: summon 4 others, release 5, then summon FHD")
+local expected_missing={153000021,153000022,153000023,153000024,511013020}
+for i,code in ipairs(expected_missing) do
+ assert(summons[i]==code,"Never summon a duplicate Jinzo")
+end
+local expected_materials={153000020,153000021,153000022,153000023,153000024}
+for i,code in ipairs(expected_materials) do
+ assert(releases[i]==code,"Tribute real Jinzo plus four summoned monsters")
+end
+assert(field_jinzo.location==LOCATION_GRAVE and fhd.location==LOCATION_MZONE)
+assert(fhd:IsDeckMaster() and DeckMasterZone[0]==nil)
+for _,tc in ipairs(created) do
+ assert(tc.code~=153000020 and tc.code~=511013020,
+  "No Jinzo or FHD duplicate token")
+end
+fhd.location=LOCATION_GRAVE
+assert(Duel.GetDeckMasterPlayer(0)==nil)
+
+-- Never borrow teammate's Jinzo as a Big Five Ritual material.
+reset("2v1",0)
+put(1,card(1,153000020,LOCATION_MZONE))
+free=4
+fhd=put(0,card(0,511013020,LOCATION_HAND))
+assert(not dm.CanActivateDragonRevivalRitual(0,{}),
+ "Teammate Jinzo is not the activating player's own Ritual material")
+
+-- An older Jinzo Deck Master code in a field zone is also eligible.
+reset("2v1",2)
+put(2,card(2,153000013,LOCATION_MZONE))
+free=4
+fhd=put(2,card(2,511013020,LOCATION_DECK))
+assert(dm.CanActivateDragonRevivalRitual(2,{}))
+cast(2)
+assert(#summons==5 and #releases==5 and fhd:IsDeckMaster())
+assert(releases[1]==153000013 and summons[1]==153000021)
+assert(DeckMasterZone[2]==nil)
 
 -- 3v1 P4 Big Five: reuse existing Deepsea Warrior from Zone, no duplicate.
 reset("3v1",3)
