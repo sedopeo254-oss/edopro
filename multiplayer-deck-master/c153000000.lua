@@ -173,17 +173,34 @@ if not DeckMaster then
 		return nil,nil
 	end
 
+	-- Dragon Revival Ritual's specific activation support lives in the
+	-- Deck Master system. The original FHD is in the activating *logical*
+	-- player's own Hand/Deck; normal Duel.IsExistingMatchingCard can look
+	-- at the wrong projected private pile in 2v1 or 3v1.
+	DeckMaster.DragonRevivalRitualCode=120000016
+	DeckMaster.DragonRevivalDragonCode=511013020
+
+	function DeckMaster.GetDragonRevivalTargets(p)
+		if not is_active_player(p) then return Group.CreateGroup() end
+		return get_player_cards(p,LOCATION_HAND|LOCATION_DECK)
+			:Filter(Card.IsCode,nil,DeckMaster.DragonRevivalDragonCode)
+	end
+
 	function DeckMaster.CanCallDragonRevivalMasters(p,e)
+		if not is_active_player(p) then return false end
 		local side=player_side(p)
 		if side~=0 and side~=1 then return false end
 		if Duel.GetLocationCount(side,LOCATION_MZONE)<5 then return false end
-		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
-			local _,dm=find_dragon_revival_zone_master(entry,side)
-			if dm and not dm:IsCanBeSpecialSummoned(e,0,side,true,false) then
-				return false
-			end
-		end
+		-- Do not check IsCanBeSpecialSummoned on a Deck Master Zone
+		-- card that has LOCATION 0. The engine can reject that preflight
+		-- even though the Ritual summons that same card with ignore=true.
+		-- The actual five-card SpecialSummon result is verified below.
 		return true
+	end
+
+	function DeckMaster.CanActivateDragonRevivalRitual(p,e)
+		return DeckMaster.CanCallDragonRevivalMasters(p,e)
+			and #DeckMaster.GetDragonRevivalTargets(p)>0
 	end
 
 	function DeckMaster.CallDragonRevivalMasters(p,e)
