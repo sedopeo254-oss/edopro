@@ -1784,7 +1784,22 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.vic_string = L"";
 		mainGame->showcardcode = 3;
 		std::wstring formatted_string = L"";
-		if(player < 2) {
+		// 0xE8: Deck Master defeat. Streamed YRPX replays may optionally
+		// carry a UTF-8 result caption after the standard winner/reason bytes.
+		// This is intentionally confined to this win reason only.
+		if(type == 0xe8) {
+			if(player < 2)
+				mainGame->showcardcode = mainGame->LocalPlayer(player) + 1;
+			if(!mainGame->dInfo.HasFieldFlag(DUEL_BATTLE_ROYALE)
+					&& len > 2 && len <= 258) {
+				mainGame->dInfo.vic_string = BufferIO::DecodeUTF8({
+					reinterpret_cast<const char*>(pbuf), len - 2
+				});
+			}
+			if(mainGame->dInfo.vic_string.empty())
+				mainGame->dInfo.vic_string =
+					L"The losing duelist has no Deck Master remaining.";
+		} else if(player < 2) {
 			player = mainGame->LocalPlayer(player);
 			mainGame->showcardcode = player + 1;
 			if(match_kill)
