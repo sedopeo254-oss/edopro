@@ -1,4 +1,5 @@
--- Test the real Dragon Revival Ritual and Deck Master scripts together.
+-- Test the REAL Dragon Revival Ritual and Deck Master scripts together,
+-- matching the successful 30 Oct replay at Turn 19 Main Phase 1.
 -- 2v1 + 3v1: use the actual in-zone Jinzo, create missing Big Five Deck
 -- Masters from outside, Tribute all five, and Ritual Summon the ORIGINAL
 -- Five-Headed Dragon without creating a phantom Deck Master Zone copy.
@@ -101,6 +102,16 @@ function Duel.GetMatchingGroup(f,tp,loc_self,loc_other,except,e,player)
   end
  end
  return group(out)
+end
+-- The proven Oct 30 activation route uses Duel.IsExistingMatchingCard /
+-- Duel.SelectMatchingCard (NOT filtering a GetPlayerFieldGroup snapshot).
+function Duel.IsExistingMatchingCard(filter,tp,loc_self,loc_other,min,except,e,player)
+ return #Duel.GetMatchingGroup(filter,tp,loc_self,loc_other,except,e,player)>=min
+end
+function Duel.SelectMatchingCard(tp,filter,from_player,loc_self,loc_other,min,max,except,e,player)
+ assert(tp==from_player and min==1 and max==1)
+ local candidates=Duel.GetMatchingGroup(filter,from_player,loc_self,loc_other,except,e,player)
+ return candidates:Select(tp,1,1,nil)
 end
 function Duel.GetFieldGroup(tp,loc1,loc2)
  return Duel.GetPlayerFieldGroup(tp,loc1)
