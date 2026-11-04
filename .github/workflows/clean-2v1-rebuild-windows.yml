@@ -299,11 +299,22 @@ jobs:
           dragon_section = dm[
               dm.index('--Dragon Revival Ritual: call the five Big Five monsters immediately.'):
               dm.index('-- Never let a completed Ritual grant permanent Deck Master immunity.')]
-          assert 'Duel.GetLocationCount(side,LOCATION_MZONE)<5' in dragon_section
+          # Screenshot: on-field Jinzo already occupies one monster zone.
+          # Count that REAL card as material, summon ONLY four missing cards;
+          # never regress to requiring 5 free zones and duplicate Jinzo.
+          assert 'find_dragon_revival_field_master(entry,p,e)' in dragon_section
+          assert 'get_player_cards(p,LOCATION_MZONE)' in dragon_section
+          assert 'tc:IsReleasableByEffect(e,side)' in dragon_section
+          assert 'missing=missing+1' in dragon_section
+          assert 'Duel.GetLocationCount(side,LOCATION_MZONE)>=missing' in dragon_section
+          assert 'Duel.GetLocationCount(side,LOCATION_MZONE)<5' not in dragon_section
+          assert 'local to_summon=Group.CreateGroup()' in dragon_section
+          assert 'materials:AddCard(dm)' in dragon_section
+          assert 'to_summon:AddCard(dm)' in dragon_section
           assert 'Duel.CreateTokenPlayer(p,entry.field_code)' in dragon_section
           assert 'Duel.ClearDeckMasterZonePlayer(q)' in dragon_section
           assert dragon_section.index('Duel.ClearDeckMasterZonePlayer(q)') < dragon_section.index(
-              'Duel.SpecialSummon(g,0,side,side,true,false,POS_FACEUP_ATTACK)')
+              'Duel.SpecialSummon(to_summon,0,side,side,true,false,POS_FACEUP_ATTACK)')
           assert 'Duel.CreateToken(side,entry.field_code)' in dragon_section
           assert 'local zone_copy=DeckMasterZone[p]' in dm
           assert Path('.github/tests/dragon_revival_exact_five_test.lua').is_file()
