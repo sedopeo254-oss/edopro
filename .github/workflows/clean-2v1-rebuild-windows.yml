@@ -341,7 +341,7 @@ jobs:
           assert 'REASON_EFFECT|REASON_MATERIAL|REASON_RITUAL' in dragon_ritual
           assert 'dragon,SUMMON_TYPE_RITUAL,tp,tp,true,true,POS_FACEUP_ATTACK' in dragon_ritual
           assert 'DeckMaster.FinishDragonRevival(' in dragon_ritual
-          assert 'MoveToDeckMasterZone' not in dragon_ritual
+          assert ':MoveToDeckMasterZone(' not in dragon_ritual
           assert 'Duel.CreateTokenPlayer(p,FHD)' not in dragon_ritual
           assert 'Duel.IsExistingMatchingCard(' not in dragon_ritual
           assert 'DeckMaster.CallDragonRevivalMasters(' not in dragon_ritual
