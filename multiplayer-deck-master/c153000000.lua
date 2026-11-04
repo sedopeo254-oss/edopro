@@ -161,22 +161,32 @@ if not DeckMaster then
 		return false
 	end
 
+	-- Existing Big Five monsters on the ACTIVATING logical player's field
+	-- are already available Ritual materials. Reuse the actual cards instead
+	-- of demanding five empty zones or creating duplicate Jinzo/Robotic Knights.
+	local function find_dragon_revival_field_master(entry,p,e)
+		local side=player_side(p)
+		for tc in aux.Next(get_player_cards(p,LOCATION_MZONE)) do
+			if dragon_revival_zone_match(tc,entry)
+				and tc:IsReleasableByEffect(e,side) then
+				return tc
+			end
+		end
+		return nil
+	end
+
 	local function find_dragon_revival_zone_master(entry,side)
-		for p=0,3 do
-			if player_side(p)==side then
-				local dm=DeckMasterZone[p]
+		for q=0,3 do
+			if is_active_player(q) and player_side(q)==side then
+				local dm=DeckMasterZone[q]
 				if dragon_revival_zone_match(dm,entry) then
-					return p,dm
+					return q,dm
 				end
 			end
 		end
 		return nil,nil
 	end
 
-	-- Dragon Revival Ritual's specific activation support lives in the
-	-- Deck Master system. The original FHD is in the activating *logical*
-	-- player's own Hand/Deck; normal Duel.IsExistingMatchingCard can look
-	-- at the wrong projected private pile in 2v1 or 3v1.
 	DeckMaster.DragonRevivalRitualCode=120000016
 	DeckMaster.DragonRevivalDragonCode=511013020
 
@@ -190,12 +200,16 @@ if not DeckMaster then
 		if not is_active_player(p) then return false end
 		local side=player_side(p)
 		if side~=0 and side~=1 then return false end
-		if Duel.GetLocationCount(side,LOCATION_MZONE)<5 then return false end
-		-- Do not check IsCanBeSpecialSummoned on a Deck Master Zone
-		-- card that has LOCATION 0. The engine can reject that preflight
-		-- even though the Ritual summons that same card with ignore=true.
-		-- The actual five-card SpecialSummon result is verified below.
-		return true
+		-- If one of the five (e.g. Jinzo) is already on the field, it
+		-- occupies a zone BUT is also one of the Ritual's five materials.
+		-- Count only the MISSING monsters against the available zones.
+		local missing=0
+		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
+			if not find_dragon_revival_field_master(entry,p,e) then
+				missing=missing+1
+			end
+		end
+		return Duel.GetLocationCount(side,LOCATION_MZONE)>=missing
 	end
 
 	function DeckMaster.CanActivateDragonRevivalRitual(p,e)
@@ -206,44 +220,57 @@ if not DeckMaster then
 	function DeckMaster.CallDragonRevivalMasters(p,e)
 		if not DeckMaster.CanCallDragonRevivalMasters(p,e) then return nil end
 		local side=player_side(p)
-		DeckMaster.DragonRevivalResolving[side]=true
-		local g=Group.CreateGroup()
+		local materials=Group.CreateGroup()
+		local to_summon=Group.CreateGroup()
 		local clear_players={}
+		-- Keep all existing monsters on the field while preparing the
+		-- missing ones; none of the five may be represented twice.
 		for _,entry in ipairs(DeckMaster.DragonRevivalDeckMasters) do
-			local zone_owner,dm=find_dragon_revival_zone_master(entry,side)
-			if dm then
-				clear_players[zone_owner]=true
-			else
-				if Duel.GetActiveLogicalPlayerMask()~=0 then
+			local dm=find_dragon_revival_field_master(entry,p,e)
+			if not dm then
+				local zone_owner
+				zone_owner,dm=find_dragon_revival_zone_master(entry,side)
+				if dm then
+					clear_players[zone_owner]=true
+				elseif Duel.GetActiveLogicalPlayerMask()~=0 then
 					dm=Duel.CreateTokenPlayer(p,entry.field_code)
 				else
 					dm=Duel.CreateToken(side,entry.field_code)
 				end
+				if not dm then return nil end
+				to_summon:AddCard(dm)
 			end
-			if not dm then
-				DeckMaster.DragonRevivalResolving[side]=nil
-				DeckMaster.DragonRevivalConsumed[side]=nil
-				return nil
-			end
-			g:AddCard(dm)
+			materials:AddCard(dm)
 		end
+		if #materials~=5 then return nil end
+
+		-- Suppress automatic inheritance of the provisional five monsters.
+		-- Clear any genuine Deck Master Zone entries before special summon,
+		-- preserving the successful Oct 30 replay's ordering.
+		DeckMaster.DragonRevivalResolving[side]=true
 		DeckMaster.DragonRevivalConsumed[side]=clear_players
 		for q,_ in pairs(clear_players) do
 			Duel.ClearDeckMasterZonePlayer(q)
 		end
-		local ct=Duel.SpecialSummon(g,0,side,side,true,false,POS_FACEUP_ATTACK)
-		if ct~=5 then
+		if #to_summon>0 then
+			local ct=Duel.SpecialSummon(to_summon,0,side,side,true,false,POS_FACEUP_ATTACK)
+			if ct~=#to_summon then
+				DeckMaster.DragonRevivalResolving[side]=nil
+				DeckMaster.DragonRevivalConsumed[side]=nil
+				return nil
+			end
+		end
+
+		-- Every material must now be on the field, whether already there
+		-- (Jinzo in the user's screenshot) or freshly summoned from Zone /
+		-- outside the Duel. The Ritual will Tribute these same five cards.
+		local real=materials:Filter(Card.IsLocation,nil,LOCATION_MZONE)
+		if #real~=5 then
 			DeckMaster.DragonRevivalResolving[side]=nil
 			DeckMaster.DragonRevivalConsumed[side]=nil
 			return nil
 		end
-		local sg=g:Filter(Card.IsLocation,nil,LOCATION_MZONE)
-		if #sg~=5 then
-			DeckMaster.DragonRevivalResolving[side]=nil
-			DeckMaster.DragonRevivalConsumed[side]=nil
-			return nil
-		end
-		return sg
+		return real
 	end
 
 	-- Never let a completed Ritual grant permanent Deck Master immunity.
