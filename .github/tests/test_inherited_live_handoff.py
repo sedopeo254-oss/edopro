@@ -13,7 +13,7 @@ for word in ("DUEL_BATTLE_ROYALE","DUEL_3_V_1","DUEL_INHERITED_DUEL"):
 require("gframe/netserver.cpp","pkt.info.team1 = 2;")
 require("gframe/netserver.cpp","multiplayer_flags == DUEL_INHERITED_DUEL")
 require("gframe/game.cpp",'cbMultiplayerMode->addItem(L"Inherited Duel Mode");')
-require("gframe/generic_duel.cpp","void GenericDuel::IsInheritedMode() const")
+require("gframe/generic_duel.cpp","bool GenericDuel::IsInheritedMode() const")
 require("gframe/generic_duel.cpp","cur_player[0] = players.home_iterator->player;")
 require("gframe/generic_duel.cpp","if(IsInheritedMode() && dp != response_player)")
 require("gframe/generic_duel.cpp","if(IsInheritedMode() && dp != cur_player[0] && dp != cur_player[1])")
