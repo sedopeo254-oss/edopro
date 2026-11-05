@@ -23,6 +23,10 @@ jobs:
         run: sh ./ocgcore/tests/run_duel_succession_tests.sh
       - name: Validate no-duplicate succession deck transfer
         run: sh ./ocgcore/tests/run_duel_succession_transfer_tests.sh
+      - name: Verify one visible duelist per field through succession and replay
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_hud_test.cpp -o /tmp/inherited_duel_hud_test
+          /tmp/inherited_duel_hud_test
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
       - name: Re-run existing multiplayer field tests
