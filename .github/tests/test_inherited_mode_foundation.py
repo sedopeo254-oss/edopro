@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static integration guard for Inherited Duel Mode stage 1.
+"""Static integration guard for Inherited Duel Mode live handoff.
 
 A real takeover scenario still needs end-to-end engine, lobby and replay tests.
 This script intentionally does not claim those unimplemented features work.
@@ -19,7 +19,7 @@ has("gframe/game.cpp", 'cbMultiplayerMode->addItem(L"Inherited Duel Mode");')
 has("gframe/game.cpp", "duel_param |= DUEL_INHERITED_DUEL;")
 has("gframe/netserver.cpp", "multiplayer_flags & (multiplayer_flags - 1)")
 has("gframe/netserver.cpp", "multiplayer_flags == DUEL_INHERITED_DUEL")
-has("gframe/netserver.cpp", "pkt.info.team1 = 1;")
+has("gframe/netserver.cpp", "pkt.info.team1 = 2;")
 has("gframe/netserver.cpp", "pkt.info.team2 = 1;")
 has("gframe/game.h", "succession_controller_generation[2]")
 has("gframe/duelclient.cpp", "case MSG_DUEL_SUCCESSION:")
