@@ -1206,7 +1206,9 @@ void Game::PopulateGameHostWindows() {
 		cbMultiplayerMode->addItem(L"Standard");
 		cbMultiplayerMode->addItem(L"Battle Royale");
 		cbMultiplayerMode->addItem(L"3 vs 1");
-		cbMultiplayerMode->setSelected((duel_param & DUEL_BATTLE_ROYALE) ? 1 : ((duel_param & DUEL_3_V_1) ? 2 : 0));
+		cbMultiplayerMode->addItem(L"Inherited Duel Mode");
+		cbMultiplayerMode->setSelected((duel_param & DUEL_INHERITED_DUEL) ? 3
+			: ((duel_param & DUEL_BATTLE_ROYALE) ? 1 : ((duel_param & DUEL_3_V_1) ? 2 : 0)));
 		UpdateMultiplayerMode();
 		defaultStrings.emplace_back(env->addStaticText(gDataManager->GetSysString(1236).data(), Scale(20, 130, 220, 150), false, false, tDuelSettings), 1236);
 		cbDuelRule = AddComboBox(env, Scale(140, 125, 300, 150), tDuelSettings, COMBOBOX_DUEL_RULE);
@@ -3102,7 +3104,7 @@ uint8_t Game::LocalPlayer(uint8_t player) {
 	return dInfo.isFirst ? player : 1 - player;
 }
 void Game::UpdateDuelParam() {
-	const auto multiplayer_mode = duel_param & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+	const auto multiplayer_mode = duel_param & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_INHERITED_DUEL);
 	ReloadCBDuelRule();
 	uint64_t flag = 0;
 	for(auto i = 0u; i < sizeofarr(chkCustomRules); ++i) {
@@ -3178,7 +3180,7 @@ void Game::UpdateDuelParam() {
 	forbiddentypes = flag2;
 }
 void Game::UpdateMultiplayerMode() {
-	duel_param &= ~(DUEL_BATTLE_ROYALE | DUEL_3_V_1);
+	duel_param &= ~(DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_INHERITED_DUEL);
 	const auto mode = cbMultiplayerMode->getSelected();
 	if(mode == 1) {
 		duel_param |= DUEL_BATTLE_ROYALE;
@@ -3188,6 +3190,11 @@ void Game::UpdateMultiplayerMode() {
 		duel_param |= DUEL_3_V_1;
 		ebTeam1->setText(L"1");
 		ebTeam2->setText(L"3");
+	} else if(mode == 3) {
+		// One existing physical side is inherited; never create a third field.
+		duel_param |= DUEL_INHERITED_DUEL;
+		ebTeam1->setText(L"1");
+		ebTeam2->setText(L"1");
 	}
 	const bool standard_mode = mode == 0;
 	ebTeam1->setEnabled(standard_mode);
