@@ -81,6 +81,11 @@ bool GenericDuel::IsMultiplayerMode() const {
 		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
 	return duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
 }
+bool GenericDuel::IsInheritedDuelMode() const {
+	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+	return (duel_flags & DUEL_INHERITED_DUEL) != 0;
+}
 void GenericDuel::StartMultiplayerDuel() {
 	IteratePlayers([](DuelPlayer* dueler) {
 		dueler->state = 0xff;
