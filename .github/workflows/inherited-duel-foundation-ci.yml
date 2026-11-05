@@ -27,6 +27,10 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_hud_test.cpp -o /tmp/inherited_duel_hud_test
           /tmp/inherited_duel_hud_test
+      - name: Test explicit inherited lobby roles and Seto-first turn
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_lobby_test.cpp -o /tmp/inherited_duel_lobby_test
+          /tmp/inherited_duel_lobby_test
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
       - name: Re-run existing multiplayer field tests
