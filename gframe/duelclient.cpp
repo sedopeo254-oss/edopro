@@ -21,6 +21,7 @@
 #include "image_manager.h"
 #include "single_mode.h"
 #include "game.h"
+#include "inherited_duel_lobby.h"
 #include "multiplayer_attack_arrow.h"
 #include "multiplayer_replay_animation.h"
 #include "multiplayer_battle_royale_live.h"
@@ -741,6 +742,9 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 		params &= ~DUEL_PSEUDO_SHUFFLE;
 		mainGame->dInfo.team1 = pkt.info.team1;
 		mainGame->dInfo.team2 = pkt.info.team2;
+		// Visual role information is confined to Inherited Duel; roster names stay raw.
+		const bool inherited_lobby = mainGame->dInfo.HasFieldFlag(DUEL_INHERITED_DUEL)
+			&& pkt.info.team1 == 2 && pkt.info.team2 == 1;
 		mainGame->dInfo.best_of = pkt.info.best_of;
 		std::wstring str, strR, strL;
 		str.append(epro::format(L"{}{}\n", gDataManager->GetSysString(1226), gdeckManager->GetLFListName(pkt.info.lflist)));
@@ -750,6 +754,8 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 		else {
 			str.append(epro::format(L"{}{} {}{}\n", gDataManager->GetSysString(1227), gDataManager->GetSysString(1381), mainGame->dInfo.best_of, mainGame->dInfo.isRelay ? L" Relay" : L""));
 		}
+		if(inherited_lobby)
+			str.append(L"Inherited Duel: Player 1 starts vs Opponent.\nPlayer 2 takes over later vs same Opponent.\n");
 		if(pkt.info.time_limit) {
 			str.append(epro::format(L"{}{}\n", gDataManager->GetSysString(1237), pkt.info.time_limit));
 		}
@@ -862,20 +868,29 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 			mainGame->btnHostPrepKick[i]->setVisible(false);
 			mainGame->stHostPrepDuelist[i]->setVisible(false);
 			mainGame->stHostPrepDuelist[i]->setText(L"");
+			if(i < 3) {
+				mainGame->stInheritedSeatRole[i]->setVisible(inherited_lobby);
+				mainGame->stInheritedSeatRole[i]->setText(inherited_lobby
+					? inherited_duel_lobby::SeatCaption(static_cast<uint8_t>(i)) : L"");
+			}
 		}
 		for(int i = 0; i < pkt.info.team1; i++) {
 			mainGame->chkHostPrepReady[i]->setVisible(true);
 			mainGame->stHostPrepDuelist[i]->setVisible(true);
-			mainGame->btnHostPrepKick[i]->setRelativePosition(mainGame->Scale<irr::s32>(10, 65 + i * 25, 30, 85 + i * 25));
-			mainGame->stHostPrepDuelist[i]->setRelativePosition(mainGame->Scale<irr::s32>(40, 65 + i * 25, 240, 85 + i * 25));
-			mainGame->chkHostPrepReady[i]->setRelativePosition(mainGame->Scale<irr::s32>(250, 65 + i * 25, 270, 85 + i * 25));
+			const int row = inherited_lobby ? 65 + i * 35 : 65 + i * 25;
+			mainGame->btnHostPrepKick[i]->setRelativePosition(mainGame->Scale<irr::s32>(10, row, 30, row + 20));
+			mainGame->stHostPrepDuelist[i]->setRelativePosition(mainGame->Scale<irr::s32>(40, row, 240, row + 20));
+			mainGame->chkHostPrepReady[i]->setRelativePosition(mainGame->Scale<irr::s32>(250, row, 270, row + 20));
 		}
 		for(int i = pkt.info.team1; i < pkt.info.team1 + pkt.info.team2; i++) {
 			mainGame->chkHostPrepReady[i]->setVisible(true);
 			mainGame->stHostPrepDuelist[i]->setVisible(true);
-			mainGame->btnHostPrepKick[i]->setRelativePosition(mainGame->Scale<irr::s32>(10, 10 + 65 + i * 25, 30, 10 + 85 + i * 25));
-			mainGame->stHostPrepDuelist[i]->setRelativePosition(mainGame->Scale<irr::s32>(40, 10 + 65 + i * 25, 240, 10 + 85 + i * 25));
-			mainGame->chkHostPrepReady[i]->setRelativePosition(mainGame->Scale<irr::s32>(250, 10 + 65 + i * 25, 270, 10 + 85 + i * 25));
+			// Standard/team lobby retains its historic separation; the inherited
+			// 2+1 lobby uses three evenly spaced role-caption rows instead.
+			const int row = inherited_lobby ? 65 + i * 35 : 10 + 65 + i * 25;
+			mainGame->btnHostPrepKick[i]->setRelativePosition(mainGame->Scale<irr::s32>(10, row, 30, row + 20));
+			mainGame->stHostPrepDuelist[i]->setRelativePosition(mainGame->Scale<irr::s32>(40, row, 240, row + 20));
+			mainGame->chkHostPrepReady[i]->setRelativePosition(mainGame->Scale<irr::s32>(250, row, 270, row + 20));
 		}
 		mainGame->dInfo.selfnames.resize(pkt.info.team1);
 		mainGame->dInfo.opponames.resize(pkt.info.team2);
