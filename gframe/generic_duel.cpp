@@ -1,5 +1,6 @@
 #include <algorithm>
 #include "generic_duel.h"
+#include "inherited_duel_lobby.h"
 #include "netserver.h"
 #include "game.h"
 #include "core_utils.h"
@@ -93,6 +94,21 @@ void GenericDuel::StartMultiplayerDuel() {
 	auto* player = players.home.front().player;
 	player->state = CTOS_TP_RESULT;
 	TPResult(player, 0);
+}
+// Inherited Duel: Kaiba (seat 0) must begin against Noah (seat 2).
+// Yugi (seat 1) remains reserved until the authoritative succession event.
+// Skip RPS/turn-order selection ONLY in this mode; never swap core sides.
+void GenericDuel::StartInheritedDuel() {
+	if(players.home.size() != 2 || players.opposing.size() != 1
+			|| !players.home.front().player || !players.home[1].player
+			|| !players.opposing.front().player)
+		return;
+	IteratePlayers([](DuelPlayer* dueler) {
+		dueler->state = 0xff;
+	});
+	auto* starter = players.home[inherited_duel_lobby::STARTER_SEAT].player;
+	starter->state = CTOS_TP_RESULT;
+	TPResult(starter, inherited_duel_lobby::STARTER_FIRST_CHOICE);
 }
 int8_t GenericDuel::GetFirstFree(int8_t start) {
 	int8_t tot_size = static_cast<int8_t>(players.home.size() + players.opposing.size());
@@ -455,7 +471,9 @@ void GenericDuel::UpdateDeck(DuelPlayer* dp, void* pdata, uint32_t len) {
 			dueler.ready = true;
 			NetServer::SendPacketToPlayer(dp, STOC_DUEL_START);
 			if(CheckReady()) {
-				if(IsMultiplayerMode()) {
+				if(IsInheritedDuelMode()) {
+					StartInheritedDuel();
+				} else if(IsMultiplayerMode()) {
 					StartMultiplayerDuel();
 				} else {
 					DuelPlayer* player = match_result[match_result.size() - 1] == 0 ? players.opposing.front() : players.home.front();
@@ -496,6 +514,10 @@ void GenericDuel::StartDuel(DuelPlayer* dp) {
 	for(auto& obs : observers) {
 		obs->state = CTOS_LEAVE_GAME;
 		NetServer::ReSendToPlayer(obs);
+	}
+	if(IsInheritedDuelMode()) {
+		StartInheritedDuel();
+		return;
 	}
 	if(multiplayer_mode) {
 		StartMultiplayerDuel();
@@ -573,7 +595,9 @@ void GenericDuel::RematchResult(DuelPlayer* dp, uint8_t rematch) {
 			seeking_rematch = false;
 			const auto last_result = match_result.back();
 			match_result.clear();
-			if(IsMultiplayerMode()) {
+			if(IsInheritedDuelMode()) {
+				StartInheritedDuel();
+			} else if(IsMultiplayerMode()) {
 				StartMultiplayerDuel();
 			} else {
 				DuelPlayer* player = last_result == 0 ? players.opposing.front() : players.home.front();
@@ -594,8 +618,15 @@ void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
 		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
 	const bool multiplayer_mode = IsMultiplayerMode();
+	// Inherited Duel always starts with the original seat-0 duelist.
+	// No adversary can change the starter through a TP packet or a rematch.
+	if(IsInheritedDuelMode()) {
+		if(players.home.empty() || dp != players.home.front().player)
+			return;
+		tp = inherited_duel_lobby::STARTER_FIRST_CHOICE;
+	}
 	if(swapped) tp = 1 - tp;
-	if(!multiplayer_mode && ((!swapped && ((tp == 1 && players.opposing.front() == dp) || (tp == 0 && players.home.front() == dp))) ||
+	if(!multiplayer_mode && !IsInheritedDuelMode() && ((!swapped && ((tp == 1 && players.opposing.front() == dp) || (tp == 0 && players.home.front() == dp))) ||
 		(swapped && ((tp == 0 && players.opposing.front() == dp) || (tp == 1 && players.home.front() == dp))))) {
 		std::swap(players.opposing, players.home);
 		std::swap(players.home_size, players.opposing_size);
