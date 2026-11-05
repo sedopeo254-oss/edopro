@@ -81,6 +81,11 @@ bool GenericDuel::IsMultiplayerMode() const {
 		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
 	return duel_flags & (DUEL_BATTLE_ROYALE | DUEL_3_V_1);
 }
+bool GenericDuel::IsInheritedMode() const {
+	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
+		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
+	return (duel_flags & DUEL_INHERITED_DUEL) != 0;
+}
 void GenericDuel::StartMultiplayerDuel() {
 	IteratePlayers([](DuelPlayer* dueler) {
 		dueler->state = 0xff;
@@ -580,6 +585,7 @@ void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
 	const bool multiplayer_mode = IsMultiplayerMode();
 	if(swapped) tp = 1 - tp;
+	if(IsInheritedMode()) tp = 0; // Kaiba always uses original side 0.
 	if(!multiplayer_mode && ((!swapped && ((tp == 1 && players.opposing.front() == dp) || (tp == 0 && players.home.front() == dp))) ||
 		(swapped && ((tp == 0 && players.opposing.front() == dp) || (tp == 1 && players.home.front() == dp))))) {
 		std::swap(players.opposing, players.home);
