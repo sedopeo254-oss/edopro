@@ -262,6 +262,15 @@ void GenericDuel::JoinGame(DuelPlayer* dp, CTOS_JoinGame* pkt, bool is_creator) 
 	}
 }
 void GenericDuel::LeaveGame(DuelPlayer* dp) {
+	// Retired Kaiba can leave without terminating Yugi's live duel.
+	if(IsInheritedDuelMode() && inherited_successor_active && dp
+			&& dp != cur_player[0] && dp != cur_player[1]
+			&& dp->type == 0 && !players.home.empty()
+			&& players.home[0].player == dp) {
+		NetServer::DisconnectPlayer(dp);
+		players.home[0].player = nullptr;
+		return;
+	}
 	auto HostLeft = [this, &dp]()->bool {
 		if(dp == host_player) {
 			EndDuel();
@@ -465,6 +474,7 @@ void GenericDuel::UpdateDeck(DuelPlayer* dp, void* pdata, uint32_t len) {
 	}
 }
 void GenericDuel::StartDuel(DuelPlayer* dp) {
+	inherited_successor_active = false;
 	if(dp != host_player)
 		return;
 	if(!IteratePlayers([](duelist& dueler) { return dueler.ready; }))
@@ -813,6 +823,9 @@ void GenericDuel::DuelEndProc() {
 	}
 }
 void GenericDuel::Surrender(DuelPlayer* dp) {
+	// The inactive reserved/retired player cannot surrender an active seat.
+	if(IsInheritedDuelMode() && dp != cur_player[0] && dp != cur_player[1])
+		return;
 	/*if((players.home.size() + players.opposing.size()) != 2 || (players.home.front() != dp && players.opposing.front() != dp) || !pduel)
 		return;*/
 	if(pduel) {
@@ -1418,6 +1431,18 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		/*logical_player = */BufferIO::Read<uint8_t>(pbuf);
 		/*reason = */BufferIO::Read<uint8_t>(pbuf);
 		multiplayer_active_mask = BufferIO::Read<uint8_t>(pbuf) & 0x0f;
+		SEND(nullptr);
+		ResendToAll();
+		packets_cache.push_back(packet);
+		break;
+	}
+	case MSG_DUEL_SUCCESSION: {
+		// MSG_TAG_SWAP already handed the active controller to the next seat.
+		if(IsInheritedDuelMode() && packet.buff_size() == 10
+				&& players.home.size() == 2
+				&& players.home_iterator == players.home.begin() + 1
+				&& cur_player[0] == players.home[1].player)
+			inherited_successor_active = true;
 		SEND(nullptr);
 		ResendToAll();
 		packets_cache.push_back(packet);
