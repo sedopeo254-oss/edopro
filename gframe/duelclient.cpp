@@ -1842,6 +1842,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.succession_controller_generation[inherited_side] = generation;
 		mainGame->dInfo.succession_defeat_turn = defeat_turn;
 		mainGame->dInfo.succession_resume_turn = resume_turn;
+		if(!mainGame->dInfo.isCatchingUp) {
+			mainGame->PopupMessage(
+				L"Yami Yugi takes over Kaiba's Duel! The field, Life Points,"
+				L" Graveyard, Deck Master and turn count are inherited.",
+				L"DUEL SUCCESSION");
+		}
 		break;
 	}
 	case MSG_PLAYER_ELIMINATED: {
