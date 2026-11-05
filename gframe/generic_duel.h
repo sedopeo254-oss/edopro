@@ -81,6 +81,7 @@ protected:
 	};
 	bool CheckReady();
 	bool IsMultiplayerMode() const;
+	bool IsInheritedMode() const;
 	void StartMultiplayerDuel();
 	int8_t GetFirstFree(int8_t start = 0);
 	void SetAtPos(DuelPlayer* dp, size_t pos);
