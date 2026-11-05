@@ -1171,14 +1171,16 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		player = current.controler;
 		const auto& visible = current.location ? current : previous;
 		DuelPlayer* owner = nullptr;
-		if(IsMultiplayerMode()) {
+		if(IsInheritedDuelMode()) {
+			owner = visible.controler < 2 ? cur_player[visible.controler] : nullptr;
+		} else if(IsMultiplayerMode()) {
 			const auto logical = static_cast<uint8_t>(visible.controler == 0
 				? visible.duelist : players.home_size + visible.duelist);
 			if(logical < players.home_size + players.opposing_size)
 				owner = GetAtPos(logical).player;
 		}
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedDuelMode()) {
 			if(owner)
 				NetServer::ReSendToPlayer(owner);
 		} else {
@@ -1188,7 +1190,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		if (!(current.location & (LOCATION_GRAVE + LOCATION_OVERLAY)) && ((current.location & (LOCATION_DECK + LOCATION_HAND)) || (current.position & POS_FACEDOWN)))
 			BufferIO::Write<uint32_t>(pbufw, 0);
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedDuelMode()) {
 			ResendToAll(owner);
 		} else {
 			for(auto& dueler : (player == 1) ? players.home : players.opposing)
