@@ -90,7 +90,7 @@ jobs:
           ./travis/dependencies.sh
       - name: Compile modified EDOPro and bundled core
         shell: bash
-        run: ./travis/build.sh
+        run: bash ./travis/build-inherited-windows.sh
       - name: Package standalone Inherited Duel build and existing expansions
         shell: bash
         run: |
