@@ -47,7 +47,9 @@ has("gframe/drawing.cpp", "DrawCurrentInheritedName(self, true, dInfo.isTeam1);"
 has("gframe/drawing.cpp", "DrawCurrentInheritedName(oppo, false, !dInfo.isTeam1);")
 # The classic two-side drawing branch must keep its own loop index;
 # this is compiled on Windows even when the new HUD branch is selected.
-has("gframe/drawing.cpp", "} else {\\n\\t\\tint i = 0;\\n\\t\\tfor (const auto& player : self) {")
+has("gframe/drawing.cpp", """} else {
+		int i = 0;
+		for (const auto& player : self) {""")
 has("gframe/drawing.cpp", "const auto visible_self_rows = inherited_hud ? 1u : self.size();")
 has("gframe/drawing.cpp", "const auto visible_oppo_rows = inherited_hud ? 1u : oppo.size();")
 has("gframe/inherited_duel_hud.h", "inline const std::wstring& VisibleName(")
