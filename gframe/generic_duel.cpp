@@ -262,6 +262,15 @@ void GenericDuel::JoinGame(DuelPlayer* dp, CTOS_JoinGame* pkt, bool is_creator) 
 	}
 }
 void GenericDuel::LeaveGame(DuelPlayer* dp) {
+	// Kaiba may leave after Yugi has taken his slot. A former controller must
+	// not trigger the normal mid-duel forfeit or shut down the inherited room.
+	if(IsInheritedMode() && pduel && players.home.size() == 2
+			&& players.home[0].player == dp
+			&& cur_player[0] == players.home[1].player) {
+		NetServer::DisconnectPlayer(dp);
+		players.home[0].player = nullptr;
+		return;
+	}
 	auto HostLeft = [this, &dp]()->bool {
 		if(dp == host_player) {
 			EndDuel();
@@ -814,6 +823,9 @@ void GenericDuel::DuelEndProc() {
 	}
 }
 void GenericDuel::Surrender(DuelPlayer* dp) {
+	// A standby or superseded duelist cannot end another player's duel.
+	if(IsInheritedMode() && dp != cur_player[0] && dp != cur_player[1])
+		return;
 	/*if((players.home.size() + players.opposing.size()) != 2 || (players.home.front() != dp && players.opposing.front() != dp) || !pduel)
 		return;*/
 	if(pduel) {
