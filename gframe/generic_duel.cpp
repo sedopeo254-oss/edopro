@@ -1459,6 +1459,16 @@ void GenericDuel::AfterParsing(const CoreUtils::Packet& packet, [[maybe_unused]]
 	int player;
 	const auto* pbuf = packet.data();
 	switch(message) {
+	case MSG_DUEL_SUCCESSION: {
+		if(IsInheritedMode()) {
+			// Sending() already switched the authorized responder. Never copy
+			// Yugi's new private piles to the outgoing Kaiba connection.
+			RefreshHand(0);
+			RefreshExtra(0);
+			PseudoRefreshDeck(0);
+		}
+		break;
+	}
 	case MSG_SHUFFLE_HAND:
 	case MSG_DRAW: {
 		player = BufferIO::Read<uint8_t>(pbuf);
