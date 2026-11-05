@@ -1842,6 +1842,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.succession_controller_generation[inherited_side] = generation;
 		mainGame->dInfo.succession_defeat_turn = defeat_turn;
 		mainGame->dInfo.succession_resume_turn = resume_turn;
+		// Same field, different controller. Refresh only the displayed name;
+		// player LP, decks, graveyard and monsters are NOT reset here.
+		mainGame->dInfo.current_player[mainGame->LocalPlayer(inherited_side)] = 1;
+		if(!mainGame->dInfo.isCatchingUp)
+			mainGame->PopupMessage(L"The successor has inherited the duel!",
+				L"DUEL SUCCESSION");
 		break;
 	}
 	case MSG_PLAYER_ELIMINATED: {
