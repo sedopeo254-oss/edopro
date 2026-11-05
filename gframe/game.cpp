@@ -1403,6 +1403,10 @@ void Game::PopulateGameHostWindows() {
 		chkHostPrepReady[i] = env->addCheckBox(false, Scale(250, 65 + i * 25, 270, 85 + i * 25), wHostPrepare, CHECKBOX_HP_READY, L"");
 		chkHostPrepReady[i]->setEnabled(false);
 	}
+	for(int i = 0; i < 3; ++i) {
+		stInheritedSeatRole[i] = env->addStaticText(L"", Scale(40, 84 + i * 35, 240, 98 + i * 35), false, false, wHostPrepare);
+		stInheritedSeatRole[i]->setVisible(false);
+	}
 	btnHostPrepOB = env->addButton(Scale(10, 180, 110, 205), wHostPrepare, BUTTON_HP_OBSERVER, gDataManager->GetSysString(1252).data());
 	defaultStrings.emplace_back(btnHostPrepOB, 1252);
 	stHostPrepOB = env->addStaticText(epro::format(L"{} 0", gDataManager->GetSysString(1253)).data(), Scale(10, 210, 270, 230), false, false, wHostPrepare);
