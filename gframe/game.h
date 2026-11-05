@@ -464,6 +464,8 @@ struct host_panel_elements {
 	irr::gui::IGUIButton* btnHostPrepWindBot;
 	irr::gui::IGUIButton* btnHostPrepOB;
 	irr::gui::IGUIStaticText* stHostPrepDuelist[6];
+	// Separate visual-only role captions: do not modify player nicknames/replay data.
+	irr::gui::IGUIStaticText* stInheritedSeatRole[3];
 	irr::gui::IGUICheckBox* chkHostPrepReady[6];
 	irr::gui::IGUIButton* btnHostPrepKick[6];
 	irr::gui::IGUIComboBox* cbDeckSelect;
