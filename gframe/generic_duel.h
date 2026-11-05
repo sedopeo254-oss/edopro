@@ -83,6 +83,7 @@ protected:
 	bool IsMultiplayerMode() const;
 	bool IsInheritedDuelMode() const;
 	void StartMultiplayerDuel();
+	void StartInheritedDuel();
 	int8_t GetFirstFree(int8_t start = 0);
 	void SetAtPos(DuelPlayer* dp, size_t pos);
 	duelist& GetAtPos(uint8_t pos);
