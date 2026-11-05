@@ -614,17 +614,17 @@ void GenericDuel::RematchResult(DuelPlayer* dp, uint8_t rematch) {
 void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 	if(dp->state != CTOS_TP_RESULT)
 		return;
+	// Reject unauthorized seat takeover before mutating the duel stage.
+	if(IsInheritedDuelMode() && (players.home.empty() || dp != players.home.front().player))
+		return;
 	duel_stage = DUEL_STAGE_DUELING;
 	const uint64_t duel_flags = static_cast<uint64_t>(host_info.duel_flag_low)
 		| (static_cast<uint64_t>(host_info.duel_flag_high) << 32);
 	const bool multiplayer_mode = IsMultiplayerMode();
 	// Inherited Duel always starts with the original seat-0 duelist.
 	// No adversary can change the starter through a TP packet or a rematch.
-	if(IsInheritedDuelMode()) {
-		if(players.home.empty() || dp != players.home.front().player)
-			return;
+	if(IsInheritedDuelMode())
 		tp = inherited_duel_lobby::STARTER_FIRST_CHOICE;
-	}
 	if(swapped) tp = 1 - tp;
 	if(!multiplayer_mode && !IsInheritedDuelMode() && ((!swapped && ((tp == 1 && players.opposing.front() == dp) || (tp == 0 && players.home.front() == dp))) ||
 		(swapped && ((tp == 0 && players.opposing.front() == dp) || (tp == 1 && players.home.front() == dp))))) {
