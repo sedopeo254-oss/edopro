@@ -760,6 +760,7 @@ void Game::DrawMisc() {
 			DrawCurrentInheritedName(self, true, dInfo.isTeam1);
 			DrawCurrentInheritedName(oppo, false, !dInfo.isTeam1);
 		} else {
+		int i = 0;
 		for (const auto& player : self) {
 			const bool current = i == dInfo.current_player[0];
 			const auto logical = logical_player(false, i++);
