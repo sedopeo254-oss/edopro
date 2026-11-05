@@ -1402,6 +1402,32 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		}
 		break;
 	}
+	case MSG_DUEL_SUCCESSION: {
+		// Only a successfully committed core transfer can switch the active
+		// network controller. Kaiba is NOT permitted to answer Yugi's prompts.
+		if(!IsInheritedMode() || packet.buff_size() != 10
+				|| players.home.size() != 2 || !players.home[1].player)
+			break;
+		const uint8_t physical_side = BufferIO::Read<uint8_t>(pbuf);
+		const uint8_t generation = BufferIO::Read<uint8_t>(pbuf);
+		const uint32_t lost_turn = BufferIO::Read<uint32_t>(pbuf);
+		const uint32_t new_turn = BufferIO::Read<uint32_t>(pbuf);
+		if(physical_side != 0 || generation != 1 || !lost_turn
+				|| new_turn <= lost_turn)
+			break;
+		players.home_iterator = players.home.begin() + 1;
+		if(players.home.front().player)
+			players.home.front().player->state = 0xff;
+		cur_player[0] = players.home_iterator->player;
+		response_override[0] = nullptr;
+		pending_response[0] = CoreUtils::Packet{};
+		response_player = nullptr;
+		host_player = cur_player[0]; // Original host can now disconnect safely.
+		SEND(nullptr);
+		ResendToAll();
+		packets_cache.push_back(packet);
+		break;
+	}
 	case MSG_PLAYER_ELIMINATED: {
 		/*logical_player = */BufferIO::Read<uint8_t>(pbuf);
 		/*reason = */BufferIO::Read<uint8_t>(pbuf);
