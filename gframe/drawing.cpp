@@ -736,6 +736,29 @@ void Game::DrawMisc() {
 				return 0xffffd060;
 			return current ? 0xffffffff : 0xff808080;
 		};
+		if(dInfo.HasFieldFlag(DUEL_INHERITED_DUEL)) {
+			// Inherited Duel is a 2+1 lobby with exactly two on-field sides.
+			// The standard right-hand name rectangle starts with ZERO width and
+			// changes only its left edge, which clipped the first letter ("Big 5"
+			// appeared as "ig 5"). Draw BOTH sides in fixed-width, clipped rows
+			// anchored to their respective LP bars. Do not change other modes.
+			auto DrawInheritedNames = [&](const std::vector<std::wstring>& names,
+					bool left, bool inherited_team) {
+				for(size_t index = 0; index < names.size(); ++index) {
+					const auto top = 31 + static_cast<irr::s32>(index) * 23;
+					const auto rect = Resize(left ? 335 : 695, top,
+						left ? 629 : 986, top + 19);
+					const auto active_index = static_cast<size_t>(
+						dInfo.succession_controller_generation[0] ? 1 : 0);
+					const bool active = !inherited_team || index == active_index;
+					const irr::video::SColor color = active ? 0xffffffff : 0xffd0d0d0;
+					// Do not add placeholder text or silently shorten player names.
+					textFont->drawustring(names[index], rect, color, false, true, &rect);
+				}
+			};
+			DrawInheritedNames(self, true, dInfo.isTeam1);
+			DrawInheritedNames(oppo, false, !dInfo.isTeam1);
+		} else {
 		int i = 0;
 		for (const auto& player : self) {
 			const bool current = i == dInfo.current_player[0];
@@ -753,6 +776,7 @@ void Game::DrawMisc() {
 			p2size.UpperLeftCorner.X = basecorner - cld.Width;
 			textFont->drawustring(utext, p2size, status_color(logical, current), false, false, 0);
 			p2size += irr::core::vector2di{ 0, p2size.getHeight() + ResizeY(4) };
+		}
 		}
 	}
 	/*driver->draw2DRectangle(Resize(632, 10, 688, 30), 0x00000000, 0x00000000, 0xffffffff, 0xffffffff);
