@@ -30,6 +30,11 @@ jobs:
           sh ocgcore/tests/run_duel_succession_transfer_tests.sh
           sh ocgcore/tests/run_multiplayer_state_tests.sh
           sh ocgcore/tests/run_multiplayer_field_tests.sh
+      - name: Verify active on-screen names in Kaiba-Yugi-Noah succession
+        shell: bash
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_hud_test.cpp -o /tmp/inherited_duel_hud_test
+          /tmp/inherited_duel_hud_test
       - name: Install C++/Meson build dependencies
         shell: bash
         run: |
