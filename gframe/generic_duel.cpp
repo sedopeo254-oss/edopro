@@ -1739,7 +1739,7 @@ void GenericDuel::RefreshLocation(uint8_t player, uint32_t flag, uint8_t locatio
 		packets_cache.emplace_back(buffer.data(), buffer.size());
 		return;
 	}
-	if(IsMultiplayerMode()) {
+	if(IsMultiplayerMode() || IsInheritedDuelMode()) {
 		buffer.resize(3);
 		query.GenerateBuffer(buffer, true);
 		NetServer::SendBufferToPlayer(cur_player[player], STOC_GAME_MSG, buffer);
@@ -1778,9 +1778,9 @@ void GenericDuel::RefreshSingle(uint8_t player, uint8_t location, uint8_t sequen
 	CoreUtils::Query query(buff);
 	query.GenerateBuffer(buffer, false, false);
 	replay_stream.emplace_back(buffer.data(), buffer.size() - 1);
-	if(IsMultiplayerMode()) {
+	if(IsMultiplayerMode() || IsInheritedDuelMode()) {
 		DuelPlayer* owner = cur_player[player];
-		if(location == LOCATION_MZONE || location == LOCATION_SZONE) {
+		if(IsMultiplayerMode() && (location == LOCATION_MZONE || location == LOCATION_SZONE)) {
 			const auto stride = static_cast<uint8_t>(location == LOCATION_MZONE ? 7 : 8);
 			const auto duelist = static_cast<uint8_t>(sequence / stride);
 			const auto logical = static_cast<uint8_t>(
