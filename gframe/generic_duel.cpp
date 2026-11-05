@@ -1307,8 +1307,13 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		/*uint32_t pcount = */BufferIO::Read<uint32_t>(pbuf);
 		uint32_t hcount = BufferIO::Read<uint32_t>(pbuf);
 		pbufw = pbuf + 4;
+		// The successor alone sees the merged Hand and Extra Deck.
+		DuelPlayer* successor = IsInheritedDuelMode() && player == 0
+			&& players.home.size() > 1 ? players.home[1].player : nullptr;
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(successor) {
+			NetServer::ReSendToPlayer(successor);
+		} else if(IsMultiplayerMode()) {
 			NetServer::ReSendToPlayer(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 0) ? players.home : players.opposing)
@@ -1337,7 +1342,9 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			}
 		}
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(successor) {
+			ResendToAll(successor);
+		} else if(IsMultiplayerMode()) {
 			ResendToAll(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 1) ? players.home : players.opposing)
