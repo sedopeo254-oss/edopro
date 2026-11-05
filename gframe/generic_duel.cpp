@@ -595,7 +595,7 @@ void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 	const bool multiplayer_mode = IsMultiplayerMode();
 	if(swapped) tp = 1 - tp;
 	if(IsInheritedMode()) tp = 0; // Kaiba always uses original side 0.
-	if(!multiplayer_mode && ((!swapped && ((tp == 1 && players.opposing.front() == dp) || (tp == 0 && players.home.front() == dp))) ||
+	if(!IsInheritedMode() && !multiplayer_mode && ((!swapped && ((tp == 1 && players.opposing.front() == dp) || (tp == 0 && players.home.front() == dp))) ||
 		(swapped && ((tp == 0 && players.opposing.front() == dp) || (tp == 1 && players.home.front() == dp))))) {
 		std::swap(players.opposing, players.home);
 		std::swap(players.home_size, players.opposing_size);
