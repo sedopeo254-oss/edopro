@@ -54,6 +54,27 @@ has("gframe/drawing.cpp", "const auto visible_self_rows = inherited_hud ? 1u : s
 has("gframe/drawing.cpp", "const auto visible_oppo_rows = inherited_hud ? 1u : oppo.size();")
 has("gframe/inherited_duel_hud.h", "inline const std::wstring& VisibleName(")
 
+# The role captions live in their own label widgets. Never overwrite
+# stHostPrepDuelist names, which EDOPro serializes into YRPX.
+has("gframe/game.h", "stInheritedSeatRole[3]")
+has("gframe/game.cpp", "stInheritedSeatRole[i] = env->addStaticText(")
+has("gframe/duelclient.cpp", "const bool inherited_lobby =")
+has("gframe/duelclient.cpp", "stInheritedSeatRole[i]->setText(inherited_lobby")
+has("gframe/duelclient.cpp", "inherited_duel_lobby::SeatCaption(")
+has("gframe/duelclient.cpp", "const int row = inherited_lobby ? 65 + i * 35")
+has("gframe/inherited_duel_lobby.h", "STARTER_FIRST_CHOICE = 1")
+has("gframe/generic_duel.cpp", "void GenericDuel::StartInheritedDuel() {")
+has("gframe/generic_duel.cpp", "TPResult(starter, inherited_duel_lobby::STARTER_FIRST_CHOICE);")
+has("gframe/generic_duel.cpp", "if(IsInheritedDuelMode() && (players.home.empty() || dp != players.home.front().player))")
+has("gframe/generic_duel.h", "void StartInheritedDuel();")
+# Default RPS is still available to Standard, while the special mode bypasses
+# it and starts via a server-side TPResult for the original Kaiba seat.
+server = (root / "gframe/generic_duel.cpp").read_text(encoding="utf-8")
+start_duel = server[server.index("void GenericDuel::StartDuel("):server.index("void GenericDuel::HandResult(")]
+assert start_duel.index("if(IsInheritedDuelMode())") < start_duel.index("STOC_SELECT_HAND"), (
+    "Inherited Duel must start before the normal RPS handshake"
+)
+
 has("gframe/duelclient.cpp", "case MSG_DUEL_SUCCESSION:")
 has("gframe/duelclient.cpp", "if(len != 10")
 has("gframe/replay_mode.cpp", "case MSG_DUEL_SUCCESSION:")
