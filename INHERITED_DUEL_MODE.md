@@ -92,3 +92,32 @@ From ygopro-core: `sh tests/run_duel_succession_tests.sh`.
 IMPORTANT: At this stage, creating an Inherited Duel lobby starts a two-player
 duel with the new state tracked by the core. **It does not yet automatically
 invite Yugi, intercept Last Turn, transfer decks or complete the story.**
+
+## Stage 2 progress - transfer preflight (implemented, NOT yet live)
+
+- Core now includes `duel_succession_transfer.h` with an immutable transfer
+  preflight routine.
+- Each physical card instance needs a distinct ID. Distinct physical copies
+  with the same printed card ID are allowed, but the **same card instance**
+  cannot appear twice in the merged duel.
+- A successor may supply only undeployed Deck and Extra Deck entries.
+  Graveyard, banished, hand, field and Deck Master cards already in the duel
+  are retained unchanged by this validation procedure.
+- Cards belonging to Noah's side are rejected as successor imports.
+- Any bad identity, duplicate or oversized proposal fails as a whole.
+  A partially valid deck proposal cannot be applied.
+- Tests cover Kaiba's Blue-Eyes in GY, Kaiser Sea Horse in Deck Master,
+  Noah's surviving resources, a Yugi deck/Extra Deck and invalid proposals.
+- These are safe **preflight/data-model tests**, not a demonstration that
+  on-field card migration or real network control transfer is finished.
+- The EDOPro branch's `ocgcore` gitlink is pinned to the exact tested core
+  version. Build/test must use recursive submodules.
+
+Remaining blockers before end-to-end transition:
+1. Reserve and authenticate Yugi as the only authorized successor in the lobby.
+2. Obtain Yugi's Deck/Extra Deck with stable actual core card identities.
+3. Add an engine transaction that MOVES card objects without cloning IDs.
+4. Intercept only the verified Noah Last Turn preliminary result safely.
+5. Atomically switch the network responder/hidden information rights and
+   emit succession messages only after the transaction succeeds.
+6. Complete full Windows build and a 42-turn replay acceptance test.
