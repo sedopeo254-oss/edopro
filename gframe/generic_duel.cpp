@@ -1614,6 +1614,10 @@ int GenericDuel::Analyze(CoreUtils::Packet packet) {
 	return return_value;
 }
 void GenericDuel::GetResponse(DuelPlayer* dp, void* pdata, uint32_t len) {
+	// An inactive Kaiba/Yugi partner must never submit responses for the
+	// current controller; all older duel modes keep their existing path.
+	if(IsInheritedDuelMode() && (!response_player || response_player != dp))
+		return;
 	last_replay.Write<uint8_t>(len, false);
 	last_replay.WriteData(pdata, len);
 	OCG_DuelSetResponse(pduel, pdata, len);
