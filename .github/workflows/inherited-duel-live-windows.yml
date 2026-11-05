@@ -1,0 +1,239 @@
+name: Inherited Duel - Windows and Full Core CI
+
+on:
+  push:
+    branches:
+      - feature/inherited-duel-live-handoff-20261105
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inherited-duel-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Full core build and prior-mode regression checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Static client/core inherited-mode guards
+        run: python3 .github/tests/test_inherited_live_handoff.py
+      - name: Run succession, deck-transfer and multiplayer regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ocgcore/tests/run_duel_succession_tests.sh
+          sh ocgcore/tests/run_duel_succession_transfer_tests.sh
+          sh ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ocgcore/tests/run_multiplayer_field_tests.sh
+      - name: Install C++ core dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y meson ninja-build liblua5.4-dev pkg-config
+      - name: Compile complete ygopro-core with inheritance enabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          meson setup /tmp/edopro-inherited-core-build ocgcore -Ddefault_library=static -Dbuildtype=debug
+          meson compile -C /tmp/edopro-inherited-core-build
+
+  windows:
+    name: Windows x86 Inherited Duel Mode
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify matching core and prepare Irrlicht C++17
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ocgcore/duel_succession.h
+          test -f ocgcore/duel_succession_transfer.h
+          python3 .github/tests/test_inherited_live_handoff.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('irrlicht/premake5.lua')
+          s = p.read_text(encoding='utf-8')
+          marker = 'project "Irrlicht"\\n\\tkind "StaticLib"\\n'.replace('\\n','\n').replace('\\t','\t')
+          replacement = marker + '\tcppdialect "C++17"\n'
+          if replacement not in s:
+              if marker not in s:
+                  raise SystemExit('Irrlicht premake marker not found')
+              p.write_text(s.replace(marker, replacement, 1), encoding='utf-8')
+          PY
+
+      - uses: microsoft/setup-msbuild@v3
+
+      - name: Install v141 XP toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $componentsToAdd = @(
+            "Microsoft.VisualStudio.Component.VC.v141.x86.x64",
+            "Microsoft.VisualStudio.Component.WinXP"
+          )
+          [string]$workloadArgs = $componentsToAdd | ForEach-Object { " --add " + $_ }
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $workloadArgs, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Visual Studio Installer exited with code $($process.ExitCode)" }
+
+      - name: Install Premake and dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+
+      - name: Build bundled client
+        shell: bash
+        run: ./travis/build.sh
+
+      - name: Package Inherited Duel Mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+
+          # Package multiplayer Deck Master scripts used by 2v1. Keeping these
+          # beside the executable avoids silently loading an older local copy.
+          mkdir -p deploy/mode-info deploy/expansions/script
+          cp multiplayer-deck-master/c153999999.lua deploy/expansions/script/c153999999.lua
+          cp multiplayer-deck-master/c153000000.lua deploy/expansions/script/c153000000.lua
+          cp multiplayer-deck-master/c153000007.lua deploy/expansions/script/c153000007.lua
+          cp multiplayer-deck-master/c153000015.lua deploy/expansions/script/c153000015.lua
+          cp multiplayer-deck-master/c153000020.lua deploy/expansions/script/c153000020.lua
+          cp multiplayer-deck-master/c153000021.lua deploy/expansions/script/c153000021.lua
+          cp multiplayer-deck-master/c153000022.lua deploy/expansions/script/c153000022.lua
+          cp multiplayer-deck-master/c153000023.lua deploy/expansions/script/c153000023.lua
+          cp multiplayer-deck-master/c153000024.lua deploy/expansions/script/c153000024.lua
+          cp multiplayer-anime-cards/c13722870.lua deploy/expansions/script/c13722870.lua
+          cp multiplayer-anime-cards/c120000336.lua deploy/expansions/script/c120000336.lua
+          cp multiplayer-anime-cards/c99900043.lua deploy/expansions/script/c99900043.lua
+          cp multiplayer-anime-cards/c120000016.lua deploy/expansions/script/c120000016.lua
+          cp multiplayer-anime-cards/c511013020.lua deploy/expansions/script/c511013020.lua
+          cp multiplayer-anime-cards/c403.lua deploy/expansions/script/c403.lua
+          cp multiplayer-anime-cards/c55773067.lua deploy/expansions/script/c55773067.lua
+          cp multiplayer-anime-cards/c8050010.lua deploy/expansions/script/c8050010.lua
+          test -f deploy/expansions/script/c153999999.lua
+          test -f deploy/expansions/script/c153000000.lua
+          test -f deploy/expansions/script/c153000007.lua
+          test -f deploy/expansions/script/c153000015.lua
+          test -f deploy/expansions/script/c153000020.lua
+          test -f deploy/expansions/script/c153000021.lua
+          test -f deploy/expansions/script/c153000022.lua
+          test -f deploy/expansions/script/c153000023.lua
+          test -f deploy/expansions/script/c153000024.lua
+          test -f deploy/expansions/script/c13722870.lua
+          test -f deploy/expansions/script/c120000336.lua
+          test -f deploy/expansions/script/c99900043.lua
+          test -f deploy/expansions/script/c120000016.lua
+          test -f deploy/expansions/script/c511013020.lua
+          test -f deploy/expansions/script/c403.lua
+          test -f deploy/expansions/script/c55773067.lua
+          test -f deploy/expansions/script/c8050010.lua
+
+          cat > deploy/mode-info/2-vs-1-clean.txt <<'EOF'
+          Clean 2 vs 1 mode
+          Base: 137c63b1977b4cdd3165747cbdf00c892116e9d0
+
+          P3 -> P1 -> P2 turn order.
+          Three independent LP/Hand/Deck/Extra/GY/Banish resource sets.
+          P1 and P2 own independent simultaneous fields.
+          Team may use each other's on-field cards.
+          Swap Team changes the viewed P1/P2 field and private piles.
+          Deck Master display follows the logical owner; cards leaving a logical
+          private pile for the field preserve that owner's field.
+          Standard, Battle Royale and 3v1 are unchanged and regression-tested.
+          EOF
+          cat > deploy/mode-info/INHERITED_DUEL_README.txt <<'EOF'
+          Inherited Duel Mode - Noah vs Kaiba, then Yugi
+          Host a three-duelist room with KAIBA (seat 0), YUGI (seat 1, standby), NOAH (seat 2).
+          Only TWO physical fields are active. On Noah's WIN_REASON_LAST_TURN victory
+          over Kaiba, Yugi automatically takes control of Kaiba's side at the next turn.
+          The live Kaiba cards, LP, Graveyard, banish, hand and Deck Master are retained.
+          Yugi's preloaded Deck and Extra Deck cards are adopted without cloning cards.
+          Standard, 2v1, 3v1 and Battle Royale remain separately supported.
+          This is an experimental build requiring live duel/replay acceptance testing.
+          EOF
+
+          rm -f deploy/compressed-ygopro.exe
+          test -f deploy/ygopro.exe
+
+      - name: Microsoft Defender scan and SHA-256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $deploy = (Resolve-Path "deploy").Path
+          $exe = (Resolve-Path "deploy\ygopro.exe").Path
+
+          if (Test-Path "deploy\compressed-ygopro.exe") {
+            throw "compressed-ygopro.exe must never be shipped"
+          }
+
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
+          $sig = Get-AuthenticodeSignature $exe
+
+          $security = @(
+            "EDOPro Inherited Duel security manifest"
+            "Commit: $env:GITHUB_SHA"
+            "ygopro.exe SHA-256: $hash"
+            "Authenticode status: $($sig.Status)"
+            "UPX/compressed executable: absent"
+          )
+
+          $mp = Get-MpComputerStatus
+          $security += "Microsoft Defender antivirus enabled: $($mp.AntivirusEnabled)"
+          $security += "Microsoft Defender engine: $($mp.AMEngineVersion)"
+          $security += "Microsoft Defender signatures: $($mp.AntivirusSignatureVersion)"
+          if (-not $mp.AntivirusEnabled) {
+            throw "Microsoft Defender is unavailable on the build runner; refusing to label this artifact scanned"
+          }
+
+          Start-MpScan -ScanType CustomScan -ScanPath $deploy
+
+          $detections = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            ($_.Resources -join " ") -like "*$deploy*"
+          })
+          if ($detections.Count -gt 0) {
+            $detections | Format-List * | Out-String | Write-Host
+            throw "Microsoft Defender detected a threat in the packaged build"
+          }
+
+          $security += "Microsoft Defender custom scan: PASS - no detections"
+          New-Item -ItemType Directory -Force "deploy\mode-info" | Out-Null
+          $security | Set-Content -Encoding UTF8 "deploy\mode-info\SECURITY.txt"
+          $security | ForEach-Object { Write-Host $_ }
+
+      - name: Windows startup smoke test
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "deploy\ygopro.exe").Path
+          $p = Start-Process -FilePath $exe -WorkingDirectory (Resolve-Path ".").Path -ArgumentList "-r" -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) {
+            if ($p.ExitCode -ne 0) { throw "ygopro.exe exited during startup with code $($p.ExitCode)" }
+          } else {
+            Stop-Process -Id $p.Id -Force
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edopro-inherited-duel-windows-x86
+          path: deploy/
+          if-no-files-found: error
