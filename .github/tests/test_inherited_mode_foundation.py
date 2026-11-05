@@ -15,6 +15,18 @@ def has(path: str, fragment: str) -> None:
 core_flags = (root / "ocgcore/ocgapi_constants.h").read_text(encoding="utf-8")
 assert "#define DUEL_INHERITED_DUEL    0x8000000000ULL" in core_flags
 assert "#define MSG_DUEL_SUCCESSION 197" in core_flags
+# The Windows client vendors its own API header: both copies must agree.
+import re
+client_flags = (root / "gframe/ocgapi_constants.h").read_text(encoding="utf-8")
+for key in ("DUEL_INHERITED_DUEL", "MSG_DUEL_SUCCESSION",
+            "DUEL_BATTLE_ROYALE", "DUEL_3_V_1"):
+    def definition(content):
+        found = re.search(r"^#define\\s+" + key + r"\\s+(\\S+)", content, re.M)
+        assert found, f"Missing {key} definition"
+        return found.group(1)
+    assert definition(core_flags) == definition(client_flags), (
+        f"Windows client/core API mismatch for {key}"
+    )
 has("gframe/game.cpp", 'cbMultiplayerMode->addItem(L"Inherited Duel Mode");')
 has("gframe/game.cpp", "duel_param |= DUEL_INHERITED_DUEL;")
 has("gframe/netserver.cpp", "multiplayer_flags & (multiplayer_flags - 1)")
