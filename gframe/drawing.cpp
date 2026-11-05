@@ -1,6 +1,7 @@
 #include "game_config.h"
 #include <irrlicht.h>
 #include "game.h"
+#include "inherited_duel_hud.h"
 #include "materials.h"
 #include "client_card.h"
 #include "deck_manager.h"
@@ -638,9 +639,14 @@ void Game::DrawMisc() {
 	const bool local_side_has_turn = multiplayer_mode
 		? ((dInfo.logical_turn_player < dInfo.team1) == dInfo.isTeam1)
 		: ((dInfo.turn % 2 && dInfo.isFirst) || (!(dInfo.turn % 2) && !dInfo.isFirst));
+	// The inherited 2+1 lobby has only one visible duelist per field.
+	// Keep the standard, 3v1 and Battle Royale HUD geometry unchanged.
+	const auto inherited_hud = dInfo.HasFieldFlag(DUEL_INHERITED_DUEL);
+	const auto visible_self_rows = inherited_hud ? 1u : self.size();
+	const auto visible_oppo_rows = inherited_hud ? 1u : oppo.size();
 	const auto lpframe_pos = local_side_has_turn ?
-						Resize(327, 8, 630, 51 + static_cast<irr::s32>(23 * (self.size() - 1))) :
-						Resize(689, 8, 991, 51 + static_cast<irr::s32>(23 * (oppo.size() - 1)));
+						Resize(327, 8, 630, 51 + static_cast<irr::s32>(23 * (visible_self_rows - 1))) :
+						Resize(689, 8, 991, 51 + static_cast<irr::s32>(23 * (visible_oppo_rows - 1)));
 	driver->draw2DRectangle(skin::DUELFIELD_TURNPLAYER_COLOR_VAL, lpframe_pos);
 	driver->draw2DRectangleOutline(lpframe_pos, skin::DUELFIELD_TURNPLAYER_OUTLINE_COLOR_VAL);
 	driver->draw2DImage(imageManager.tLPFrame, Resize(330, 10, 629, 30), irr::core::recti(0, 0, 200, 20), 0, 0, true);
@@ -736,30 +742,24 @@ void Game::DrawMisc() {
 				return 0xffffd060;
 			return current ? 0xffffffff : 0xff808080;
 		};
-		if(dInfo.HasFieldFlag(DUEL_INHERITED_DUEL)) {
-			// Inherited Duel is a 2+1 lobby with exactly two on-field sides.
-			// The standard right-hand name rectangle starts with ZERO width and
-			// changes only its left edge, which clipped the first letter ("Big 5"
-			// appeared as "ig 5"). Draw BOTH sides in fixed-width, clipped rows
-			// anchored to their respective LP bars. Do not change other modes.
-			auto DrawInheritedNames = [&](const std::vector<std::wstring>& names,
-					bool left, bool inherited_team) {
-				for(size_t index = 0; index < names.size(); ++index) {
-					const auto top = 31 + static_cast<irr::s32>(index) * 23;
-					const auto rect = Resize(left ? 335 : 695, top,
-						left ? 629 : 986, top + 19);
-					const auto active_index = static_cast<size_t>(
-						dInfo.succession_controller_generation[0] ? 1 : 0);
-					const bool active = !inherited_team || index == active_index;
-					const irr::video::SColor color = active ? 0xffffffff : 0xffd0d0d0;
-					// Do not add placeholder text or silently shorten player names.
-					textFont->drawustring(names[index], rect, color, false, true, &rect);
-				}
+		if(inherited_hud) {
+			// One on-field name per side, even though Kaiba and Yugi have
+			// independent seats/decks in the 2+1 lobby. The authoritative
+			// MSG_DUEL_SUCCESSION event changes the controller generation
+			// (and replay sees the same event).
+			auto DrawCurrentInheritedName = [&](const std::vector<std::wstring>& names,
+					bool left, bool inherited_side) {
+				const auto& visible_name = inherited_duel_hud::VisibleName(
+					names, inherited_side, dInfo.succession_controller_generation[0]);
+				if(visible_name.empty())
+					return;
+				// Full-width rectangle prevents clipping the first letter.
+				const auto rect = Resize(left ? 335 : 695, 31, left ? 629 : 986, 50);
+				textFont->drawustring(visible_name, rect, 0xffffffff, false, true, &rect);
 			};
-			DrawInheritedNames(self, true, dInfo.isTeam1);
-			DrawInheritedNames(oppo, false, !dInfo.isTeam1);
+			DrawCurrentInheritedName(self, true, dInfo.isTeam1);
+			DrawCurrentInheritedName(oppo, false, !dInfo.isTeam1);
 		} else {
-		int i = 0;
 		for (const auto& player : self) {
 			const bool current = i == dInfo.current_player[0];
 			const auto logical = logical_player(false, i++);
