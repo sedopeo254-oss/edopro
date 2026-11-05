@@ -1,0 +1,27 @@
+name: Inherited Duel Foundation CI
+
+on:
+  push:
+    branches:
+      - feature/inherited-duel-succession-v1-20261105
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Validate inherited mode client/core wiring
+        run: python3 .github/tests/test_inherited_mode_foundation.py
+      - name: Run Succession state machine unit tests
+        run: sh ./ocgcore/tests/run_duel_succession_tests.sh
+      - name: Re-run existing multiplayer state tests
+        run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
+      - name: Re-run existing multiplayer field tests
+        run: sh ./ocgcore/tests/run_multiplayer_field_tests.sh
