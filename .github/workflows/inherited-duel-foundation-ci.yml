@@ -21,6 +21,8 @@ jobs:
         run: python3 .github/tests/test_inherited_mode_foundation.py
       - name: Run Succession state machine unit tests
         run: sh ./ocgcore/tests/run_duel_succession_tests.sh
+      - name: Validate no-duplicate succession deck transfer
+        run: sh ./ocgcore/tests/run_duel_succession_transfer_tests.sh
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
       - name: Re-run existing multiplayer field tests
