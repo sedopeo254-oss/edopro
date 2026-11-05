@@ -35,12 +35,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y meson ninja-build pkg-config liblua5.4-dev
-      - name: Compile entire core with takeover code (not only the test harnesses)
+      - name: Compile all C++ core objects including live succession
         shell: bash
         run: |
           set -euo pipefail
           meson setup /tmp/inherited-core-build ocgcore -Dbuildtype=release
-          meson compile -C /tmp/inherited-core-build
+          # EDOPro builds Lua sources as C++, whereas Ubuntu's system Lua
+          # library is built as C. Linux verifies every core C++ object;
+          # the bundled Windows job performs the authoritative full link.
+          mapfile -t objects < <(ninja -C /tmp/inherited-core-build -t targets all |
+            awk -F: '/^libocgcore\\.so\\.p\\/[^:]+\\.cpp\\.o:/ { print $1 }')
+          test "${#objects[@]}" -ge 17
+          ninja -C /tmp/inherited-core-build "${objects[@]}"
 
   windows:
     name: Windows x86 Inherited Duel executable (no UPX)
