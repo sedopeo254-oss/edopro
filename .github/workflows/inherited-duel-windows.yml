@@ -35,6 +35,11 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_hud_test.cpp -o /tmp/inherited_duel_hud_test
           /tmp/inherited_duel_hud_test
+      - name: Test inherited lobby role labels and starting seat
+        shell: bash
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_lobby_test.cpp -o /tmp/inherited_duel_lobby_test
+          /tmp/inherited_duel_lobby_test
       - name: Install C++/Meson build dependencies
         shell: bash
         run: |
