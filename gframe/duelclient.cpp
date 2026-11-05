@@ -1827,6 +1827,23 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->showcard = 0;
 		break;
 	}
+	case MSG_DUEL_SUCCESSION: {
+		// Version 1 event payload: physical side, controller generation,
+		// preliminary-loss turn, first successor turn. Do not touch LP or piles.
+		if(len != 10 || !mainGame->dInfo.HasFieldFlag(DUEL_INHERITED_DUEL))
+			break;
+		const uint8_t inherited_side = BufferIO::Read<uint8_t>(pbuf);
+		const uint8_t generation = BufferIO::Read<uint8_t>(pbuf);
+		const uint32_t defeat_turn = BufferIO::Read<uint32_t>(pbuf);
+		const uint32_t resume_turn = BufferIO::Read<uint32_t>(pbuf);
+		if(inherited_side > 1 || generation != 1 || !defeat_turn
+				|| resume_turn <= defeat_turn)
+			break;
+		mainGame->dInfo.succession_controller_generation[inherited_side] = generation;
+		mainGame->dInfo.succession_defeat_turn = defeat_turn;
+		mainGame->dInfo.succession_resume_turn = resume_turn;
+		break;
+	}
 	case MSG_PLAYER_ELIMINATED: {
 		const uint8_t player = BufferIO::Read<uint8_t>(pbuf);
 		const uint8_t reason = BufferIO::Read<uint8_t>(pbuf);
@@ -1979,6 +1996,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->showcard = 0;
 		}
 		mainGame->dInfo.isStarted = true;
+		mainGame->dInfo.succession_controller_generation[0] = 0;
+		mainGame->dInfo.succession_controller_generation[1] = 0;
+		mainGame->dInfo.succession_defeat_turn = 0;
+		mainGame->dInfo.succession_resume_turn = 0;
 		mainGame->dInfo.active_player_mask = (mainGame->dInfo.duel_params & (DUEL_BATTLE_ROYALE | DUEL_3_V_1)) ? 0x0f : 0x03;
 		mainGame->dInfo.eliminated_player_mask = 0;
 		mainGame->dInfo.logical_turn_player = 0;
