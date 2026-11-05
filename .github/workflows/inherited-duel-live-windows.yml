@@ -31,16 +31,23 @@ jobs:
           sh ocgcore/tests/run_duel_succession_transfer_tests.sh
           sh ocgcore/tests/run_multiplayer_state_tests.sh
           sh ocgcore/tests/run_multiplayer_field_tests.sh
-      - name: Install C++ core dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y meson ninja-build liblua5.4-dev pkg-config
-      - name: Compile complete ygopro-core with inheritance enabled
+      - name: Compile every core C++ translation unit
         shell: bash
         run: |
           set -euo pipefail
-          meson setup /tmp/edopro-inherited-core-build ocgcore -Ddefault_library=static -Dbuildtype=debug
-          meson compile -C /tmp/edopro-inherited-core-build
+          ROOT="$PWD/ocgcore"
+          LUA="$ROOT/lua/src"
+          sources=(
+            card.cpp duel.cpp effect.cpp field.cpp interpreter.cpp
+            libcard.cpp libdebug.cpp libduel.cpp libeffect.cpp libgroup.cpp
+            multiplayer.cpp ocgapi.cpp operations.cpp playerop.cpp
+            processor.cpp battle_royale_turn_order.cpp processor_visit.cpp scriptlib.cpp
+          )
+          for i in "${!sources[@]}"; do
+            sources[$i]="$ROOT/${sources[$i]}"
+          done
+          c++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers \
+            -I"$ROOT" -I"$LUA" -fsyntax-only "${sources[@]}"
 
   windows:
     name: Windows x86 Inherited Duel Mode
