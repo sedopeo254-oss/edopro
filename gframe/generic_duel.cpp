@@ -1143,7 +1143,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		player = BufferIO::Read<uint8_t>(pbuf);
 		count = BufferIO::Read<uint32_t>(pbuf);
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedDuelMode()) {
 			NetServer::ReSendToPlayer(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 0) ? players.home : players.opposing)
@@ -1152,7 +1152,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		for(uint32_t i = 0; i < count; ++i)
 			BufferIO::Write<uint32_t>(pbuf, 0);
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedDuelMode()) {
 			ResendToAll(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 1) ? players.home : players.opposing)
