@@ -1182,6 +1182,8 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		if(IsMultiplayerMode()) {
 			if(owner)
 				NetServer::ReSendToPlayer(owner);
+		} else if(IsInheritedMode()) {
+			NetServer::ReSendToPlayer(cur_player[visible.controler]);
 		} else {
 			for(auto& dueler : (player == 0) ? players.home : players.opposing)
 				NetServer::ReSendToPlayer(dueler);
@@ -1191,6 +1193,8 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		SEND(nullptr);
 		if(IsMultiplayerMode()) {
 			ResendToAll(owner);
+		} else if(IsInheritedMode()) {
+			ResendToAll(cur_player[visible.controler]);
 		} else {
 			for(auto& dueler : (player == 1) ? players.home : players.opposing)
 				NetServer::ReSendToPlayer(dueler);
