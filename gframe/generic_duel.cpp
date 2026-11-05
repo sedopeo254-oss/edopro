@@ -1144,7 +1144,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		player = BufferIO::Read<uint8_t>(pbuf);
 		count = BufferIO::Read<uint32_t>(pbuf);
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedMode()) {
 			NetServer::ReSendToPlayer(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 0) ? players.home : players.opposing)
@@ -1153,7 +1153,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		for(uint32_t i = 0; i < count; ++i)
 			BufferIO::Write<uint32_t>(pbuf, 0);
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedMode()) {
 			ResendToAll(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 1) ? players.home : players.opposing)
@@ -1247,7 +1247,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		count = BufferIO::Read<uint32_t>(pbuf);
 		pbufw = pbuf;
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedMode()) {
 			NetServer::ReSendToPlayer(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 0) ? players.home : players.opposing)
@@ -1263,7 +1263,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			}
 		}
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedMode()) {
 			ResendToAll(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 1) ? players.home : players.opposing)
@@ -1303,7 +1303,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		uint32_t hcount = BufferIO::Read<uint32_t>(pbuf);
 		pbufw = pbuf + 4;
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedMode()) {
 			NetServer::ReSendToPlayer(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 0) ? players.home : players.opposing)
@@ -1332,7 +1332,7 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 			}
 		}
 		SEND(nullptr);
-		if(IsMultiplayerMode()) {
+		if(IsMultiplayerMode() || IsInheritedMode()) {
 			ResendToAll(cur_player[player]);
 		} else {
 			for(auto& dueler : (player == 1) ? players.home : players.opposing)
