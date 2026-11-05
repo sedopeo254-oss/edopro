@@ -35,6 +35,16 @@ has("gframe/netserver.cpp", "multiplayer_flags == DUEL_INHERITED_DUEL")
 has("gframe/netserver.cpp", "pkt.info.team1 = 2;")
 has("gframe/netserver.cpp", "pkt.info.team2 = 1;")
 has("gframe/game.h", "succession_controller_generation[2]")
+# Inherited Duel must use full-width name rows for ALL 3 seats. This fixes
+# cropped leading characters on the opponent side, while preserving the
+# historical HUD renderer for Standard, Battle Royale and 3v1.
+has("gframe/drawing.cpp", "if(dInfo.HasFieldFlag(DUEL_INHERITED_DUEL)) {")
+has("gframe/drawing.cpp", "auto DrawInheritedNames =")
+has("gframe/drawing.cpp", "const auto rect = Resize(left ? 335 : 695, top,")
+has("gframe/drawing.cpp", "left ? 629 : 986, top + 19);")
+has("gframe/drawing.cpp", "DrawInheritedNames(self, true, dInfo.isTeam1);")
+has("gframe/drawing.cpp", "DrawInheritedNames(oppo, false, !dInfo.isTeam1);")
+has("gframe/drawing.cpp", "textFont->drawustring(names[index], rect, color, false, true, &rect);")
 has("gframe/duelclient.cpp", "case MSG_DUEL_SUCCESSION:")
 has("gframe/duelclient.cpp", "if(len != 10")
 has("gframe/replay_mode.cpp", "case MSG_DUEL_SUCCESSION:")
