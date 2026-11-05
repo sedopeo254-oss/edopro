@@ -154,6 +154,7 @@ protected:
 	uint32_t turn_count;
 	std::vector<uint8_t> match_result;
 	CoreUtils::Packet pending_response[2];
+	bool inherited_successor_active{ false };
 	uint8_t multiplayer_active_mask{ 0x0f };
 	uint16_t time_limit[2];
 	int16_t grace_period;
