@@ -44,7 +44,7 @@ jobs:
           # library is built as C. Linux verifies every core C++ object;
           # the bundled Windows job performs the authoritative full link.
           mapfile -t objects < <(ninja -C /tmp/inherited-core-build -t targets all |
-            awk -F: '/^libocgcore\\.so\\.p\\/[^:]+\\.cpp\\.o:/ { print $1 }')
+            grep -F 'libocgcore.so.p/' | grep -F '.cpp.o:' | cut -d: -f1)
           test "${#objects[@]}" -ge 17
           ninja -C /tmp/inherited-core-build "${objects[@]}"
 
