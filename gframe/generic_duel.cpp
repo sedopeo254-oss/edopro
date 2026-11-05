@@ -1633,6 +1633,10 @@ int GenericDuel::Analyze(CoreUtils::Packet packet) {
 	return return_value;
 }
 void GenericDuel::GetResponse(DuelPlayer* dp, void* pdata, uint32_t len) {
+	// Reject replies from inactive Kaiba or standby Yugi, even if a client
+	// sends a forged CTOS_RESPONSE before receiving the prompt.
+	if(IsInheritedMode() && dp != response_player)
+		return;
 	last_replay.Write<uint8_t>(len, false);
 	last_replay.WriteData(pdata, len);
 	OCG_DuelSetResponse(pduel, pdata, len);
