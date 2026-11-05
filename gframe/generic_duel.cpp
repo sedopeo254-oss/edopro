@@ -1774,6 +1774,20 @@ void GenericDuel::RefreshLocation(uint8_t player, uint32_t flag, uint8_t locatio
 		packets_cache.emplace_back(buffer.data(), buffer.size());
 		return;
 	}
+	if(IsInheritedMode()) {
+		// Inherited side has TWO logged-in duelists but only one actual owner.
+		// Before takeover only Kaiba gets the hand/deck; afterward only Yugi.
+		auto* authorized = cur_player[player];
+		buffer.resize(3);
+		query.GenerateBuffer(buffer, true);
+		NetServer::SendBufferToPlayer(authorized, STOC_GAME_MSG, buffer);
+		buffer.resize(3);
+		query.GeneratePublicBuffer(buffer);
+		NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, buffer);
+		ResendToAll(authorized);
+		packets_cache.emplace_back(buffer.data(), buffer.size());
+		return;
+	}
 	buffer.resize(3);
 	query.GenerateBuffer(buffer, true);
 	NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, buffer);
@@ -1819,6 +1833,18 @@ void GenericDuel::RefreshSingle(uint8_t player, uint8_t location, uint8_t sequen
 		query.GenerateBuffer(buffer, true, true);
 		NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, buffer);
 		ResendToAll(owner);
+		packets_cache.emplace_back(buffer.data(), buffer.size());
+		return;
+	}
+	if(IsInheritedMode()) {
+		auto* authorized = cur_player[player];
+		buffer.resize(4);
+		query.GenerateBuffer(buffer, false, true);
+		NetServer::SendBufferToPlayer(authorized, STOC_GAME_MSG, buffer);
+		buffer.resize(4);
+		query.GenerateBuffer(buffer, true, true);
+		NetServer::SendBufferToPlayer(nullptr, STOC_GAME_MSG, buffer);
+		ResendToAll(authorized);
 		packets_cache.emplace_back(buffer.data(), buffer.size());
 		return;
 	}
