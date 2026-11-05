@@ -95,6 +95,10 @@ struct DuelInfo {
 	int startlp;
 	int duel_field;
 	uint64_t duel_params;
+	// Inherited Duel metadata only. The engine/server own control and card transfer.
+	uint8_t succession_controller_generation[2]{ 0, 0 };
+	uint32_t succession_defeat_turn{ 0 };
+	uint32_t succession_resume_turn{ 0 };
 	int turn;
 	uint8_t curMsg;
 	uint8_t active_player_mask{ 0x03 };
