@@ -3191,9 +3191,9 @@ void Game::UpdateMultiplayerMode() {
 		ebTeam1->setText(L"1");
 		ebTeam2->setText(L"3");
 	} else if(mode == 3) {
-		// One existing physical side is inherited; never create a third field.
+		// Two seats on Kaiba/Yugi side, one Noah seat, but only 1v1 on field.
 		duel_param |= DUEL_INHERITED_DUEL;
-		ebTeam1->setText(L"1");
+		ebTeam1->setText(L"2");
 		ebTeam2->setText(L"1");
 	}
 	const bool standard_mode = mode == 0;
