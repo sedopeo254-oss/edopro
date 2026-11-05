@@ -373,8 +373,9 @@ void NetServer::HandleCTOSPacket(DuelPlayer* dp, uint8_t* data, uint32_t len) {
 			pkt.info.team2 = 1;
 			pkt.info.duel_flag_low &= ~DUEL_RELAY;
 		} else if(multiplayer_flags == DUEL_INHERITED_DUEL) {
-			// Successor replaces a duelist, never adds a field or team member.
-			pkt.info.team1 = 1;
+			// Exactly three people (Kaiba, Yugi as standby, Noah), but only
+			// two physical duel fields. The extra home deck stays inactive.
+			pkt.info.team1 = 2;
 			pkt.info.team2 = 1;
 			pkt.info.duel_flag_low &= ~DUEL_RELAY;
 		}
