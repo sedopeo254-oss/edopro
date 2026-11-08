@@ -383,13 +383,15 @@ if not DeckMaster then
 	function Duel.ClearDeckMasterZone(p)
 		Duel.ClearDeckMasterZonePlayer(resolve_player(p))
 	end
-	function Duel.SummonDeckMasterPlayer(p)
+	function Duel.SummonDeckMasterPlayer(p,position)
 		local c=DeckMasterZone[p]
 		if not c then return false end
 		local side=player_side(p)
 		local ignore_condition=is_shared_code(c:GetOriginalCode())
 		Duel.ClearDeckMasterZonePlayer(p)
-		local res=Duel.SpecialSummon(c,0,side,side,ignore_condition,false,POS_FACEUP)
+		-- Last Turn (Inherited Duel only) can request face-up ATTACK. All
+		-- existing callers still get the original POS_FACEUP behavior.
+		local res=Duel.SpecialSummon(c,0,side,side,ignore_condition,false,position or POS_FACEUP)
 		if res>0 then
 			DeckMaster.FieldAbilityCards[c]=p
 			if ignore_condition then c:CompleteProcedure() end
