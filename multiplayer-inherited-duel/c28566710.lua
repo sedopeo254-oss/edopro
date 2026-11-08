@@ -66,8 +66,8 @@ local function register_no_battle_damage(e,tp)
     prevent:SetProperty(EFFECT_FLAG_PLAYER_TARGET)
     prevent:SetCode(EFFECT_AVOID_BATTLE_DAMAGE)
     prevent:SetTargetRange(1,1)
-    -- Remain active through the forced battle and its Damage Step.
-    prevent:SetReset(RESET_PHASE|PHASE_END)
+    -- Expire with the forced battle's Damage Step, not the entire turn.
+    prevent:SetReset(RESET_PHASE|PHASE_DAMAGE)
     Duel.RegisterEffect(prevent,tp)
 end
 
