@@ -44,7 +44,10 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build pkg-config liblua5.4-dev
+          sudo apt-get install -y meson ninja-build pkg-config liblua5.4-dev lua5.4
+      - name: Test isolated anime Last Turn Lua behavior
+        shell: bash
+        run: lua5.4 .github/tests/inherited_last_turn_test.lua multiplayer-inherited-duel/c28566710.lua
       - name: Compile all C++ core objects including live succession
         shell: bash
         run: |
