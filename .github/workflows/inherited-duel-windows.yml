@@ -112,11 +112,15 @@ jobs:
           mkdir -p deploy/mode-info deploy/textures deploy/expansions/script
           cp -f textures/field-3v1.png deploy/textures/field-3v1.png
           cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          cp multiplayer-inherited-duel/c28566710.lua deploy/expansions/script/c28566710.lua
+          cp multiplayer-inherited-duel/Card_Text.txt deploy/mode-info/Last_Turn_Custom_Text.txt
           cp multiplayer-anime-cards/c*.lua deploy/expansions/script/
           cp multiplayer-effect-examples/c*.lua deploy/expansions/script/
           cp INHERITED_DUEL_MODE.md deploy/mode-info/INHERITED_DUEL_MODE.md
           rm -f deploy/compressed-ygopro.exe
           test -f deploy/ygopro.exe
+          test -s deploy/expansions/script/c28566710.lua
+          grep -Fq 'Duel.SummonDeckMasterPlayer(opponent,POS_FACEUP_ATTACK)' deploy/expansions/script/c28566710.lua
           test ! -f deploy/compressed-ygopro.exe
       - uses: actions/upload-artifact@v4
         with:
