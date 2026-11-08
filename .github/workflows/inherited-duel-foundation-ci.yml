@@ -31,6 +31,13 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_lobby_test.cpp -o /tmp/inherited_duel_lobby_test
           /tmp/inherited_duel_lobby_test
+      - name: Test Last Turn Deck Master selection, forced attack and End Phase rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+          lua5.4 .github/tests/inherited_last_turn_test.lua multiplayer-inherited-duel/c28566710.lua
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
       - name: Re-run existing multiplayer field tests
