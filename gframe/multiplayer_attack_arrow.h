@@ -14,6 +14,13 @@ inline uint8_t ResolveLogicalTarget(uint8_t encoded_target,
 	return encoded_target < player_count ? encoded_target : derived_target;
 }
 
+// Only two physical field sides exist in Inherited Duel (even with 2+1 seats).
+// For a direct attack, target the opposite display field, not an invalid
+// multiplayer logical-player projection.
+inline uint8_t OppositeDisplaySide(uint8_t attacker_display) {
+	return attacker_display < 2 ? static_cast<uint8_t>(1u - attacker_display) : 0xff;
+}
+
 inline float AngleFromAttackerToTarget(float attacker_x, float attacker_y,
 		float target_x, float target_y) {
 	// The mesh head is at local (0, -half_length). Under Irrlicht's Z rotation,

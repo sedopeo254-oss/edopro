@@ -1857,12 +1857,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		mainGame->dInfo.succession_controller_generation[inherited_side] = generation;
 		mainGame->dInfo.succession_defeat_turn = defeat_turn;
 		mainGame->dInfo.succession_resume_turn = resume_turn;
-		if(!mainGame->dInfo.isCatchingUp) {
-			mainGame->PopupMessage(
-				L"Yami Yugi takes over Kaiba's Duel! The field, Life Points,"
-				L" Graveyard, Deck Master and turn count are inherited.",
-				L"DUEL SUCCESSION");
-		}
+		// Succession updates the duel state and HUD silently in live play and replays.
+		// Do not block a continuous duel with a modal confirmation.
 		break;
 	}
 	case MSG_PLAYER_ELIMINATED: {
@@ -5195,7 +5191,13 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				3.95f, display_side == 0 ? 3.2f : -3.2f
 			};
 		};
-		auto GetAttackDisplaySide = [&](uint8_t logical) {
+		const bool inherited_attack =
+			mainGame->dInfo.HasFieldFlag(DUEL_INHERITED_DUEL);
+		auto GetAttackDisplaySide = [&](uint8_t logical, uint8_t physical_side) {
+			// Inherited Duel has three registered duelists but only two physical
+			// fields. An attack has no Battle Royale logical-player payload.
+			if(inherited_attack)
+				return physical_side;
 			if(mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)) {
 				if(logical >= player_count)
 					return static_cast<uint8_t>(0xff);
@@ -5204,8 +5206,11 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			}
 			return mainGame->dInfo.GetBattleRoyaleDisplaySide(logical);
 		};
-		const auto attacker_display = GetAttackDisplaySide(attacker_logical);
-		const auto target_display = GetAttackDisplaySide(attack_target_logical);
+		const auto attacker_display =
+			GetAttackDisplaySide(attacker_logical, info1.controler);
+		const auto target_display = inherited_attack && is_direct
+			? multiplayer_attack_arrow::OppositeDisplaySide(attacker_display)
+			: GetAttackDisplaySide(attack_target_logical, info2.controler);
 		if(mainGame->dField.attacker->draw_scale == 0.0f) {
 			const auto anchor = HiddenAnchor(attacker_display < 2
 				? attacker_display : target_display == 0 ? 1 : 0);
@@ -5242,10 +5247,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			return true;
 		const float sy = distance / 2.0f;
 		mainGame->atk_t.set((xa + xd) / 2, (ya + yd) / 2, 0);
-		if(valid_logical_attack) {
-			// Use the actual visible attacker and target coordinates after the
-			// deterministic field switch. The helper maps the mesh head (-Y) from
-			// attacker to target, including team -> P4 attacks.
+		if(valid_logical_attack || inherited_attack) {
+			// Use the visible attacker/target positions to orient the mesh head
+			// (-Y). This covers inherited Kaiba -> Yugi succession, direct
+			// attacks and attacks in either direction without changing Standard.
 			mainGame->atk_r.set(0, 0,
 				multiplayer_attack_arrow::AngleFromAttackerToTarget(
 					xa, ya, xd, yd));

@@ -107,4 +107,19 @@ assert "pkt.info.team1 = 2;" in mode and "pkt.info.team2 = 1;" in mode, (
     "Inherited Duel must reserve Kaiba+Yugi against Noah"
 )
 
+# Succession is an uninterrupted takeover, not a user-confirmed dialog.
+client = (root / "gframe/duelclient.cpp").read_text(encoding="utf-8")
+succession_case = client.split("case MSG_DUEL_SUCCESSION: {", 1)[1].split(
+    "case MSG_PLAYER_ELIMINATED: {", 1)[0]
+assert "PopupMessage(" not in succession_case, (
+    "Inherited Duel succession must not interrupt the duel with a modal"
+)
+# Inherited Duel uses physical two-side positions. Neither the attack origin
+# nor a direct-attack target may depend on Battle Royale logical IDs.
+has("gframe/duelclient.cpp", "const bool inherited_attack =")
+has("gframe/duelclient.cpp", "if(inherited_attack)")
+has("gframe/duelclient.cpp", "multiplayer_attack_arrow::OppositeDisplaySide(attacker_display)")
+has("gframe/duelclient.cpp", "if(valid_logical_attack || inherited_attack)")
+has("gframe/multiplayer_attack_arrow.h", "inline uint8_t OppositeDisplaySide(")
+
 print("Inherited Duel Mode stage 1 integration: PASS")

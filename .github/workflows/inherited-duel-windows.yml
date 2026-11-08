@@ -40,6 +40,11 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_lobby_test.cpp -o /tmp/inherited_duel_lobby_test
           /tmp/inherited_duel_lobby_test
+      - name: Test Inherited Duel arrows and direct-attack targets
+        shell: bash
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_attack_arrow_test.cpp -o /tmp/inherited_duel_attack_arrow_test
+          /tmp/inherited_duel_attack_arrow_test
       - name: Install C++/Meson build dependencies
         shell: bash
         run: |

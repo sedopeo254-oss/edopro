@@ -31,6 +31,10 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_lobby_test.cpp -o /tmp/inherited_duel_lobby_test
           /tmp/inherited_duel_lobby_test
+      - name: Test Inherited Duel attack arrows on both physical sides
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_attack_arrow_test.cpp -o /tmp/inherited_duel_attack_arrow_test
+          /tmp/inherited_duel_attack_arrow_test
       - name: Test Last Turn Deck Master selection, forced attack and End Phase rules
         shell: bash
         run: |
