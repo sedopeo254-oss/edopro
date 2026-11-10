@@ -63,3 +63,16 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
   - example from the supplied YRPX: Different Dimension Dragon DEF 1500
     yields Gradius ATK **1600**, not 1900;
   - Gradius still has 1500 ATK from Cyclon Laser outside this calculation.
+
+- `c14291024.lua` — Gradius' Option (anime)
+  - may only summon from its hand with face-up Gradius on its owner's field;
+  - sets its attack and defense from the selected Gradius' printed card stats
+    (`GetTextAttack` / `GetTextDefense`), rather than current boosted stats;
+  - dynamically mirrors applicable continuous Equip effects on that Gradius;
+    in particular, Cyclon Laser grants +300 ATK and piercing while Matter
+    Leveller sets Option's final ATK to the defending monster's DEF + 100 only
+    when Option attacks during Damage Calculation;
+  - stops granting an Equip effect when the source Equip leaves or is disabled;
+  - destroys itself if the specifically selected Gradius leaves the field;
+  - does not independently activate arbitrary one-shot Equip effects.
+  - updated card text is in `Gradius_Option_Card_Text.txt` for manual CDB editing.

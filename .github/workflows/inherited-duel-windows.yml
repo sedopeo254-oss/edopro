@@ -59,6 +59,9 @@ jobs:
       - name: Gradius equip effects regression - Cyclon Laser and Matter Leveller
         shell: bash
         run: lua5.4 .github/tests/gradius_equip_regression_test.lua multiplayer-anime-cards/c5494820.lua multiplayer-anime-cards/c511000219.lua
+      - name: Test Gradius Option printed ATK DEF and inherited Equip effects
+        shell: bash
+        run: lua5.4 .github/tests/gradius_option_anime_test.lua multiplayer-anime-cards/c14291024.lua
       - name: Compile all C++ core objects including live succession
         shell: bash
         run: |
@@ -128,6 +131,7 @@ jobs:
           cp multiplayer-anime-cards/c*.lua deploy/expansions/script/
           cp multiplayer-effect-examples/c*.lua deploy/expansions/script/
           cp INHERITED_DUEL_MODE.md deploy/mode-info/INHERITED_DUEL_MODE.md
+          cp multiplayer-anime-cards/Gradius_Option_Card_Text.txt deploy/mode-info/Gradius_Option_Card_Text.txt
           rm -f deploy/compressed-ygopro.exe
           test -f deploy/ygopro.exe
           test -s deploy/expansions/script/c28566710.lua
@@ -136,6 +140,8 @@ jobs:
           grep -Fq 'Duel.SummonDeckMasterPlayer(opponent,POS_FACEUP_ATTACK)' deploy/expansions/script/c28566710.lua
           test -s deploy/expansions/script/c5494820.lua
           test -s deploy/expansions/script/c511000219.lua
+          test -s deploy/expansions/script/c14291024.lua
+          grep -Fq 'tc:GetTextAttack()' deploy/expansions/script/c14291024.lua
           grep -Fq 'e3:SetCode(EFFECT_SET_ATTACK_FINAL)' deploy/expansions/script/c511000219.lua
           test ! -f deploy/compressed-ygopro.exe
       - uses: actions/upload-artifact@v4
