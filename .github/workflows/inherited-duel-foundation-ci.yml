@@ -44,6 +44,8 @@ jobs:
           lua5.4 .github/tests/inherited_last_turn_test.lua multiplayer-inherited-duel/c28566710.lua
       - name: Regression-test Shinato's Ark selection and stable control
         run: lua5.4 .github/tests/shinatos_ark_selection_test.lua multiplayer-deck-master/c153000017.lua
+      - name: Gradius equip effects regression - Cyclon Laser and Matter Leveller
+        run: lua5.4 .github/tests/gradius_equip_regression_test.lua multiplayer-anime-cards/c5494820.lua multiplayer-anime-cards/c511000219.lua
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
       - name: Re-run existing multiplayer field tests

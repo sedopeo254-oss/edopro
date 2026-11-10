@@ -132,4 +132,10 @@ assert "Duel.GetRandomNumber(1,#g)-1" not in ark_source
 assert "g:Select(tp,1,ct,nil)" not in ark_source
 assert "e1:SetReset(RESET_EVENT+RESETS_STANDARD+RESET_CHAIN)" not in ark_source
 
+# Gradius ATK final overwrite must supersede Cyclon Laser's normal +300.
+has("multiplayer-anime-cards/c5494820.lua", "e2:SetCode(EFFECT_UPDATE_ATTACK)")
+has("multiplayer-anime-cards/c5494820.lua", "e2:SetValue(300)")
+has("multiplayer-anime-cards/c5494820.lua", "e3:SetCode(EFFECT_PIERCE)")
+has("multiplayer-anime-cards/c511000219.lua", "e3:SetCode(EFFECT_SET_ATTACK_FINAL)")
+has("multiplayer-anime-cards/c511000219.lua", "return Duel.GetAttackTarget():GetDefense()+100")
 print("Inherited Duel Mode stage 1 integration: PASS")

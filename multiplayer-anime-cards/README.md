@@ -52,3 +52,14 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
     at completion; it never creates an FHD token or Deck Master Zone copy;
   - Five-Headed Dragon's original anime card script is unchanged.
 
+
+- `c5494820.lua` — Cyclon Laser (supplied original)
+  - equips to Gradius, grants +300 ATK and piercing damage; unchanged.
+
+- `c511000219.lua` — Matter Leveller (Gradius anime effect fix)
+  - on attacks against Defense Position monsters, sets Gradius' **final** ATK
+    to exactly the target's DEF + 100 for Damage Calculation only;
+  - uses `EFFECT_SET_ATTACK_FINAL`, so Cyclon Laser's +300 is not added twice;
+  - example from the supplied YRPX: Different Dimension Dragon DEF 1500
+    yields Gradius ATK **1600**, not 1900;
+  - Gradius still has 1500 ATK from Cyclon Laser outside this calculation.
