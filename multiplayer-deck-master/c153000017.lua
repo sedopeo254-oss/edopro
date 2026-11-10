@@ -235,10 +235,22 @@ function s.defop(e,tp,eg,ep,ev,re,r,rp)
 	if not Duel.SelectYesNo(tp,aux.Stringid(id,0)) then return end
 	Duel.Hint(HINT_CARD,tp,id)
 	Duel.Hint(HINT_CARD,1-tp,id)
+	-- The Ark stores monsters outside normal locations. A regular Group.Select
+	-- includes their previous controller in the selection message, causing the
+	-- server to mask cards originally belonging to the opponent. Show the
+	-- actual printed cards to the Ark controller through a code-only selection.
+	-- Preserve card-object identity using the returned 1-based indices, so
+	-- even two identical monsters can be selected independently.
+	local cards,codes={},{}
+	for tc in g:Iter() do
+		cards[#cards+1]=tc
+		codes[#codes+1]=tc:GetOriginalCode()
+	end
 	Duel.Hint(HINT_SELECTMSG,tp,HINTMSG_SPSUMMON)
-	local sg=g:Select(tp,1,ct,nil)
-	if not sg or #sg==0 then return end
-	for tc in sg:Iter() do
+	local picks={Duel.SelectCardsFromCodes(tp,1,ct,false,true,codes)}
+	for _,pick in ipairs(picks) do
+		local tc=cards[pick[2]]
+		if not tc then break end
 		if Duel.GetLocationCount(tp,LOCATION_MZONE)<=0 then break end
 		if Duel.MoveToField(tc,tp,tp,LOCATION_MZONE,POS_FACEUP_DEFENSE,true) then
 			g:RemoveCard(tc)

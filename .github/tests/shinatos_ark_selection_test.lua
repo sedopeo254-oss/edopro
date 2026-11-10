@@ -11,10 +11,13 @@ aux={Stringid=function() return 1 end}
 local st
 local function reset()
     st={opponent=3,zones=1,turn=0,yes=true,dm=true,selected={},
-        attempts={},flags={},failed={},selection_max=0}
+        attempts={},flags={},failed={},selection_max=0,pick_indices={},revealed_codes=nil}
 end
-local function card(owner)
-    return {owner=owner,controller=owner,effects={},
+local next_instance=0
+local function card(owner,code)
+    next_instance=next_instance+1
+    return {owner=owner,controller=owner,code=code or 70000000+next_instance,
+        effects={},GetOriginalCode=function(self) return self.code end,
         RegisterEffect=function(self,fx) table.insert(self.effects,fx) end}
 end
 local function group(cards)
@@ -59,6 +62,19 @@ Duel={
     IsDeckMaster=function(p,code)return st.dm and p==1 and code==id end,
     SelectYesNo=function(p)assert(p==1);return st.yes end,
     Hint=function()end,
+    SelectCardsFromCodes=function(tp,min,max,cancelable,return_index,codes)
+        assert(tp==1 and min==1 and max==st.selection_max)
+        assert(cancelable==false and return_index==true)
+        assert(type(codes)=="table" and #codes>0,"face-up card codes required")
+        st.revealed_codes={table.unpack(codes)}
+        assert(#st.pick_indices>=min and #st.pick_indices<=max)
+        local result={}
+        for _,index in ipairs(st.pick_indices) do
+            assert(index>=1 and index<=#codes)
+            result[#result+1]={codes[index],index}
+        end
+        return table.unpack(result)
+    end,
     MoveToField=function(c,p,controller,loc,pos,enable)
         assert(p==1 and controller==1 and loc==LOCATION_MZONE
             and pos==POS_FACEUP_DEFENSE and enable)
@@ -95,16 +111,17 @@ end
 -- Reproduction: Vampire Lord originally belongs to opponent (side 0),
 -- but must stay on side 1 when Noah summons it from the Ark.
 reset()
-local vampire=card(0)
-local other=card(0)
+local vampire=card(0,53839837)
+local other=card(0,1234)
 local ark=group({other,vampire})
 local event=make_event(ark)
 st.selection_max=1
-st.selected={vampire}
+st.pick_indices={2}
 assert(script.defcon(event,1))
 assert(script.defcon(event,1))
 assert(st.flags[id+PHASE_BATTLE]==nil,"condition consumed its activation")
 summon(event)
+assert(st.revealed_codes[1]==1234 and st.revealed_codes[2]==53839837)
 assert(#st.attempts==1 and st.attempts[1]==vampire)
 assert(vampire.controller==1 and #vampire.effects==1)
 local fx=vampire.effects[1]
@@ -118,14 +135,23 @@ reset()
 local first,second,third=card(0),card(0),card(0)
 ark=group({first,second,third})
 event=make_event(ark)
-st.opponent=2;st.zones=3;st.selection_max=2;st.selected={third,first}
+st.opponent=2;st.zones=3;st.selection_max=2;st.pick_indices={3,1}
 summon(event)
 assert(#st.attempts==2 and st.attempts[1]==third and st.attempts[2]==first)
 assert(#ark==1 and ark.cards[1]==second)
+-- Identical card codes must resolve to the physical copy the player chose.
+reset()
+local copy1,copy2=card(0,53839837),card(0,53839837)
+ark=group({copy1,copy2});event=make_event(ark)
+st.selection_max=1;st.pick_indices={2}
+summon(event)
+assert(st.revealed_codes[1]==53839837 and st.revealed_codes[2]==53839837)
+assert(#st.attempts==1 and st.attempts[1]==copy2)
+assert(#ark==1 and ark.cards[1]==copy1)
 -- Failed field movement cannot remove the card from the Ark.
 reset()
 ark=group({first,second});event=make_event(ark)
-st.opponent=1;st.selection_max=1;st.selected={second};st.failed[second]=true
+st.opponent=1;st.selection_max=1;st.pick_indices={2};st.failed[second]=true
 local previous_effects=#second.effects
 summon(event)
 assert(#ark==2 and #second.effects==previous_effects)
@@ -134,7 +160,7 @@ reset()
 ark=group({first});event=make_event(ark)
 st.selection_max=1;st.yes=false
 summon(event)
-assert(#st.attempts==0 and #ark==1)
+assert(#st.attempts==0 and #ark==1 and st.revealed_codes==nil)
 -- Only in opponent's Battle Phase, with open zones and an active Ark.
 reset()
 ark=group({first});event=make_event(ark)
@@ -142,4 +168,4 @@ st.turn=1;assert(not script.defcon(event,1))
 st.turn=0;st.zones=0;assert(not script.defcon(event,1))
 st.zones=1;st.opponent=0;assert(not script.defcon(event,1))
 st.opponent=1;st.dm=false;assert(not script.defcon(event,1))
-print("Shinato's Ark selectable monsters and persistent control: PASS")
+print("Shinato's Ark face-up selection, duplicates and stable control: PASS")

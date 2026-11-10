@@ -123,10 +123,13 @@ has("gframe/duelclient.cpp", "if(valid_logical_attack || inherited_attack)")
 has("gframe/multiplayer_attack_arrow.h", "inline uint8_t OppositeDisplaySide(")
 
 # Shinato's Ark must allow controller selection and preserve ownership after chains.
-has("multiplayer-deck-master/c153000017.lua", "local sg=g:Select(tp,1,ct,nil)")
+has("multiplayer-deck-master/c153000017.lua", "local picks={Duel.SelectCardsFromCodes(tp,1,ct,false,true,codes)}")
+has("multiplayer-deck-master/c153000017.lua", "codes[#codes+1]=tc:GetOriginalCode()")
+has("multiplayer-deck-master/c153000017.lua", "local tc=cards[pick[2]]")
 has("multiplayer-deck-master/c153000017.lua", "e1:SetReset(RESET_EVENT+RESETS_STANDARD)")
 ark_source = (root / "multiplayer-deck-master/c153000017.lua").read_text(encoding="utf-8")
 assert "Duel.GetRandomNumber(1,#g)-1" not in ark_source
+assert "g:Select(tp,1,ct,nil)" not in ark_source
 assert "e1:SetReset(RESET_EVENT+RESETS_STANDARD+RESET_CHAIN)" not in ark_source
 
 print("Inherited Duel Mode stage 1 integration: PASS")
