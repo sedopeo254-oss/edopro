@@ -42,6 +42,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y lua5.4
           lua5.4 .github/tests/inherited_last_turn_test.lua multiplayer-inherited-duel/c28566710.lua
+      - name: Regression-test Shinato's Ark selection and stable control
+        run: lua5.4 .github/tests/shinatos_ark_selection_test.lua multiplayer-deck-master/c153000017.lua
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
       - name: Re-run existing multiplayer field tests

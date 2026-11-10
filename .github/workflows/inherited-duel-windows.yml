@@ -53,6 +53,9 @@ jobs:
       - name: Test isolated anime Last Turn Lua behavior
         shell: bash
         run: lua5.4 .github/tests/inherited_last_turn_test.lua multiplayer-inherited-duel/c28566710.lua
+      - name: Regression-test Shinato's Ark controller selection and stable control
+        shell: bash
+        run: lua5.4 .github/tests/shinatos_ark_selection_test.lua multiplayer-deck-master/c153000017.lua
       - name: Compile all C++ core objects including live succession
         shell: bash
         run: |
@@ -125,6 +128,8 @@ jobs:
           rm -f deploy/compressed-ygopro.exe
           test -f deploy/ygopro.exe
           test -s deploy/expansions/script/c28566710.lua
+          test -s deploy/expansions/script/c153000017.lua
+          grep -Fq 'local sg=g:Select(tp,1,ct,nil)' deploy/expansions/script/c153000017.lua
           grep -Fq 'Duel.SummonDeckMasterPlayer(opponent,POS_FACEUP_ATTACK)' deploy/expansions/script/c28566710.lua
           test ! -f deploy/compressed-ygopro.exe
       - uses: actions/upload-artifact@v4
