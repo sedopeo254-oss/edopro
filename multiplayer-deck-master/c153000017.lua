@@ -120,8 +120,18 @@ function s.repfilter(c)
 	return c:GetDestination()&LOCATION_GRAVE==LOCATION_GRAVE and c:IsMonster()
 end
 function s.reptg(e,tp,eg,ep,ev,re,r,rp,chk)
+	-- EDOPro also calls a FIELD effect's SetTarget callback with (effect, card)
+	-- when checking whether the effect applies to a single card. In that
+	-- context tp is a Card and eg/chk are nil: this is ONLY a predicate check.
+	-- Do not attempt to move cards or modify the Ark during that check.
+	if eg==nil then
+		local kind=type(tp)
+		return (kind=="userdata" or kind=="table") and s.repfilter(tp) or false
+	end
 	if chk==0 then return eg:IsExists(s.repfilter,1,nil) end
+	if chk~=1 then return false end
 	local g=eg:Filter(s.repfilter,nil)
+	if #g==0 then return false end
 	for tc in g:Iter() do
 		local e1=Effect.CreateEffect(e:GetOwner())
 		e1:SetType(EFFECT_TYPE_SINGLE)

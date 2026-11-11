@@ -49,3 +49,14 @@ normal activation timing or activation conditions.
   Main Phase only. The anime-specific shared Dark Flare Knight/Mirage Knight
   team protection and all five Big Five switch abilities remain unchanged.
 
+
+## Shinato's Ark send-replacement nil-eg regression (2026-11-11)
+- `c153000017.lua` handles EDOPro's FIELD-effect `SetTarget` callback
+  both as a **card predicate** (`effect, card`) and as a **replacement
+  event** (`effect, player, event_group, ..., chk`).
+- A card-only query never moves cards and cannot access a missing `eg`.
+- Valid graveyard-destination replacement still redirects eligible monsters
+  into the Ark. Existing visible card selection and persistent summoned-monster
+  control remain unchanged.
+- `.github/tests/shinatos_ark_send_replace_test.lua` reproduces the previous
+  line-124 Lua exception and verifies the patched callbacks.

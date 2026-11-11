@@ -145,4 +145,9 @@ has("multiplayer-anime-cards/c14291024.lua", "tc:GetTextDefense()")
 has("multiplayer-anime-cards/c14291024.lua", "s.mirror(c,eq,eff)")
 has("multiplayer-anime-cards/c14291024.lua", "EFFECT_SET_ATTACK_FINAL")
 has("multiplayer-anime-cards/c14291024.lua", "return c:GetFlagEffect(id)>0 and not s.linked(c)")
+# The core may use an effect's SetTarget as (effect, Card), with no eg.
+# Never assume every callback is an event-group target resolution.
+has("multiplayer-deck-master/c153000017.lua", 'if eg==nil then')
+has("multiplayer-deck-master/c153000017.lua", 'return (kind=="userdata" or kind=="table") and s.repfilter(tp) or false')
+has("multiplayer-deck-master/c153000017.lua", "if chk~=1 then return false end")
 print("Inherited Duel Mode stage 1 integration: PASS")
