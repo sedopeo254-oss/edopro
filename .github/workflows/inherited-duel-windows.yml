@@ -70,6 +70,9 @@ jobs:
       - name: Test Shinato's Ark native redirect for Gradius and Option
         shell: bash
         run: lua5.4 .github/tests/shinatos_ark_send_replace_test.lua multiplayer-deck-master/c153000017.lua
+      - name: Verify Yamata Dragon has no draw-to-five effect
+        shell: bash
+        run: lua5.4 .github/tests/yamata_dragon_no_draw_test.lua multiplayer-anime-cards/c76862289.lua
       - name: Compile all C++ core objects including live succession
         shell: bash
         run: |
@@ -151,6 +154,8 @@ jobs:
           test -s deploy/expansions/script/c5494820.lua
           test -s deploy/expansions/script/c511000219.lua
           test -s deploy/expansions/script/c14291024.lua
+          test -s deploy/expansions/script/c76862289.lua
+          if grep -Fq 'EVENT_BATTLE_DAMAGE' deploy/expansions/script/c76862289.lua; then exit 1; fi
           grep -Fq 'tc:GetTextAttack()' deploy/expansions/script/c14291024.lua
           grep -Fq 'e3:SetCode(EFFECT_SET_ATTACK_FINAL)' deploy/expansions/script/c511000219.lua
           test ! -f deploy/compressed-ygopro.exe

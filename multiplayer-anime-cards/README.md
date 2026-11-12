@@ -76,3 +76,11 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
   - destroys itself if the specifically selected Gradius leaves the field;
   - does not independently activate arbitrary one-shot Equip effects.
   - updated card text is in `Gradius_Option_Card_Text.txt` for manual CDB editing.
+
+- `c76862289.lua` — Yamata Dragon (user-requested effect removal)
+  - removes the mandatory Battle Damage trigger that draws until the
+    controller holds 5 cards;
+  - retains the Spirit return procedure and cannot-be-Special-Summoned
+    restriction exactly as in the uploaded source;
+  - card description displayed from a CDB must be updated separately if
+    it still mentions drawing to five.

@@ -54,6 +54,8 @@ jobs:
         run: lua5.4 .github/tests/gradius_option_anime_test.lua multiplayer-anime-cards/c14291024.lua
       - name: Test Shinato's Ark native redirect for Gradius and Option
         run: lua5.4 .github/tests/shinatos_ark_send_replace_test.lua multiplayer-deck-master/c153000017.lua
+      - name: Verify Yamata Dragon has no draw-to-five effect
+        run: lua5.4 .github/tests/yamata_dragon_no_draw_test.lua multiplayer-anime-cards/c76862289.lua
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
       - name: Re-run existing multiplayer field tests
