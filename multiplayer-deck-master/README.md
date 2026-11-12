@@ -50,13 +50,22 @@ normal activation timing or activation conditions.
   team protection and all five Big Five switch abilities remain unchanged.
 
 
-## Shinato's Ark send-replacement nil-eg regression (2026-11-11)
-- `c153000017.lua` handles EDOPro's FIELD-effect `SetTarget` callback
-  both as a **card predicate** (`effect, card`) and as a **replacement
-  event** (`effect, player, event_group, ..., chk`).
-- A card-only query never moves cards and cannot access a missing `eg`.
-- Valid graveyard-destination replacement still redirects eligible monsters
-  into the Ark. Existing visible card selection and persistent summoned-monster
-  control remain unchanged.
-- `.github/tests/shinatos_ark_send_replace_test.lua` reproduces the previous
-  line-124 Lua exception and verifies the patched callbacks.
+## Shinato's Ark native redirect and nested destruction fix (2026-11-12)
+- The obsolete `EFFECT_SEND_REPLACE` callback has been removed. Calling
+  `Duel.SendtoDeck` inside its resolution could cause an event recursion,
+  and could send Gradius into LOCATION_NONE before Option was captured.
+- Active Shinato's Ark now redirects any eligible monster about to enter
+  a Graveyard to the bottom of the Deck via `EFFECT_TO_GRAVE_REDIRECT`.
+  The existing `EVENT_TO_DECK` collector then moves redirected physical
+  card instances into Ark storage (LOCATION_NONE).
+- This handles Gradius and its self-destroyed Gradius' Option even when
+  the two destruction events arrive separately, without recursively
+  invoking the graveyard replacement while destruction is resolving.
+- Rule-based redirects from the prior script are preserved. Ordinary cards
+  sent straight to Deck without the Ark marker are not captured.
+- The face-up summon selector and stable control of summoned monsters
+  are untouched.
+- `.github/tests/shinatos_ark_send_replace_test.lua` now covers
+  simultaneous/sequential Gradius + Option redirects, duplicate events,
+  inactive Ark state and native-redirect card identity.
+- Full battle/replay behavior still needs acceptance testing in Windows.

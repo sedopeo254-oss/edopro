@@ -48,7 +48,7 @@ jobs:
         run: lua5.4 .github/tests/gradius_equip_regression_test.lua multiplayer-anime-cards/c5494820.lua multiplayer-anime-cards/c511000219.lua
       - name: Test Gradius Option printed ATK DEF and inherited Equip effects
         run: lua5.4 .github/tests/gradius_option_anime_test.lua multiplayer-anime-cards/c14291024.lua
-      - name: Test Shinato's Ark send-replacement nil-eg callback variants
+      - name: Test Shinato's Ark native redirect for Gradius and Option
         run: lua5.4 .github/tests/shinatos_ark_send_replace_test.lua multiplayer-deck-master/c153000017.lua
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh

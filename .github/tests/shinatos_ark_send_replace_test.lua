@@ -1,59 +1,56 @@
--- Regression for EDOPro's two FIELD-effect SetTarget calling conventions.
--- Tests the exact callback mismatch seen in c153000017.lua:124.
+-- Native redirect/Ark collection regression: Kaiba's Gradius and its
+-- linked Option must both enter Shinato's Ark without nested replacements.
 -- Usage: lua5.4 .github/tests/shinatos_ark_send_replace_test.lua multiplayer-deck-master/c153000017.lua
-local script
-function GetID() script={} return script,153000017 end
-LOCATION_GRAVE=16
-LOCATION_ALL=127
-REASON_EFFECT=2
-EFFECT_TYPE_SINGLE=1
-EFFECT_FLAG_IGNORE_IMMUNE=2
-EFFECT_CANNOT_TRIGGER=3
-RESET_EVENT=256
-RESETS_STANDARD=0x1fe0000
-RESET_LEAVE=0x800000
+local s
+function GetID() s={} return s,153000017 end
+REASON_RULE=0x400; REASON_DESTROY=0x1; REASON_EFFECT=0x40
+LOCATION_NONE=0; LOCATION_DECK=1; LOCATION_EXTRA=0x40
+LOCATION_GRAVE=0x10; LOCATION_MZONE=4; LOCATION_ALL=0x7f
+RESET_EVENT=0x1000; RESETS_STANDARD=0x1fe0000
+RESET_TODECK=0x00400000; RESET_LEAVE=0x00800000
+EFFECT_TYPE_SINGLE=1; EFFECT_FLAG_IGNORE_IMMUNE=2; EFFECT_CANNOT_TRIGGER=3
+local active=true
+local turns=0
+local sent,operated,in_send={},nil,false
 local function group(items)
- local obj={items=items}
+ local v={items=items}
  local methods={}
+ function methods:Filter(fn,except,...)
+  local result={}
+  for _,c in ipairs(self.items) do
+   if c~=except and fn(c,...) then result[#result+1]=c end
+  end
+  return group(result)
+ end
+ function methods:Merge(other)
+  for _,c in ipairs(other.items) do
+   local found=false
+   for _,x in ipairs(self.items) do if x==c then found=true end end
+   if not found then self.items[#self.items+1]=c end
+  end
+ end
  function methods:Iter()
-  local i=0
-  return function() i=i+1 return self.items[i] end
+  local i=0;return function() i=i+1 return self.items[i] end
  end
- function methods:Filter(pred,exception)
-  local selected={}
-  for _,c in ipairs(self.items) do
-   if c~=exception and pred(c) then selected[#selected+1]=c end
-  end
-  return group(selected)
- end
- function methods:IsExists(pred,count,exception)
-  local found=0
-  for _,c in ipairs(self.items) do
-   if c~=exception and pred(c) then
-    found=found+1
-    if found>=count then return true end
-   end
-  end
-  return false
- end
- function methods:Merge(g)
-  for _,c in ipairs(g.items) do self.items[#self.items+1]=c end
- end
- return setmetatable(obj,{__len=function(x)return #x.items end,__index=methods})
+ return setmetatable(v,{__index=methods,__len=function(v)return #v.items end})
 end
-local function card(monster,destination)
- local c={monster=monster,destination=destination,effects={}}
- function c:GetDestination() return self.destination end
- function c:IsMonster() return self.monster end
- function c:IsLocation(x) return false end
- function c:RegisterEffect(e) self.effects[#self.effects+1]=e end
- return c
+local function card(code,location,reason,monster)
+ local o={code=code,location=location,reason=reason,monster=monster,flags={}}
+ function o:IsMonster() return self.monster end
+ function o:IsReason(r) return (self.reason & r)~=0 end
+ function o:IsLocation(loc) return (self.location & loc)~=0 end
+ function o:GetFlagEffect(id) return self.flags[id] or 0 end
+ function o:RegisterFlagEffect(id,reset,...)
+  assert(reset & RESET_EVENT~=0)
+  assert(reset & RESET_TODECK==0 and reset & RESET_LEAVE==0)
+  self.flags[id]=(self.flags[id] or 0)+1
+ end
+ function o:RegisterEffect(e) self.effects=self.effects or {};self.effects[#self.effects+1]=e end
+ return o
 end
-Card={IsLocation=function(c,loc)return c:IsLocation(loc) end}
-aux={NOT=function(pred)return function(c,...)return not pred(c,...) end end}
-local created=0
+Card={IsLocation=function(c,loc) return c:IsLocation(loc) end}
+aux={NOT=function(f) return function(c,...) return not f(c,...) end end}
 Effect={CreateEffect=function()
- created=created+1
  local e={}
  function e:SetType(x) self.type=x end
  function e:SetProperty(x) self.property=x end
@@ -61,42 +58,82 @@ Effect={CreateEffect=function()
  function e:SetReset(x) self.reset=x end
  return e
 end}
-local sent={}
-local operated=group({})
 Duel={
+ IsDeckMaster=function(tp,code) assert(tp==1 and code==153000017);return active end,
+ GetFlagEffect=function(tp,code) assert(tp==1 and code==153000017);return turns end,
+ DisableShuffleCheck=function()end,
  SendtoDeck=function(g,tp,seq,reason)
-  assert(tp==0 and seq==-2 and reason==REASON_EFFECT)
-  sent[#sent+1]=g
-  operated=g
-  return #g
+  assert(not in_send,"recursive send-to-deck detected")
+  in_send=true
+  assert(tp==1 and seq==-2 and reason==REASON_EFFECT)
+  local moved={}
+  for c in g:Iter() do
+   assert(c:IsLocation(LOCATION_DECK|LOCATION_EXTRA),"only fully redirected cards may enter Ark")
+   c.location=LOCATION_NONE
+   moved[#moved+1]=c
+  end
+  operated=group(moved)
+  sent[#sent+1]=moved
+  in_send=false
+  return #moved
  end,
- GetOperatedGroup=function()return operated end
+ GetOperatedGroup=function() return operated end
 }
+assert(loadfile(assert(arg[1])))()
 local ark=group({})
-local effect={GetOwner=function() return {} end,GetLabelObject=function() return ark end}
-local file=assert(arg[1],"script path required")
-assert(loadfile(file))()
-local eligible=card(true,LOCATION_GRAVE)
-local spell=card(false,LOCATION_GRAVE)
-local other=card(true,1)
--- Normal field-effect card applicability query (e, Card), with no eg/chk.
-assert(script.reptg(effect,eligible)==true)
-assert(script.reptg(effect,spell)==false)
-assert(script.reptg(effect,other)==false)
-assert(script.reptg(effect,nil)==false)
-assert(script.reptg(effect,0)==false)
-assert(#sent==0 and created==0 and #ark==0,"predicate query modified the duel")
--- Actual EVENT_SEND_REPLACE target legality (chk=0) and resolution (chk=1).
-local event_group=group({eligible,spell,other})
-assert(script.reptg(effect,0,event_group,0,0,nil,0,0,0))
-assert(#sent==0 and #ark==0,"legality check mutated the Ark")
-assert(not script.reptg(effect,0,group({spell,other}),0,0,nil,0,0,0))
-assert(script.reptg(effect,0,event_group,0,0,nil,0,0,1))
-assert(#sent==1 and #sent[1]==1 and sent[1].items[1]==eligible)
-assert(#eligible.effects==1 and eligible.effects[1].code==EFFECT_CANNOT_TRIGGER)
-assert(#ark==1 and ark.items[1]==eligible,"redirected monster was not added to Ark")
-assert(script.reptg(effect,0,nil,0,0,nil,0,0,0)==false)
-assert(script.reptg(effect,0,group({spell}),0,0,nil,0,0,1)==false)
-assert(script.reptg(effect,0,event_group,0,0,nil,0,0,nil)==false)
-assert(#sent==1 and #ark==1,"invalid callback changed Ark content")
-print("Shinato's Ark nil-eg and send-replacement regression: PASS")
+local e={
+ GetHandlerPlayer=function() return 1 end,
+ GetOwner=function() return {} end,
+ GetLabelObject=function() return ark end
+}
+-- Both monsters are destroyed; the actual redirect occurs in core SendTo,
+-- rather than invoking another Lua SendtoDeck from a replacement callback.
+local gradius=card(10992251,LOCATION_MZONE,REASON_DESTROY|REASON_EFFECT,true)
+local option=card(14291024,LOCATION_MZONE,REASON_DESTROY|REASON_EFFECT,true)
+local spell=card(5494820,LOCATION_MZONE,REASON_EFFECT,false)
+assert(s.repRuleTg(e,gradius))
+assert(s.repRuleTg(e,option))
+assert(not s.repRuleTg(e,spell))
+assert(gradius:GetFlagEffect(153000017)==1 and option:GetFlagEffect(153000017)==1)
+assert(s.repRuleTg(e,gradius))
+assert(gradius:GetFlagEffect(153000017)==1,"repeated redirect query duplicated flag")
+-- Simulate the engine redirecting both pending graveyard destinations into
+-- the bottom of the Deck. EVENT_TO_DECK arrives after this native movement.
+gradius.location=LOCATION_DECK;option.location=LOCATION_DECK
+s.repRuleOp(e,1,group({gradius,option,spell}))
+assert(#sent==1 and #sent[1]==2,"Gradius and Option should move together")
+assert(gradius.location==LOCATION_NONE and option.location==LOCATION_NONE)
+assert(#ark==2 and ark.items[1]==gradius and ark.items[2]==option)
+assert(#gradius.effects==1 and #option.effects==1)
+assert(#ark:Filter(function(c)return c.code==10992251 end,nil)==1)
+assert(#ark:Filter(function(c)return c.code==14291024 end,nil)==1)
+-- A later redundant event must not register cards twice.
+s.repRuleOp(e,1,group({gradius,option}))
+assert(#ark==2 and #sent==1)
+-- Separate destruction events are also supported (Option dies on ADJUST).
+ark=group({});e.GetLabelObject=function()return ark end;sent={}
+local g2=card(10992251,LOCATION_MZONE,REASON_DESTROY|REASON_EFFECT,true)
+local o2=card(14291024,LOCATION_MZONE,REASON_DESTROY|REASON_EFFECT,true)
+assert(s.repRuleTg(e,g2))
+g2.location=LOCATION_DECK
+s.repRuleOp(e,1,group({g2}))
+assert(s.repRuleTg(e,o2))
+o2.location=LOCATION_DECK
+s.repRuleOp(e,1,group({o2}))
+assert(#ark==2 and #sent==2)
+-- Other cards sent straight to Deck must not be stolen by the Ark.
+local unrelated=card(9999,LOCATION_DECK,REASON_EFFECT,true)
+s.repRuleOp(e,1,group({unrelated}))
+assert(#ark==2)
+-- When Ark has expired, normal monster destruction must NOT redirect.
+active=false;local late=card(10,LOCATION_MZONE,REASON_EFFECT,true)
+assert(not s.repRuleTg(e,late))
+-- The previous rule-based redirection remains supported.
+local rule=card(11,LOCATION_MZONE,REASON_RULE,true)
+assert(s.repRuleTg(e,rule))
+rule.location=LOCATION_EXTRA
+s.repRuleOp(e,1,group({rule}))
+assert(#ark==3 and ark.items[3]==rule)
+assert(#sent==3)
+assert(s.repRuleOp(e,1,nil)==nil)
+print("Shinato's Ark simultaneous/sequential redirect into Ark: PASS")

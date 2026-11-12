@@ -62,7 +62,7 @@ jobs:
       - name: Test Gradius Option printed ATK DEF and inherited Equip effects
         shell: bash
         run: lua5.4 .github/tests/gradius_option_anime_test.lua multiplayer-anime-cards/c14291024.lua
-      - name: Test Shinato's Ark send-replacement nil-eg callback variants
+      - name: Test Shinato's Ark native redirect for Gradius and Option
         shell: bash
         run: lua5.4 .github/tests/shinatos_ark_send_replace_test.lua multiplayer-deck-master/c153000017.lua
       - name: Compile all C++ core objects including live succession
@@ -139,7 +139,8 @@ jobs:
           test -f deploy/ygopro.exe
           test -s deploy/expansions/script/c28566710.lua
           test -s deploy/expansions/script/c153000017.lua
-          grep -Fq 'if eg==nil then' deploy/expansions/script/c153000017.lua
+          grep -Fq 'local ark_active=Duel.IsDeckMaster(tp,id)' deploy/expansions/script/c153000017.lua
+          if grep -Fq 'e1:SetCode(EFFECT_SEND_REPLACE)' deploy/expansions/script/c153000017.lua; then exit 1; fi
           grep -Fq 'local picks={Duel.SelectCardsFromCodes(tp,1,ct,false,true,codes)}' deploy/expansions/script/c153000017.lua
           grep -Fq 'Duel.SummonDeckMasterPlayer(opponent,POS_FACEUP_ATTACK)' deploy/expansions/script/c28566710.lua
           test -s deploy/expansions/script/c5494820.lua

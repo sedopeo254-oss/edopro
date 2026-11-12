@@ -26,14 +26,11 @@ function s.dmop(e,tp,eg,ep,ev,re,r,rp)
 	local g=Duel.GetMatchingGroup(Card.IsMonster,tp,LOCATION_GRAVE,LOCATION_GRAVE,nil)
 	Duel.SendtoDeck(g,0,-2,REASON_EFFECT)
 	g:KeepAlive()
-	local e1=Effect.CreateEffect(c)
-	e1:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
-	e1:SetCode(EFFECT_SEND_REPLACE)
-	e1:SetLabelObject(g)
-	e1:SetCondition(s.repcon)
-	e1:SetTarget(s.reptg)
-	e1:SetValue(s.repval)
-	Duel.RegisterEffect(e1,tp)
+	-- Never send monsters to LOCATION_NONE inside EFFECT_SEND_REPLACE.
+	-- If Gradius leaves, its Option self-destructs while that replacement is
+	-- still resolving; the nested event can recurse and lose either card.
+	-- The native graveyard redirect below defers Ark collection until AFTER
+	-- the engine has moved each monster to the bottom of its Deck.
 	local e2=Effect.CreateEffect(c)
 	e2:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
 	e2:SetCode(EVENT_FREE_CHAIN)
@@ -85,16 +82,28 @@ function s.dmop(e,tp,eg,ep,ev,re,r,rp)
 	e8:SetOperation(s.repRuleOp)
 	Duel.RegisterEffect(e8,tp)
 end
+-- Mark monsters redirected from a Graveyard destination so EVENT_TO_DECK
+-- can move their ACTUAL card objects into the Ark's out-of-duel storage.
+-- Keeping this native redirect separate from card destruction prevents the
+-- Gradius / Gradius' Option nested self-destruction loop.
 function s.repRuleTg(e,c)
-	if c:IsMonster() and c:IsReason(REASON_RULE) then
+	if not c or not c:IsMonster() then return false end
+	local tp=e:GetHandlerPlayer()
+	local ark_active=Duel.IsDeckMaster(tp,id) and Duel.GetFlagEffect(tp,id)<=7
+	-- Preserve the original REASON_RULE redirect, but accept ordinary
+	-- battle/effect destruction only while Shinato's Ark is active.
+	if not c:IsReason(REASON_RULE) and not ark_active then return false end
+	if c:GetFlagEffect(id)==0 then
 		c:RegisterFlagEffect(id,RESET_EVENT+RESETS_STANDARD&~(RESET_TODECK|RESET_LEAVE),0,1)
-		return true
-	else return false end
+	end
+	return true
 end
 function s.rdfilter(c)
-	return c:GetFlagEffect(id)>0 and c:IsMonster() and c:IsReason(REASON_RULE)
+	return c:GetFlagEffect(id)>0 and c:IsMonster()
+		and c:IsLocation(LOCATION_DECK|LOCATION_EXTRA)
 end
 function s.repRuleOp(e,tp,eg,ep,ev,re,r,rp)
+	if not eg then return end
 	local g=eg:Filter(s.rdfilter,nil)
 	if #g==0 then return end
 	for tc in g:Iter() do
@@ -106,46 +115,12 @@ function s.repRuleOp(e,tp,eg,ep,ev,re,r,rp)
 		tc:RegisterEffect(e1)
 	end
 	Duel.DisableShuffleCheck()
+	-- EVENT_TO_DECK has already completed the graveyard replacement.
+	-- Moving these cards from Deck to LOCATION_NONE cannot trigger another
+	-- TO_GRAVE_REDIRECT or TO_DECK event; merge only cards actually moved.
 	Duel.SendtoDeck(g,tp,-2,REASON_EFFECT)
-	e:GetLabelObject():Merge(Duel.GetOperatedGroup():Filter(aux.NOT(Card.IsLocation),nil,LOCATION_ALL))
-end
-function s.repcon(e,tp,eg,ep,ev,re,r,rp)
-	if Duel.GetFlagEffect(tp,id)>7 then
-		e:Reset()
-		return false
-	end
-	return Duel.IsDeckMaster(tp,id)
-end
-function s.repfilter(c)
-	return c:GetDestination()&LOCATION_GRAVE==LOCATION_GRAVE and c:IsMonster()
-end
-function s.reptg(e,tp,eg,ep,ev,re,r,rp,chk)
-	-- EDOPro also calls a FIELD effect's SetTarget callback with (effect, card)
-	-- when checking whether the effect applies to a single card. In that
-	-- context tp is a Card and eg/chk are nil: this is ONLY a predicate check.
-	-- Do not attempt to move cards or modify the Ark during that check.
-	if eg==nil then
-		local kind=type(tp)
-		return (kind=="userdata" or kind=="table") and s.repfilter(tp) or false
-	end
-	if chk==0 then return eg:IsExists(s.repfilter,1,nil) end
-	if chk~=1 then return false end
-	local g=eg:Filter(s.repfilter,nil)
-	if #g==0 then return false end
-	for tc in g:Iter() do
-		local e1=Effect.CreateEffect(e:GetOwner())
-		e1:SetType(EFFECT_TYPE_SINGLE)
-		e1:SetProperty(EFFECT_FLAG_IGNORE_IMMUNE)
-		e1:SetCode(EFFECT_CANNOT_TRIGGER)
-		e1:SetReset(RESET_EVENT+RESETS_STANDARD&~(RESET_LEAVE))
-		tc:RegisterEffect(e1)
-	end
-	Duel.SendtoDeck(g,tp,-2,REASON_EFFECT)
-	e:GetLabelObject():Merge(Duel.GetOperatedGroup():Filter(aux.NOT(Card.IsLocation),nil,LOCATION_ALL))
-	return true
-end
-function s.repval(e,c)
-	return s.repfilter(c)
+	local moved=Duel.GetOperatedGroup():Filter(aux.NOT(Card.IsLocation),nil,LOCATION_ALL)
+	e:GetLabelObject():Merge(moved)
 end
 function s.con(e,tp,eg,ep,ev,re,r,rp)
 	if Duel.GetFlagEffect(tp,id)>7 then
