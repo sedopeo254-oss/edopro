@@ -41,10 +41,10 @@ has("gframe/game.h", "succession_controller_generation[2]")
 has("gframe/drawing.cpp", "if(inherited_hud) {")
 has("gframe/drawing.cpp", "auto DrawCurrentInheritedName =")
 has("gframe/drawing.cpp", "inherited_duel_hud::VisibleName(")
-has("gframe/drawing.cpp", "dInfo.succession_controller_generation[0]")
+has("gframe/drawing.cpp", "dInfo.succession_controller_generation[core_side]")
 has("gframe/drawing.cpp", "const auto rect = Resize(left ? 335 : 695, 31, left ? 629 : 986, 50);")
-has("gframe/drawing.cpp", "DrawCurrentInheritedName(self, true, dInfo.isTeam1);")
-has("gframe/drawing.cpp", "DrawCurrentInheritedName(oppo, false, !dInfo.isTeam1);")
+has("gframe/drawing.cpp", "DrawCurrentInheritedName(self, true, dInfo.isTeam1 ? 0 : 1);")
+has("gframe/drawing.cpp", "DrawCurrentInheritedName(oppo, false, dInfo.isTeam1 ? 1 : 0);")
 # The classic two-side drawing branch must keep its own loop index;
 # this is compiled on Windows even when the new HUD branch is selected.
 has("gframe/drawing.cpp", """} else {
@@ -56,7 +56,7 @@ has("gframe/inherited_duel_hud.h", "inline const std::wstring& VisibleName(")
 
 # The role captions live in their own label widgets. Never overwrite
 # stHostPrepDuelist names, which EDOPro serializes into YRPX.
-has("gframe/game.h", "stInheritedSeatRole[3]")
+has("gframe/game.h", "stInheritedSeatRole[4]")
 has("gframe/game.cpp", "stInheritedSeatRole[i] = env->addStaticText(")
 has("gframe/game.h", "stInheritedSeatRole[4]")
 has("gframe/duelclient.cpp", "const bool inherited_lobby =")
@@ -100,7 +100,7 @@ has("ocgcore/field.cpp", "pduel->new_message(MSG_TAG_SWAP)")
 has("ocgcore/field.cpp", "pduel->new_message(MSG_DUEL_SUCCESSION)")
 has("ocgcore/processor.cpp", "&& !is_flag(DUEL_INHERITED_DUEL)")
 has("gframe/generic_duel.cpp", "bool GenericDuel::IsInheritedDuelMode() const")
-has("gframe/generic_duel.cpp", "DuelPlayer* successor = IsInheritedDuelMode()")
+has("gframe/generic_duel.cpp", "DuelPlayer* successor = nullptr;")
 netserver = (root / "gframe/netserver.cpp").read_text(encoding="utf-8")
 mode_start = netserver.index("} else if(multiplayer_flags == DUEL_INHERITED_DUEL) {")
 mode_end = netserver.index("\n\t\t}", mode_start)
