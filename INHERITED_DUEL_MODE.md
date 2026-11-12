@@ -1,8 +1,9 @@
 # Inherited Duel Mode - Duel Succession System
 
-> Status: **Stage 1 foundation / NOT a playable Noah-vs-Kaiba-to-Yugi handoff yet.**
-> Changes are isolated on feature/inherited-duel-succession-v1-20261105.
-> No existing duel mode, card script or replay has been overwritten.
+> Current status (2026-11-12): **dual-sided 2+2 successor implementation and CI integration**.
+> Stages 1-3 below are preserved as historical design notes and do not
+> reflect the latest runtime state. Full 2+2 live/replay verification is pending.
+> Changes remain isolated to feature/inherited-duel-succession-v1-20261105.
 
 ## Goal
 
@@ -121,3 +122,28 @@ Remaining blockers before end-to-end transition:
 5. Atomically switch the network responder/hidden information rights and
    emit succession messages only after the transaction succeeds.
 6. Complete full Windows build and a 42-turn replay acceptance test.
+
+
+## Current 2+2 extension — Noah controller succession (2026-11-12)
+
+The room now has **four real seats** while maintaining exactly **two physical
+duel fields**:
+- Seat 0: Kaiba, initially controls core field side 0.
+- Seat 1: Yugi, takes over side 0 after the verified Last Turn succession.
+- Seat 2: Noah (first controller), initially controls core field side 1.
+- Seat 3: Noah (second controller), takes over side 1 at the same event.
+
+The original duel continues without resetting LP, cards on either field,
+remaining Hand, Graveyard, banished cards, Deck Masters, chains, or turn number.
+The undeployed Deck and Extra Deck of both incoming players are appended to
+their inherited physical sides, without duplicate card instances or fresh
+starting hands. Both MSG_TAG_SWAP privacy/response transfers happen first;
+then two 10-byte MSG_DUEL_SUCCESSION events (side 0, side 1) are recorded in
+the same YRPX. HUD displays exactly one active name per side and changes
+each name only when its respective event has arrived.
+
+Kaiba and first Noah are no longer allowed to provide the active seat's
+response after takeover; standby players cannot act before handoff. The
+existing Last Turn and Deck Master card scripts remain unchanged.
+The Standard, 3v1, Battle Royale and Tag mode flags are unchanged.
+Real online multiplayer/Windows replay acceptance remains required.

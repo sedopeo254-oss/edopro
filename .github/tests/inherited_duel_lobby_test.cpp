@@ -4,40 +4,26 @@
 #include <iostream>
 #include <string>
 #include <vector>
-
 using namespace inherited_duel_lobby;
-static_assert(STARTER_SEAT == 0, "Player 1 must occupy the starting seat");
-static_assert(SUCCESSOR_SEAT == 1, "Player 2 must be the reserved successor");
-static_assert(OPPONENT_SEAT == 2, "Opponent must occupy the third lobby seat");
-static_assert(STARTER_FIRST_CHOICE == 1,
-              "TPResult choice 1 keeps Player 1's home side in first position");
-
-void expect(bool ok, const char* description) {
-    if(!ok) {
-        std::cerr << "FAILED: " << description << '\n';
-        std::exit(1);
-    }
+static_assert(STARTER_SEAT==0, "Kaiba starts in seat 0");
+static_assert(SUCCESSOR_SEAT==1, "Yugi is reserved on side 0");
+static_assert(OPPONENT_SEAT==2, "Noah starts in seat 2");
+static_assert(OPPONENT_SUCCESSOR_SEAT==3, "Noah's successor is seat 3");
+static_assert(STARTER_FIRST_CHOICE==1, "First player is Kaiba");
+static void check(bool ok,const char* why) {
+	if(!ok) { std::cerr << "FAILED: "<<why<<'\n';std::exit(1); }
 }
-
 int main() {
-    const std::vector<std::wstring> team = {L"Seto", L"yugi"};
-    const std::vector<std::wstring> opponent = {L"noah"};
-    const auto original = team;
-    expect(std::wstring(SeatCaption(STARTER_SEAT)).find(L"Starts") != std::wstring::npos,
-           "starter must be visibly labeled");
-    expect(std::wstring(SeatCaption(SUCCESSOR_SEAT)).find(L"Takes over") != std::wstring::npos,
-           "successor must be visibly labeled");
-    expect(std::wstring(SeatCaption(OPPONENT_SEAT)).find(L"Both stages") != std::wstring::npos,
-           "opponent must be visibly labeled for both stages");
-    expect(std::wstring(SeatCaption(4)).empty(), "invalid seat has no inherited label");
-    expect(inherited_duel_hud::VisibleName(team, true, 0) == L"Seto",
-           "stage 1: Seto against Noah");
-    expect(inherited_duel_hud::VisibleName(opponent, false, 0) == L"noah",
-           "stage 1: opponent appears unchanged");
-    expect(inherited_duel_hud::VisibleName(team, true, 1) == L"yugi",
-           "stage 2: Yugi replaces Seto");
-    expect(inherited_duel_hud::VisibleName(opponent, false, 1) == L"noah",
-           "stage 2: Noah remains the same opponent");
-    expect(team == original, "role labels never modify names saved in replay");
-    std::cout << "Inherited Duel lobby seat roles and starter selection: PASS\n";
+	check(std::wstring(SeatCaption(0)).find(L"Kaiba")!=std::wstring::npos,"Kaiba label");
+	check(std::wstring(SeatCaption(1)).find(L"Yugi")!=std::wstring::npos,"Yugi label");
+	check(std::wstring(SeatCaption(2)).find(L"Noah")!=std::wstring::npos,"Noah label");
+	check(std::wstring(SeatCaption(3)).find(L"Noah")!=std::wstring::npos,"Second Noah label");
+	check(std::wstring(SeatCaption(4)).empty(),"out of range seat");
+	const std::vector<std::wstring> home={L"Kaiba",L"Yugi"};
+	const std::vector<std::wstring> oppo={L"Noah A",L"Noah B"};
+	check(inherited_duel_hud::VisibleName(home,0)==L"Kaiba","stage one home");
+	check(inherited_duel_hud::VisibleName(oppo,0)==L"Noah A","stage one opposing");
+	check(inherited_duel_hud::VisibleName(home,1)==L"Yugi","stage two home");
+	check(inherited_duel_hud::VisibleName(oppo,1)==L"Noah B","stage two opposing");
+	std::cout << "Inherited Duel four-seat lobby roles: PASS\n";
 }

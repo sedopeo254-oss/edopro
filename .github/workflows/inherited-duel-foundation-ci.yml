@@ -35,6 +35,10 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_attack_arrow_test.cpp -o /tmp/inherited_duel_attack_arrow_test
           /tmp/inherited_duel_attack_arrow_test
+      - name: Validate dual-side transfer preflight without duplicated instances
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_dual_side_transfer_test.cpp -o /tmp/inherited_dual_side_transfer_test
+          /tmp/inherited_dual_side_transfer_test
       - name: Test Last Turn Deck Master selection, forced attack and End Phase rules
         shell: bash
         run: |

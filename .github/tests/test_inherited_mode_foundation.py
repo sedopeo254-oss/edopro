@@ -33,9 +33,9 @@ has("gframe/game.cpp", "duel_param |= DUEL_INHERITED_DUEL;")
 has("gframe/netserver.cpp", "multiplayer_flags & (multiplayer_flags - 1)")
 has("gframe/netserver.cpp", "multiplayer_flags == DUEL_INHERITED_DUEL")
 has("gframe/netserver.cpp", "pkt.info.team1 = 2;")
-has("gframe/netserver.cpp", "pkt.info.team2 = 1;")
+has("gframe/netserver.cpp", "pkt.info.team2 = 2;")
 has("gframe/game.h", "succession_controller_generation[2]")
-# Inherited Duel must use full-width name rows for ALL 3 seats. This fixes
+# Inherited Duel uses full-width name rows for all four seats. This fixes
 # cropped leading characters on the opponent side, while preserving the
 # historical HUD renderer for Standard, Battle Royale and 3v1.
 has("gframe/drawing.cpp", "if(inherited_hud) {")
@@ -58,11 +58,13 @@ has("gframe/inherited_duel_hud.h", "inline const std::wstring& VisibleName(")
 # stHostPrepDuelist names, which EDOPro serializes into YRPX.
 has("gframe/game.h", "stInheritedSeatRole[3]")
 has("gframe/game.cpp", "stInheritedSeatRole[i] = env->addStaticText(")
+has("gframe/game.h", "stInheritedSeatRole[4]")
 has("gframe/duelclient.cpp", "const bool inherited_lobby =")
 has("gframe/duelclient.cpp", "stInheritedSeatRole[i]->setText(inherited_lobby")
 has("gframe/duelclient.cpp", "inherited_duel_lobby::SeatCaption(")
 has("gframe/duelclient.cpp", "const int row = inherited_lobby ? 65 + i * 35")
 has("gframe/inherited_duel_lobby.h", "STARTER_FIRST_CHOICE = 1")
+has("gframe/inherited_duel_lobby.h", "OPPONENT_SUCCESSOR_SEAT = 3")
 has("gframe/generic_duel.cpp", "void GenericDuel::StartInheritedDuel() {")
 has("gframe/generic_duel.cpp", "TPResult(starter, inherited_duel_lobby::STARTER_FIRST_CHOICE);")
 has("gframe/generic_duel.cpp", "if(IsInheritedDuelMode() && (players.home.empty() || dp != players.home.front().player))")
@@ -103,8 +105,8 @@ netserver = (root / "gframe/netserver.cpp").read_text(encoding="utf-8")
 mode_start = netserver.index("} else if(multiplayer_flags == DUEL_INHERITED_DUEL) {")
 mode_end = netserver.index("\n\t\t}", mode_start)
 mode = netserver[mode_start:mode_end]
-assert "pkt.info.team1 = 2;" in mode and "pkt.info.team2 = 1;" in mode, (
-    "Inherited Duel must reserve Kaiba+Yugi against Noah"
+assert "pkt.info.team1 = 2;" in mode and "pkt.info.team2 = 2;" in mode, (
+    "Inherited Duel reserves Kaiba+Yugi against Noah+second Noah"
 )
 
 # Succession is an uninterrupted takeover, not a user-confirmed dialog.
@@ -154,4 +156,17 @@ has("multiplayer-deck-master/c153000017.lua", "local ark_active=Duel.IsDeckMaste
 has("multiplayer-deck-master/c153000017.lua", "c:IsLocation(LOCATION_DECK|LOCATION_EXTRA)")
 has("multiplayer-deck-master/c153000017.lua", "local moved=Duel.GetOperatedGroup():Filter(")
 has("multiplayer-deck-master/c153000017.lua", "e:GetLabelObject():Merge(moved)")
-print("Inherited Duel Mode stage 1 integration: PASS")
+# Dual-sided succession: both standby decks are imported without an opening hand,
+# while both clients receive a private, authenticated MSG_TAG_SWAP.
+core_field = (root / "ocgcore/field.cpp").read_text(encoding="utf-8")
+assert "for(uint8_t side = 0; side < 2; ++side)" in core_field
+assert "imports[1 - side]" in core_field
+assert "auto event = pduel->new_message(MSG_DUEL_SUCCESSION)" in core_field
+core_processor = (root / "ocgcore/processor.cpp").read_text(encoding="utf-8")
+assert 'if(is_flag(DUEL_INHERITED_DUEL))' in core_processor
+has("gframe/generic_duel.cpp", "players.opposing.size() != 2")
+has("gframe/generic_duel.cpp", "players.opposing[1].player")
+has("gframe/generic_duel.cpp", "players.opposing_iterator == players.opposing.begin() + 1")
+has("gframe/drawing.cpp", "dInfo.succession_controller_generation[core_side]")
+has("gframe/inherited_duel_hud.h", "generation > 0")
+print("Inherited Duel 2+2 dual-sided succession integration: PASS")
