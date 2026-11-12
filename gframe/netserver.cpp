@@ -373,10 +373,10 @@ void NetServer::HandleCTOSPacket(DuelPlayer* dp, uint8_t* data, uint32_t len) {
 			pkt.info.team2 = 1;
 			pkt.info.duel_flag_low &= ~DUEL_RELAY;
 		} else if(multiplayer_flags == DUEL_INHERITED_DUEL) {
-			// Kaiba + reserved Yugi = two network seats on one physical field;
-			// Noah occupies the other side. Only Kaiba plays until succession.
+			// Two seats per side but only two physical fields.
+			// Kaiba and first Noah start; Yugi and second Noah inherit.
 			pkt.info.team1 = 2;
-			pkt.info.team2 = 1;
+			pkt.info.team2 = 2;
 			pkt.info.duel_flag_low &= ~DUEL_RELAY;
 		}
 		pkt.info.team1 = std::max(1, std::min(pkt.info.team1, 3));

@@ -744,7 +744,7 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 		mainGame->dInfo.team2 = pkt.info.team2;
 		// Visual role information is confined to Inherited Duel; roster names stay raw.
 		const bool inherited_lobby = mainGame->dInfo.HasFieldFlag(DUEL_INHERITED_DUEL)
-			&& pkt.info.team1 == 2 && pkt.info.team2 == 1;
+			&& pkt.info.team1 == 2 && pkt.info.team2 == 2;
 		mainGame->dInfo.best_of = pkt.info.best_of;
 		std::wstring str, strR, strL;
 		str.append(epro::format(L"{}{}\n", gDataManager->GetSysString(1226), gdeckManager->GetLFListName(pkt.info.lflist)));
@@ -755,7 +755,8 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 			str.append(epro::format(L"{}{} {}{}\n", gDataManager->GetSysString(1227), gDataManager->GetSysString(1381), mainGame->dInfo.best_of, mainGame->dInfo.isRelay ? L" Relay" : L""));
 		}
 		if(inherited_lobby)
-			str.append(L"Inherited Duel: Player 1 starts vs Opponent.\nPlayer 2 takes over later vs same Opponent.\n");
+			str.append(L"Inherited Duel (2+2): Kaiba vs first Noah.\n"
+				L"After Last Turn, Yugi and the second Noah inherit both sides.\n");
 		if(pkt.info.time_limit) {
 			str.append(epro::format(L"{}{}\n", gDataManager->GetSysString(1237), pkt.info.time_limit));
 		}
@@ -848,7 +849,7 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 		std::lock_guard<epro::mutex> lock(mainGame->gMutex);
 		matManager.SetActiveVertices(mainGame->dInfo.HasFieldFlag(DUEL_3_COLUMNS_FIELD),
 									 !mainGame->dInfo.HasFieldFlag(DUEL_SEPARATE_PZONE));
-		int x = (pkt.info.team1 + pkt.info.team2 >= 5) ? 60 : 0;
+		int x = inherited_lobby ? 70 : (pkt.info.team1 + pkt.info.team2 >= 5) ? 60 : 0;
 		mainGame->btnHostPrepOB->setRelativePosition(mainGame->Scale<irr::s32>(10, 180 + x, 110, 205 + x));
 		mainGame->stHostPrepOB->setRelativePosition(mainGame->Scale<irr::s32>(10, 210 + x, 270, 230 + x));
 		mainGame->stHostPrepRule->setRelativePosition(mainGame->Scale<irr::s32>(280, 30, 460, 270 + x));
@@ -868,7 +869,7 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 			mainGame->btnHostPrepKick[i]->setVisible(false);
 			mainGame->stHostPrepDuelist[i]->setVisible(false);
 			mainGame->stHostPrepDuelist[i]->setText(L"");
-			if(i < 3) {
+			if(i < 4) {
 				mainGame->stInheritedSeatRole[i]->setVisible(inherited_lobby);
 				mainGame->stInheritedSeatRole[i]->setText(inherited_lobby
 					? inherited_duel_lobby::SeatCaption(static_cast<uint8_t>(i)) : L"");
@@ -885,8 +886,8 @@ void DuelClient::HandleSTOCPacketLanAsync(const std::vector<uint8_t>& data) {
 		for(int i = pkt.info.team1; i < pkt.info.team1 + pkt.info.team2; i++) {
 			mainGame->chkHostPrepReady[i]->setVisible(true);
 			mainGame->stHostPrepDuelist[i]->setVisible(true);
-			// Standard/team lobby retains its historic separation; the inherited
-			// 2+1 lobby uses three evenly spaced role-caption rows instead.
+			// Normal lobby layout unchanged; the inherited 2+2 room keeps
+			// four evenly-spaced seat-role captions on independent rows.
 			const int row = inherited_lobby ? 65 + i * 35 : 10 + 65 + i * 25;
 			mainGame->btnHostPrepKick[i]->setRelativePosition(mainGame->Scale<irr::s32>(10, row, 30, row + 20));
 			mainGame->stHostPrepDuelist[i]->setRelativePosition(mainGame->Scale<irr::s32>(40, row, 240, row + 20));

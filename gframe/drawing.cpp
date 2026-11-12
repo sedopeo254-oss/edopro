@@ -743,22 +743,20 @@ void Game::DrawMisc() {
 			return current ? 0xffffffff : 0xff808080;
 		};
 		if(inherited_hud) {
-			// One on-field name per side, even though Kaiba and Yugi have
-			// independent seats/decks in the 2+1 lobby. The authoritative
-			// MSG_DUEL_SUCCESSION event changes the controller generation
-			// (and replay sees the same event).
+			// Two visible names for four seats. Each physical side tracks its
+			// own succession generation, including replay/swap perspectives.
 			auto DrawCurrentInheritedName = [&](const std::vector<std::wstring>& names,
-					bool left, bool inherited_side) {
+					bool left, uint8_t core_side) {
 				const auto& visible_name = inherited_duel_hud::VisibleName(
-					names, inherited_side, dInfo.succession_controller_generation[0]);
+					names, dInfo.succession_controller_generation[core_side]);
 				if(visible_name.empty())
 					return;
 				// Full-width rectangle prevents clipping the first letter.
 				const auto rect = Resize(left ? 335 : 695, 31, left ? 629 : 986, 50);
 				textFont->drawustring(visible_name, rect, 0xffffffff, false, true, &rect);
 			};
-			DrawCurrentInheritedName(self, true, dInfo.isTeam1);
-			DrawCurrentInheritedName(oppo, false, !dInfo.isTeam1);
+			DrawCurrentInheritedName(self, true, dInfo.isTeam1 ? 0 : 1);
+			DrawCurrentInheritedName(oppo, false, dInfo.isTeam1 ? 1 : 0);
 		} else {
 		int i = 0;
 		for (const auto& player : self) {

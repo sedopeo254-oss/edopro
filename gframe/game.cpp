@@ -1403,7 +1403,7 @@ void Game::PopulateGameHostWindows() {
 		chkHostPrepReady[i] = env->addCheckBox(false, Scale(250, 65 + i * 25, 270, 85 + i * 25), wHostPrepare, CHECKBOX_HP_READY, L"");
 		chkHostPrepReady[i]->setEnabled(false);
 	}
-	for(int i = 0; i < 3; ++i) {
+	for(int i = 0; i < 4; ++i) {
 		stInheritedSeatRole[i] = env->addStaticText(L"", Scale(40, 84 + i * 35, 240, 98 + i * 35), false, false, wHostPrepare);
 		stInheritedSeatRole[i]->setVisible(false);
 	}
@@ -3195,10 +3195,10 @@ void Game::UpdateMultiplayerMode() {
 		ebTeam1->setText(L"1");
 		ebTeam2->setText(L"3");
 	} else if(mode == 3) {
-		// Two seats on Kaiba/Yugi side, one Noah seat, but only 1v1 on field.
+		// Four network seats, one active duelist per physical field side.
 		duel_param |= DUEL_INHERITED_DUEL;
 		ebTeam1->setText(L"2");
-		ebTeam2->setText(L"1");
+		ebTeam2->setText(L"2");
 	}
 	const bool standard_mode = mode == 0;
 	ebTeam1->setEnabled(standard_mode);

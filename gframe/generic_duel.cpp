@@ -95,13 +95,13 @@ void GenericDuel::StartMultiplayerDuel() {
 	player->state = CTOS_TP_RESULT;
 	TPResult(player, 0);
 }
-// Inherited Duel: Kaiba (seat 0) must begin against Noah (seat 2).
-// Yugi (seat 1) remains reserved until the authoritative succession event.
+// Inherited Duel: Kaiba (seat 0) starts against Noah (seat 2).
+// Yugi (seat 1) and second Noah (seat 3) wait for the same Last Turn event.
 // Skip RPS/turn-order selection ONLY in this mode; never swap core sides.
 void GenericDuel::StartInheritedDuel() {
-	if(players.home.size() != 2 || players.opposing.size() != 1
+	if(players.home.size() != 2 || players.opposing.size() != 2
 			|| !players.home.front().player || !players.home[1].player
-			|| !players.opposing.front().player)
+			|| !players.opposing.front().player || !players.opposing[1].player)
 		return;
 	IteratePlayers([](DuelPlayer* dueler) {
 		dueler->state = 0xff;
@@ -278,14 +278,19 @@ void GenericDuel::JoinGame(DuelPlayer* dp, CTOS_JoinGame* pkt, bool is_creator) 
 	}
 }
 void GenericDuel::LeaveGame(DuelPlayer* dp) {
-	// Retired Kaiba can leave without terminating Yugi's live duel.
+	// Both retired first-stage duelists may disconnect after succession.
 	if(IsInheritedDuelMode() && inherited_successor_active && dp
-			&& dp != cur_player[0] && dp != cur_player[1]
-			&& dp->type == 0 && !players.home.empty()
-			&& players.home[0].player == dp) {
-		NetServer::DisconnectPlayer(dp);
-		players.home[0].player = nullptr;
-		return;
+			&& dp != cur_player[0] && dp != cur_player[1]) {
+		if(!players.home.empty() && players.home[0].player == dp) {
+			NetServer::DisconnectPlayer(dp);
+			players.home[0].player = nullptr;
+			return;
+		}
+		if(!players.opposing.empty() && players.opposing[0].player == dp) {
+			NetServer::DisconnectPlayer(dp);
+			players.opposing[0].player = nullptr;
+			return;
+		}
 	}
 	auto HostLeft = [this, &dp]()->bool {
 		if(dp == host_player) {
@@ -503,7 +508,7 @@ void GenericDuel::StartDuel(DuelPlayer* dp) {
 	OrderPlayers(players.opposing, players.home_size);
 	players.home_iterator = players.home.begin();
 	const bool multiplayer_mode = IsMultiplayerMode();
-	if(relay || multiplayer_mode)
+	if(relay || multiplayer_mode || IsInheritedDuelMode())
 		players.opposing_iterator = players.opposing.begin();
 	else
 		players.opposing_iterator = players.opposing.end() - 1;
@@ -641,7 +646,7 @@ void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 		swapped = !swapped;
 	}
 	players.home_iterator = players.home.begin();
-	if(relay || multiplayer_mode)
+	if(relay || multiplayer_mode || IsInheritedDuelMode())
 		players.opposing_iterator = players.opposing.begin();
 	else
 		players.opposing_iterator = players.opposing.end() - 1;
@@ -742,8 +747,9 @@ void GenericDuel::TPResult(DuelPlayer* dp, uint8_t tp) {
 	}
 	card_info.team = 1;
 	card_info.con = 1;
-	auto idxinc = [relay=relay, multiplayer_mode, size= static_cast<int>(players.opposing.size())](int i)->int {
-		if(relay || multiplayer_mode)
+	auto idxinc = [relay=relay, multiplayer_mode, inherited_mode=IsInheritedDuelMode(),
+			size= static_cast<int>(players.opposing.size())](int i)->int {
+		if(relay || multiplayer_mode || inherited_mode)
 			return i;
 		return (i + size - 1) % size;
 	};
@@ -1351,9 +1357,15 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		/*uint32_t pcount = */BufferIO::Read<uint32_t>(pbuf);
 		uint32_t hcount = BufferIO::Read<uint32_t>(pbuf);
 		pbufw = pbuf + 4;
-		// The successor alone sees the merged Hand and Extra Deck.
-		DuelPlayer* successor = IsInheritedDuelMode() && player == 0
-			&& players.home.size() > 1 ? players.home[1].player : nullptr;
+		// Only the successor for the affected physical side sees its inherited
+		// Hand / Extra Deck, after its corresponding Tag event.
+		DuelPlayer* successor = nullptr;
+		if(IsInheritedDuelMode()) {
+			if(player == 0 && players.home.size() == 2)
+				successor = players.home[1].player;
+			else if(player == 1 && players.opposing.size() == 2)
+				successor = players.opposing[1].player;
+		}
 		SEND(nullptr);
 		if(successor) {
 			NetServer::ReSendToPlayer(successor);
@@ -1468,11 +1480,15 @@ void GenericDuel::Sending(CoreUtils::Packet& packet, int& return_value, bool& re
 		break;
 	}
 	case MSG_DUEL_SUCCESSION: {
-		// MSG_TAG_SWAP already handed the active controller to the next seat.
+		// Both MSG_TAG_SWAP notifications precede the succession events.
+		// Only active successor accounts can submit further responses.
 		if(IsInheritedDuelMode() && packet.buff_size() == 10
-				&& players.home.size() == 2
+				&& pbuf[0] <= 1 && pbuf[1] == 1
+				&& players.home.size() == 2 && players.opposing.size() == 2
 				&& players.home_iterator == players.home.begin() + 1
-				&& cur_player[0] == players.home[1].player)
+				&& players.opposing_iterator == players.opposing.begin() + 1
+				&& cur_player[0] == players.home[1].player
+				&& cur_player[1] == players.opposing[1].player)
 			inherited_successor_active = true;
 		SEND(nullptr);
 		ResendToAll();
