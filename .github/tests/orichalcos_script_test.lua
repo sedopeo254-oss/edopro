@@ -35,17 +35,20 @@ local script
 function GetID() script={} return script,291 end
 aux={Stringid=function()return 1 end}
 local function effect(card)
- local obj={owner=card}
+ local obj={owner=card,calls={}}
  function obj:Clone()
   local c=effect(self.owner)
-  for k,v in pairs(self) do c[k]=v end
+  for k,v in pairs(self) do
+   if k~="calls" and k~="owner" then c[k]=v end
+  end
+  for k,args in pairs(self.calls) do c.calls[k]={table.unpack(args)} end
   return c
  end
  for _,method in ipairs({
  "SetProperty","SetType","SetCode","SetCost","SetTarget",
  "SetOperation","SetRange","SetTargetRange","SetValue","SetDescription"
  }) do
-  obj[method]=function(self,...)self[method]={...}end
+  obj[method]=function(self,...)self.calls[method]={...}end
  end
  return obj
 end
@@ -71,7 +74,7 @@ assert(s.has_orica_core==false)
 assert(#card.effects==13,"expected 13 compatible effects, got "..#card.effects)
 local function has_code(code)
  for _,e in ipairs(card.effects) do
-  if e.SetCode and e.SetCode[1]==code then return true end
+  if e.calls.SetCode and e.calls.SetCode[1]==code then return true end
  end
  return false
 end
