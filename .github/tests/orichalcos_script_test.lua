@@ -13,5 +13,8 @@ for _,fragment in ipairs({
 }) do
  assert(code:find(fragment,1,true),"Missing Orichalcos source feature: "..fragment)
 end
+local script
+function GetID() script={} return script,291 end
 local source=assert(loadfile(path))()
+assert(script and type(script.initial_effect)=="function")
 print("Orichalcos source and Legendary Dragon hook: PASS (engine zone support separately required)")
