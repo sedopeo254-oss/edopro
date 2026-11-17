@@ -46,7 +46,8 @@ local function effect(card)
  end
  for _,method in ipairs({
  "SetProperty","SetType","SetCode","SetCost","SetTarget",
- "SetOperation","SetRange","SetTargetRange","SetValue","SetDescription"
+ "SetOperation","SetRange","SetTargetRange","SetValue","SetDescription",
+ "SetCondition","SetReset","SetCountLimit"
  }) do
   obj[method]=function(self,...)self.calls[method]={...}end
  end
