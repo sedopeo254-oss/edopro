@@ -31,6 +31,35 @@ jobs:
               path.write_text(content,encoding='utf-8')
           PY
           python3 .github/scripts/apply-2v1-clean-core.py
+          # The legacy 2v1 patcher predated the Inherited Duel (mode 3) entry.
+          # Add mode 4 directly while preserving modes 0..3 byte-for-byte.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('gframe/game.cpp')
+          s=p.read_text(encoding='utf-8')
+          def one(old,new):
+              global s
+              assert s.count(old)==1, repr(old[:70])
+              s=s.replace(old,new,1)
+          one('cbMultiplayerMode->addItem(L"Inherited Duel Mode");',
+              'cbMultiplayerMode->addItem(L"Inherited Duel Mode");\n'
+              '\t\tcbMultiplayerMode->addItem(L"2 vs 1");')
+          one('cbMultiplayerMode->setSelected((duel_param & DUEL_INHERITED_DUEL) ? 3',
+              'cbMultiplayerMode->setSelected((duel_param & DUEL_2_V_1) ? 4\n'
+              '\t\t\t: (duel_param & DUEL_INHERITED_DUEL) ? 3')
+          one('duel_param & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_INHERITED_DUEL);',
+              'duel_param & (DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_INHERITED_DUEL | DUEL_2_V_1);')
+          one('duel_param &= ~(DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_INHERITED_DUEL);',
+              'duel_param &= ~(DUEL_BATTLE_ROYALE | DUEL_3_V_1 | DUEL_INHERITED_DUEL | DUEL_2_V_1);')
+          one('if(mode == 1) {\n\t\tduel_param |= DUEL_BATTLE_ROYALE;',
+              'if(mode == 4) {\n'
+              '\t\tduel_param |= DUEL_2_V_1;\n'
+              '\t\tebTeam1->setText(L"2");\n'
+              '\t\tebTeam2->setText(L"1");\n'
+              '\t} else if(mode == 1) {\n'
+              '\t\tduel_param |= DUEL_BATTLE_ROYALE;')
+          p.write_text(s,encoding='utf-8')
+          PY
           # First evaluate every legacy patch site against the new Inherited
           # Duel branch; log incompatible anchors rather than abort at the
           # first old 2v1-only source assumption. This is a diagnostic job.
