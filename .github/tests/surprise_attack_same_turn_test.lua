@@ -20,8 +20,8 @@ local values={
  STATUS_SUMMON_TURN=1,STATUS_SPSUMMON_TURN=2,TYPE_MONSTER=1,REASON_RULE=1024
 }
 for name,v in pairs(values) do _G[name]=v end
-local calls={phase=PHASE_END,turn=1,current=1,requested=0,can=true,recover={}}
-local effect=function(owner)
+local calls={phase=PHASE_END,turn=1,current=1,requested=0,can=true,recover={{}}}
+local function effect(owner)
  local e={handler=owner}
  function e:Clone() local x=effect(owner);for k,v in pairs(self) do x[k]=v end;return x end
  function e:GetHandler()return self.handler end
