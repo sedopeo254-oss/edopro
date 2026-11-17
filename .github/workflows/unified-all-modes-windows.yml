@@ -1,0 +1,136 @@
+name: EDOPro Unified All Modes - Windows
+
+on:
+  push:
+    branches:
+      - feature/inherited-duel-succession-v1-20261105
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edopro-unified-all-modes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Five modes + Core and anime cards tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Integrate genuine 2v1 into current EDOPro and Core
+        run: python3 .github/scripts/apply-unified-2v1.py
+      - name: Check all protected modes and Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git -C ocgcore diff --check
+          python3 .github/tests/test_inherited_mode_foundation.py
+          sh ocgcore/tests/run_duel_succession_tests.sh
+          sh ocgcore/tests/run_duel_succession_transfer_tests.sh
+          sh ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ocgcore/tests/run_multiplayer_field_tests.sh
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_hud_test.cpp -o /tmp/inherited_hud
+          /tmp/inherited_hud
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_duel_lobby_test.cpp -o /tmp/inherited_lobby
+          /tmp/inherited_lobby
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/inherited_dual_side_transfer_test.cpp -o /tmp/inherited_transfer
+          /tmp/inherited_transfer
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -Iocgcore ocgcore/tests/surprise_battle_phase_tests.cpp -o /tmp/surprise_battle
+          /tmp/surprise_battle
+      - name: Test anime Lua scripts and Deck Masters
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4
+          lua5.4 .github/tests/inherited_last_turn_test.lua multiplayer-inherited-duel/c28566710.lua
+          lua5.4 .github/tests/shinatos_ark_selection_test.lua multiplayer-deck-master/c153000017.lua
+          lua5.4 .github/tests/shinatos_ark_send_replace_test.lua multiplayer-deck-master/c153000017.lua
+          lua5.4 .github/tests/gradius_equip_regression_test.lua multiplayer-anime-cards/c5494820.lua multiplayer-anime-cards/c511000219.lua
+          lua5.4 .github/tests/gradius_option_anime_test.lua multiplayer-anime-cards/c14291024.lua
+          lua5.4 .github/tests/yamata_dragon_no_draw_test.lua multiplayer-anime-cards/c76862289.lua
+          lua5.4 .github/tests/surprise_attack_same_turn_test.lua multiplayer-anime-cards/c319.lua
+          lua5.4 .github/tests/orichalcos_script_test.lua multiplayer-anime-cards/c291.lua
+      - name: Compile all Core C++ objects with all five modes
+        shell: bash
+        run: |
+          sudo apt-get install -y meson ninja-build pkg-config liblua5.4-dev
+          meson setup /tmp/unified-core-build ocgcore -Dbuildtype=release
+          mapfile -t objects < <(ninja -C /tmp/unified-core-build -t targets all | grep -F 'libocgcore.so.p/' | grep -F '.cpp.o:' | cut -d: -f1)
+          test "${#objects[@]}" -ge 17
+          ninja -C /tmp/unified-core-build "${objects[@]}"
+
+  windows:
+    name: Windows x86 executable - five duel modes
+    runs-on: windows-2022
+    needs: validate
+    env:
+      TRAVIS_OS_NAME: windows
+      BUILD_CONFIG: release
+      ARCH: x86
+      BUNDLED_CORE: "1"
+      DXSDK_DIR: /c/d3d9sdk/
+      VCPKG_ROOT: /c/vcpkg2
+      VCPKG_CACHE_ZIP_URL: https://github.com/edo9300/edopro-vcpkg-cache/releases/latest/download/installed_x86-windows-static.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply reproducible 2v1 integration
+        shell: bash
+        run: |
+          python3 .github/scripts/apply-unified-2v1.py
+          grep -Fq 'cbMultiplayerMode->addItem(L"2 vs 1")' gframe/game.cpp
+          grep -Fq 'cbMultiplayerMode->addItem(L"Inherited Duel Mode")' gframe/game.cpp
+      - uses: microsoft/setup-msbuild@v3
+      - name: Install old Windows Visual C++ toolset
+        shell: pwsh
+        run: |
+          Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+          $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $Components = @("Microsoft.VisualStudio.Component.VC.v141.x86.x64", "Microsoft.VisualStudio.Component.WinXP")
+          [string]$ArgsText = $Components | ForEach-Object { " --add " + $_ }
+          $quotedPath = '"' + $InstallPath + '"'
+          $arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', $quotedPath, $ArgsText, '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Toolset install failed with $($process.ExitCode)" }
+      - name: Install Premake and game dependencies
+        shell: bash
+        run: |
+          ./travis/install-premake5.sh
+          ./travis/dependencies.sh
+      - name: Compile EDOPro client/server with all custom modes
+        shell: bash
+        run: bash ./travis/build-inherited-windows.sh
+      - name: Package complete game, scripts and all modes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./travis/predeploy.sh
+          mkdir -p deploy/mode-info deploy/textures deploy/expansions/script
+          cp -f textures/field-3v1.png deploy/textures/field-3v1.png
+          cp multiplayer-deck-master/c*.lua deploy/expansions/script/
+          cp multiplayer-anime-cards/c*.lua deploy/expansions/script/
+          cp multiplayer-inherited-duel/c28566710.lua deploy/expansions/script/
+          cp multiplayer-effect-examples/c*.lua deploy/expansions/script/
+          cp INHERITED_DUEL_MODE.md deploy/mode-info/INHERITED_DUEL_MODE.md
+          cp multiplayer-inherited-duel/Card_Text.txt deploy/mode-info/Last_Turn_Custom_Text.txt
+          cp multiplayer-anime-cards/README.md deploy/mode-info/Anime_Card_Scripts.md
+          cp multiplayer-anime-cards/Gradius_Option_Card_Text.txt deploy/mode-info/Gradius_Option_Card_Text.txt
+          rm -f deploy/compressed-ygopro.exe
+          test -s deploy/ygopro.exe
+          for card in c319 c291 c14291024 c153000017 c511000219 c5494820 c76862289; do
+            test -s "deploy/expansions/script/$card.lua"
+          done
+          grep -Fq 'Duel.RequestExtraBattlePhase(tp)' deploy/expansions/script/c319.lua
+          grep -Fq 'e3:SetCode(EFFECT_SET_ATTACK_FINAL)' deploy/expansions/script/c511000219.lua
+          test ! -f deploy/compressed-ygopro.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EDOPro-Unified-All-5-Modes-Windows-x86
+          path: deploy/
+          if-no-files-found: error
