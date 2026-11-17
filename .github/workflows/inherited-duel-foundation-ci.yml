@@ -56,6 +56,14 @@ jobs:
         run: lua5.4 .github/tests/shinatos_ark_send_replace_test.lua multiplayer-deck-master/c153000017.lua
       - name: Verify Yamata Dragon has no draw-to-five effect
         run: lua5.4 .github/tests/yamata_dragon_no_draw_test.lua multiplayer-anime-cards/c76862289.lua
+      - name: Test Surprise Attack same-turn script and original effects
+        run: lua5.4 .github/tests/surprise_attack_same_turn_test.lua multiplayer-anime-cards/c319.lua
+      - name: Check Seal of Orichalcos anime script and fusion restoration
+        run: lua5.4 .github/tests/orichalcos_script_test.lua multiplayer-anime-cards/c291.lua
+      - name: Validate extra Battle Phase state machine
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -Iocgcore ocgcore/tests/surprise_battle_phase_tests.cpp -o /tmp/surprise_battle_phase_test
+          /tmp/surprise_battle_phase_test
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
       - name: Re-run existing multiplayer field tests

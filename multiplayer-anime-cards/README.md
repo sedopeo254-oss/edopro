@@ -84,3 +84,21 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
     restriction exactly as in the uploaded source;
   - card description displayed from a CDB must be updated separately if
     it still mentions drawing to five.
+
+- `c319.lua` — Surprise Attack From Beyond (same-turn anime)
+  - activates only in its owner's End Phase, after that turn's first BP;
+  - calls `Duel.RequestExtraBattlePhase` in the bundled Core to conduct a
+    real second BP of the SAME turn, then resume the End Phase without
+    skipping the opponent's next turn;
+  - allows only monsters Normal/Special Summoned that turn to attack;
+  - retains the uploaded script's returned-monster and summon-event behavior.
+- `c291.lua` — The Seal of Orichalcos (uploaded anime baseline)
+  - retains its activation protection, +500 ATK, Field Spell restrictions,
+    front/back monster zone movement and attack shielding logic;
+  - adds a restoration hook for Legendary Dragon Fusion/Equip products
+    whose original physical materials are recorded with the Fusion;
+  - **ENGINE PREREQUISITE**: the uploaded script uses `EFFECT_ORICA`,
+    `EFFECT_ORICA_SZONE`, `LOCATION_RMZONE`, `LOCATION_RSZONE`
+    and `EFFECT_SANCT_MZONE`, which are NOT defined by the current bundled
+    Core. Full S/T-as-Monster-Zone operation cannot be claimed without a
+    separate engine extension and end-to-end duel tests.
