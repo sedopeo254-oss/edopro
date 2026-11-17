@@ -31,6 +31,23 @@ jobs:
               path.write_text(content,encoding='utf-8')
           PY
           python3 .github/scripts/apply-2v1-clean-core.py
+          # First evaluate every legacy patch site against the new Inherited
+          # Duel branch; log incompatible anchors rather than abort at the
+          # first old 2v1-only source assumption. This is a diagnostic job.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/apply-2v1-clean-client-server.py')
+          src=p.read_text(encoding='utf-8')
+          for old,new in [
+            ('raise SystemExit(f"{path}: expected one replacement site, found {count}")',
+             'print(f"MISSING ONCE {path}: {old[:96]!r} (found {count})"); return'),
+            ('raise SystemExit(f"{path}: expected at least {minimum} replacement site(s), found {count}")',
+             'print(f"MISSING ALL {path}: {old[:96]!r} (found {count})"); return')
+          ]:
+            assert old in src,old
+            src=src.replace(old,new)
+          p.write_text(src,encoding='utf-8')
+          PY
           python3 .github/scripts/apply-2v1-clean-client-server.py
       - name: Confirm all special-mode flags coexist
         shell: bash
