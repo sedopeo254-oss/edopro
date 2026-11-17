@@ -1,0 +1,57 @@
+name: Unified 2v1 Compatibility Probe
+
+on:
+  push:
+    branches:
+      - feature/inherited-duel-succession-v1-20261105
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Adapt legacy 2v1 to unused flag (preserve Inherited Duel)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in (
+              Path('.github/scripts/apply-2v1-clean-core.py'),
+              Path('.github/scripts/apply-2v1-clean-client-server.py')
+          ):
+              content = path.read_text(encoding='utf-8')
+              content = content.replace('DUEL_2_V_1             0x8000000000ULL',
+                                        'DUEL_2_V_1             0x10000000000ULL')
+              path.write_text(content,encoding='utf-8')
+          PY
+          python3 .github/scripts/apply-2v1-clean-core.py
+          python3 .github/scripts/apply-2v1-clean-client-server.py
+      - name: Confirm all special-mode flags coexist
+        shell: bash
+        run: |
+          set -euo pipefail
+          for flag in DUEL_2_V_1 DUEL_3_V_1 DUEL_BATTLE_ROYALE DUEL_INHERITED_DUEL; do
+            grep -Fq "#define $flag" ocgcore/ocgapi_constants.h
+            grep -Fq "#define $flag" gframe/ocgapi_constants.h
+          done
+          grep -Fq 'addItem(L"2 vs 1")' gframe/game.cpp
+          grep -Fq 'addItem(L"Inherited Duel Mode")' gframe/game.cpp
+          git diff --check
+          git -C ocgcore diff --check
+      - name: Check all regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/tests/test_inherited_mode_foundation.py
+          sh ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ocgcore/tests/run_multiplayer_field_tests.sh
+          c++ -std=c++17 -I. .github/tests/inherited_duel_hud_test.cpp -o /tmp/inherited_hud
+          /tmp/inherited_hud
+          c++ -std=c++17 -I. .github/tests/inherited_duel_lobby_test.cpp -o /tmp/inherited_lobby
+          /tmp/inherited_lobby
