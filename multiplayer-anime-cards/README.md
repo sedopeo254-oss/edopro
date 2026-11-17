@@ -102,3 +102,15 @@ Dark Flare Knight and both supported Mirage Knight codes are also selectable as 
     and `EFFECT_SANCT_MZONE`, which are NOT defined by the current bundled
     Core. Full S/T-as-Monster-Zone operation cannot be claimed without a
     separate engine extension and end-to-end duel tests.
+
+## Orichalcos Core compatibility warning
+The current bundled Core does not define the anime-only `EFFECT_ORICA`,
+`EFFECT_ORICA_SZONE`, `EFFECT_SANCT_MZONE`, `LOCATION_RMZONE` and
+`LOCATION_RSZONE`. Therefore `c291.lua` now **registers only supported
+effects** on this build: activation/negation protection, Field Spell controls,
+indestructibility, and +500 ATK. It does not register false S/T-as-Monster-Zone
+effects that would crash Lua or leave monsters unable to attack. If a future
+custom Core supplies all five constants and the corresponding combat logic,
+the uploaded original zone-moving/shielding script automatically activates.
+This compatibility guard is not a substitute for full anime Orichalcos engine
+implementation.
