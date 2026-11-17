@@ -2,6 +2,19 @@
 
 
 local s,id=GetID()
+-- This anime card relies on a nonstandard engine extension for physical
+-- Monster/Spell&Trap interchangeable zones and combat. Keep all standard
+-- effects usable without causing nil SetCode/SetTarget Lua errors when the
+-- connected Core does not provide this extension. As soon as a compatible
+-- Core defines all five features, the original zone logic is enabled.
+local has_orica_core =
+	type(EFFECT_ORICA)=="number" and
+	type(EFFECT_ORICA_SZONE)=="number" and
+	type(EFFECT_SANCT_MZONE)=="number" and
+	type(LOCATION_RMZONE)=="number" and
+	type(LOCATION_RSZONE)=="number"
+s.has_orica_core=has_orica_core
+
 function s.initial_effect(c)
 	local e1=Effect.CreateEffect(c)
 	e1:SetProperty(EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_IGNORE_IMMUNE+EFFECT_FLAG_CANNOT_INACTIVATE+EFFECT_FLAG_CANNOT_NEGATE)
@@ -11,6 +24,7 @@ function s.initial_effect(c)
 	e1:SetTarget(s.actg)
 	e1:SetOperation(s.restore_original_forms)
 	c:RegisterEffect(e1)
+	if has_orica_core then
 	local e2=Effect.CreateEffect(c)
 	e2:SetProperty(EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_IGNORE_IMMUNE+EFFECT_FLAG_SINGLE_RANGE+EFFECT_FLAG_SET_AVAILABLE)
 	e2:SetType(EFFECT_TYPE_FIELD)
@@ -21,6 +35,7 @@ function s.initial_effect(c)
 	e2:SetCondition(s.atkcon)
 	e2:SetValue(1)
 	c:RegisterEffect(e2)
+	end
 	local e3=Effect.CreateEffect(c)
 	e3:SetProperty(EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_IGNORE_IMMUNE)
 	e3:SetType(EFFECT_TYPE_FIELD)
@@ -76,6 +91,10 @@ function s.initial_effect(c)
 	e14:SetTargetRange(1,0)
 	e14:SetTarget(s.sfilter)
 	c:RegisterEffect(e14)
+	-- Real back-row monster placements require native Orichalcos support.
+	-- Do not register an effect that would move a monster into ordinary
+	-- Spell/Trap zones where the Core cannot attack with it.
+	if has_orica_core then
 	local e15=Effect.CreateEffect(c)
 	e15:SetDescription(aux.Stringid(827,0))
 	e15:SetType(EFFECT_TYPE_IGNITION)
@@ -97,6 +116,7 @@ function s.initial_effect(c)
 	e17:SetRange(LOCATION_FZONE)
 	e17:SetTargetRange(1,0)
 	c:RegisterEffect(e17)
+	end
 end
 function s.actcost(e,tp,eg,ep,ev,re,r,rp,chk)
 	if chk==0 then return true end
