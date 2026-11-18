@@ -2,6 +2,17 @@
 
 
 local s,id=GetID()
+-- Native first-party Core constants are made available to Lua only when
+-- the engine explicitly advertises complete Orichalcos support. This lets
+-- custom anime profiles evolve without importing third-party binaries.
+if type(Duel)=="table" and type(Duel.SupportsOrichalcosZones)=="function"
+		and Duel.SupportsOrichalcosZones()==true then
+	EFFECT_ORICA=EFFECT_ORICA or 2005
+	EFFECT_ORICA_SZONE=EFFECT_ORICA_SZONE or 2006
+	EFFECT_SANCT_MZONE=EFFECT_SANCT_MZONE or 2008
+	LOCATION_RMZONE=LOCATION_RMZONE or 0x2000
+	LOCATION_RSZONE=LOCATION_RSZONE or 0x4000
+end
 -- This anime card relies on a nonstandard engine extension for physical
 -- Monster/Spell&Trap interchangeable zones and combat. Keep all standard
 -- effects usable without causing nil SetCode/SetTarget Lua errors when the
@@ -222,7 +233,10 @@ function s.op(e,tp,eg,ep,ev,re,r,rp)
 		end
 		local zone=s.freezonemask(tp,loc)
 		if zone==0 then return end
-		if not tc:IsHasEffect(EFFECT_ORICA_SZONE) then
+		-- Register the rear-monster marker AFTER moving physical zones.
+		-- Otherwise RESET_MSCHANGE can erase it during MoveToField.
+		if not Duel.MoveToField(tc,tp,tp,loc,tc:GetPosition(),true,zone) then return end
+		if loc==LOCATION_RSZONE and not tc:IsHasEffect(EFFECT_ORICA_SZONE) then
 			local e1=Effect.CreateEffect(e:GetOwner())
 			e1:SetProperty(EFFECT_FLAG_CANNOT_DISABLE+EFFECT_FLAG_IGNORE_IMMUNE+EFFECT_FLAG_UNCOPYABLE)
 			e1:SetType(EFFECT_TYPE_SINGLE)
@@ -230,7 +244,6 @@ function s.op(e,tp,eg,ep,ev,re,r,rp)
 			e1:SetReset(RESET_EVENT+0x1fe0000+RESET_CONTROL-RESET_TURN_SET)
 			tc:RegisterEffect(e1,true)
 		end
-		if not Duel.MoveToField(tc,tp,tp,loc,tc:GetPosition(),true,zone) then return end
 		tc:RegisterFlagEffect(13,RESET_EVENT+0x1fe0000+RESET_CONTROL-RESET_TURN_SET+RESET_PHASE+PHASE_END,0,1)
 	end
 end
