@@ -1,0 +1,51 @@
+name: Native Anime Zone Engine - Experimental CI
+
+on:
+  push:
+    branches:
+      - feature/native-anime-orichalcos-20261118
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Test first-party anime row policy and safe capability gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic ocgcore/tests/anime_zone_rules_tests.cpp -o /tmp/anime_zone_rules
+          /tmp/anime_zone_rules
+          grep -Fq 'LUA_STATIC_FUNCTION(SupportsOrichalcosZones)' ocgcore/libduel.cpp
+          grep -Fq 'lua_pushboolean(L, false)' ocgcore/libduel.cpp
+          grep -Fq 'for(auto* target : player[target_side].list_szone)' ocgcore/field.cpp
+          grep -Fq 'anime_attackers.push_back(pcard)' ocgcore/processor.cpp
+          grep -Fq 'physical_row(current.location)' ocgcore/card.cpp
+          grep -Fq 'EFFECT_ANIME_BACKROW_MONSTER' ocgcore/effect_constants.h
+          grep -Fq 'DUEL_INHERITED_DUEL' ocgcore/ocgapi_constants.h
+      - name: Compile all native Core C++ objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build liblua5.4-dev pkg-config
+          meson setup /tmp/anime-zone-core-build ocgcore -Dbuildtype=release
+          mapfile -t objects < <(ninja -C /tmp/anime-zone-core-build -t targets all | grep -F 'libocgcore.so.p/' | grep -F '.cpp.o:' | cut -d: -f1)
+          test "${#objects[@]}" -ge 17
+          ninja -C /tmp/anime-zone-core-build "${objects[@]}"
+      - name: Preserve established multiplayer and succession tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ocgcore/tests/run_multiplayer_field_tests.sh
+          sh ocgcore/tests/run_duel_succession_tests.sh
+          sh ocgcore/tests/run_duel_succession_transfer_tests.sh
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -Iocgcore ocgcore/tests/surprise_battle_phase_tests.cpp -o /tmp/surprise_battle
+          /tmp/surprise_battle
