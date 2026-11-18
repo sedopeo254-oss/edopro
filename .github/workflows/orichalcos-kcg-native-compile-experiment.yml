@@ -1,0 +1,53 @@
+name: Experimental KCG Orichalcos Native Core Compile
+
+on:
+  push:
+    branches:
+      - experiment/orichalcos-kcg-core-compile-20261118
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Trial merge (favor 5-mode blocks when edits overlap)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ocgcore
+          git config user.name "Test only"
+          git config user.email "test@example.invalid"
+          git fetch --no-tags https://github.com/knight00/ocgcore-KCG.git master
+          git merge -X ours --no-commit --no-ff FETCH_HEAD
+          grep -Fq '#define EFFECT_ORICA' effect_constants.h
+          grep -Fq 'EFFECT_ORICA_SZONE' card.cpp
+          grep -Fq 'EFFECT_ORICA_SZONE' field.cpp
+          grep -Fq 'EFFECT_ORICA_SZONE' processor.cpp
+          grep -Fq 'DUEL_3_V_1' ocgapi_constants.h
+          grep -Fq 'DUEL_INHERITED_DUEL' ocgapi_constants.h
+          echo "Native merged source retains all core mode flags"
+      - name: Compile merged KCG + all five-mode Core objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build pkg-config liblua5.4-dev
+          meson setup /tmp/kcg-multiplayer-build ocgcore -Dbuildtype=release
+          mapfile -t objects < <(ninja -C /tmp/kcg-multiplayer-build -t targets all | grep -F 'libocgcore.so.p/' | grep -F '.cpp.o:' | cut -d: -f1)
+          test "${#objects[@]}" -ge 17
+          ninja -C /tmp/kcg-multiplayer-build "${objects[@]}"
+      - name: Run original multiplayer and succession core tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ocgcore/tests/run_multiplayer_state_tests.sh
+          sh ocgcore/tests/run_multiplayer_field_tests.sh
+          sh ocgcore/tests/run_duel_succession_tests.sh
+          sh ocgcore/tests/run_duel_succession_transfer_tests.sh
