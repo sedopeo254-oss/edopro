@@ -722,6 +722,7 @@ void ClientField::RefreshAllCards() {
 		if(pcard) {
 			pcard->UpdateDrawCoordinates(true);
 			pcard->is_moving = false;
+			pcard->smooth_move = false;
 			pcard->refresh_on_stop = false;
 			pcard->aniFrame = 0;
 		}
@@ -1848,7 +1849,12 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
 	}
 }
 void ClientField::MoveCard(ClientCard* pcard, float frame) {
-	float milliseconds = frame * 1000.0f / 60.0f;
+	if(!pcard) return;
+	const float milliseconds = frame > 0.0f ? frame * 1000.0f / 60.0f : 1.0f;
+	pcard->motion_start_pos = pcard->curPos;
+	pcard->motion_start_rot = pcard->curRot;
+	pcard->motion_elapsed_ms = 0.0f;
+	pcard->motion_duration_ms = milliseconds;
 	irr::core::vector3df trans = pcard->curPos;
 	irr::core::vector3df rot = pcard->curRot;
 	GetCardDrawCoordinates(pcard, &trans, &rot);
@@ -1875,6 +1881,9 @@ void ClientField::MoveCard(ClientCard* pcard, float frame) {
 		pcard->dRot.Z = diff / milliseconds;
 	else
 		pcard->dRot.Z = -(irr::core::PI * 2 - diff) / milliseconds;
+	pcard->motion_delta_pos = trans - pcard->motion_start_pos;
+	pcard->motion_delta_rot = pcard->dRot * milliseconds;
+	pcard->smooth_move = true;
 	pcard->is_moving = true;
 	pcard->refresh_on_stop = true;
 	pcard->aniFrame = milliseconds;

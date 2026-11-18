@@ -4,6 +4,7 @@
 #include "inherited_duel_hud.h"
 #include "materials.h"
 #include "client_card.h"
+#include "card_motion.h"
 #include "deck_manager.h"
 #include "duelclient.h"
 #include "CGUITTFont/CGUITTFont.h"
@@ -393,8 +394,19 @@ void Game::DrawCard(ClientCard* pcard) {
 	if(pcard->aniFrame > 0) {
 		uint32_t movetime = std::min<uint32_t>(delta_time, pcard->aniFrame);
 		if(pcard->is_moving) {
-			pcard->curPos += (pcard->dPos * movetime);
-			pcard->curRot += (pcard->dRot * movetime);
+			if(pcard->smooth_move) {
+				pcard->motion_elapsed_ms += static_cast<float>(movetime);
+				const float fraction = card_motion::MotionProgress(
+					pcard->motion_elapsed_ms,pcard->motion_duration_ms);
+				pcard->curPos = pcard->motion_start_pos
+					+ pcard->motion_delta_pos * fraction;
+				pcard->curRot = pcard->motion_start_rot
+					+ pcard->motion_delta_rot * fraction;
+			} else {
+				// Explicit shuffle and reveal velocities remain compatible.
+				pcard->curPos += pcard->dPos * movetime;
+				pcard->curRot += pcard->dRot * movetime;
+			}
 			pcard->mTransform.setTranslation(pcard->curPos);
 			pcard->mTransform.setRotationRadians(pcard->curRot);
 		}
@@ -404,6 +416,7 @@ void Game::DrawCard(ClientCard* pcard) {
 		if(pcard->aniFrame <= 0) {
 			pcard->aniFrame = 0;
 			pcard->is_moving = false;
+			pcard->smooth_move = false;
 			pcard->is_fading = false;
 			if(std::exchange(pcard->refresh_on_stop, false))
 				pcard->UpdateDrawCoordinates(true);
@@ -1112,10 +1125,20 @@ void Game::DrawSpec() {
 		case 5: {
 			auto cardtxt = imageManager.GetTextureCard(showcardcode, imgType::ART);
 			auto cardrect = irr::core::rect<irr::s32>(irr::core::vector2di(0, 0), irr::core::dimension2di(cardtxt->getOriginalSize()));
-			matManager.c2d[0] = ((int)std::round(showcarddif) << 25) | 0xffffff;
-			matManager.c2d[1] = ((int)std::round(showcarddif) << 25) | 0xffffff;
-			matManager.c2d[2] = ((int)std::round(showcarddif) << 25) | 0xffffff;
-			matManager.c2d[3] = ((int)std::round(showcarddif) << 25) | 0xffffff;
+			// Even Quick Card Animation now fades Special Summon previews in
+			// and out, instead of instantly cutting off the previous image.
+			const float preview_frames = gGameConfig->quick_animation ? 12.f
+				: (dInfo.isReplay && dInfo.HasFieldFlag(DUEL_3_V_1) ? 22.f : 30.f);
+			const float fraction = card_motion::OverlayOpacity(
+				showcardp, preview_frames);
+			const auto alpha = static_cast<irr::u32>(
+				std::round(fraction * (showcarddif >= 127.f ? 255.f
+					: showcarddif * 2.f)));
+			showcardp += static_cast<float>(delta_time) * 60.f / 1000.f;
+			matManager.c2d[0] = (alpha << 24) | 0xffffff;
+			matManager.c2d[1] = (alpha << 24) | 0xffffff;
+			matManager.c2d[2] = (alpha << 24) | 0xffffff;
+			matManager.c2d[3] = (alpha << 24) | 0xffffff;
 			auto rect = ResizeWin(662 - showcarddif * (CARD_IMG_WIDTH_F / CARD_IMG_HEIGHT_F), 277 - showcarddif, 662 + showcarddif * (CARD_IMG_WIDTH_F / CARD_IMG_HEIGHT_F), 277 + showcarddif);
 			driver->draw2DImage(cardtxt, rect, cardrect, 0, matManager.c2d, true);
 			if(showcarddif < 127.0f) {

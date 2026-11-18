@@ -18,6 +18,15 @@ public:
 	irr::core::vector3df curRot;
 	irr::core::vector3df dPos;
 	irr::core::vector3df dRot;
+	// Easing uses start/delta rather than cumulative velocities, so a newly
+	// queued move resumes from its current on-screen location.
+	irr::core::vector3df motion_start_pos;
+	irr::core::vector3df motion_start_rot;
+	irr::core::vector3df motion_delta_pos;
+	irr::core::vector3df motion_delta_rot;
+	float motion_duration_ms = 0.0f;
+	float motion_elapsed_ms = 0.0f;
+	bool smooth_move = false;
 	irr::core::recti hand_collision;
 	irr::f32 curAlpha = 255;
 	irr::f32 dAlpha;
