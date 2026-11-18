@@ -5,9 +5,13 @@ local s,id=GetID()
 -- This anime card relies on a nonstandard engine extension for physical
 -- Monster/Spell&Trap interchangeable zones and combat. Keep all standard
 -- effects usable without causing nil SetCode/SetTarget Lua errors when the
--- connected Core does not provide this extension. As soon as a compatible
--- Core defines all five features, the original zone logic is enabled.
+-- connected Core does not provide this extension. Imported Lua-only constants
+-- do NOT prove the native engine can place or battle with back-row monsters.
+-- Require an explicit native Core capability instead of checking only globals.
 local has_orica_core =
+	type(Duel)=="table" and
+	type(Duel.SupportsOrichalcosZones)=="function" and
+	Duel.SupportsOrichalcosZones() == true and
 	type(EFFECT_ORICA)=="number" and
 	type(EFFECT_ORICA_SZONE)=="number" and
 	type(EFFECT_SANCT_MZONE)=="number" and
