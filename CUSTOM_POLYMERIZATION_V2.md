@@ -34,7 +34,7 @@ The spell's options depend on CDB `texts.str1`, `str2`, `str3` and `str6` being 
 3. **Same card and persistent bonuses** are maintained in Lua for the card object as long as the duel Core retains that object. The underlying client/card DB may not serialize this profile across replays, card-instance reconstruction, or arbitrary deck shuffles. Real multiplayer/replay tests remain essential.
 4. **Free names and per-instance images DURING the duel are NOT implemented here.** EDOPro's stock client resolves names and textures by numeric card ID. `EFFECT_CHANGE_CODE` would change gameplay identity and is not used. The Studio saves a manual or generated *suggestion* as JSON metadata and can create a **shared static 80050021 artwork**, but the current client cannot display a unique name/image on each Fusion card simultaneously.
 5. **Real AI naming/image synthesis** from material artwork is not integrated. It would require an explicitly permissioned AI image/text provider, a client UI for proposals, and a synchronized, validated per-instance cosmetic ID embedded in multiplayer/replay protocol. No API keys or unlicensed card art are uploaded by this package.
-6. **No mode changes:** no edits to `gframe`, `ocgcore`, `WindBot`, `server`, multiplayer scripts or gameplay flags. The branch changes only the two custom-card scripts and standalone tooling/docs/tests/workflow.
+6. **No mode changes:** no edits to `gframe`, `ocgcore`, `WindBot`, `server`, multiplayer scripts or gameplay flags. The GitHub branch changes only the two custom-card scripts and this document; standalone tooling and tests are in the downloadable experimental ZIP. There are no workflow changes.
 
 ## Suggested in-duel acceptance cases
 
