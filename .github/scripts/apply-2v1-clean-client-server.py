@@ -586,10 +586,12 @@ replace_all(
     "mainGame->dInfo.isReplay,\n\t\t\t\t\t(mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))",
     minimum=1,
 )
+# Preserve the extra Quick Animation argument while routing replay
+# timing through 2v1/3v1; the old two-argument anchor is no longer present.
 replace_all(
     "gframe/duelclient.cpp",
-    "mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1))",
-    "mainGame->dInfo.isReplay, (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)))",
+    "mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1),\n\t\t\tgGameConfig->quick_animation)",
+    "mainGame->dInfo.isReplay, (mainGame->dInfo.HasFieldFlag(DUEL_2_V_1) || mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)),\n\t\t\tgGameConfig->quick_animation)",
     minimum=3,
 )
 
