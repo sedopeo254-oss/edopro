@@ -1,4 +1,5 @@
 #include "gframe/card_motion.h"
+#include "gframe/multiplayer_replay_animation.h"
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -27,5 +28,19 @@ int main(){
 		check(OverlayOpacity(total,total)==0.f,"preview fades out");
 		check(OverlayOpacity(total/2,total)>.99f,"preview visible at midpoint");
 	}
+
+	using ygo::multiplayer_replay_animation::GetSummonTiming;
+	const auto normal = GetSummonTiming(false, false);
+	const auto replay3v1 = GetSummonTiming(true, true);
+	const auto quick = GetSummonTiming(false, false, true);
+	const auto quickReplay = GetSummonTiming(true, true, true);
+	check(normal.reveal_frames==30 && normal.settle_frames==11
+		&& normal.move_frames==10, "normal summon timing preserved");
+	check(replay3v1.reveal_frames==22 && replay3v1.settle_frames==8
+		&& replay3v1.move_frames==8, "3v1 replay timing preserved");
+	check(quick.reveal_frames==12 && quick.settle_frames==4
+		&& quick.move_frames==8, "quick preview has 12-frame reveal");
+	check(quickReplay.reveal_frames==12 && quickReplay.settle_frames==4,
+		"quick 3v1 preview does not outlast its wait");
 	std::cout<<"Smooth card transitions: PASS\n";
 }

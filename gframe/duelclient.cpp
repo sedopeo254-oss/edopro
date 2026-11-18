@@ -1617,7 +1617,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->showcardcode = data;
 			mainGame->showcarddif = 0;
 			mainGame->showcard = 1;
-			mainGame->WaitFrameSignal(30, lock);
+			mainGame->WaitFrameSignal(gGameConfig->quick_animation ? 12 : 30, lock);
 			break;
 		}
 		case HINT_RACE: {
@@ -1662,7 +1662,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->showcarddif = 0;
 			mainGame->showcard = 1;
 			Play(SoundManager::SFX::ACTIVATE);
-			mainGame->WaitFrameSignal(30, lock);
+			mainGame->WaitFrameSignal(gGameConfig->quick_animation ? 12 : 30, lock);
 			break;
 		}
 		case HINT_ZONE: {
@@ -4198,7 +4198,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	case MSG_SUMMONING: {
 		const auto code = BufferIO::Read<uint32_t>(pbuf);
 		const auto summon_timing = multiplayer_replay_animation::GetSummonTiming(
-			mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
+			mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1),
+			gGameConfig->quick_animation);
 		/*CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);*/
 		if(!PlayChant(SoundManager::CHANT::SUMMON, code))
 			Play(SoundManager::SFX::SUMMON);
@@ -4222,7 +4223,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	case MSG_SPSUMMONING: {
 		const auto code = BufferIO::Read<uint32_t>(pbuf);
 		const auto summon_timing = multiplayer_replay_animation::GetSummonTiming(
-			mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
+			mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1),
+			gGameConfig->quick_animation);
 		CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
 		const auto summon_core_side = info.controler;
 		const auto summon_logical = summon_core_side < 2
@@ -4276,18 +4278,19 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 	case MSG_FLIPSUMMONING: {
 		const auto code = BufferIO::Read<uint32_t>(pbuf);
 		const auto summon_timing = multiplayer_replay_animation::GetSummonTiming(
-			mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1));
+			mainGame->dInfo.isReplay, mainGame->dInfo.HasFieldFlag(DUEL_3_V_1),
+			gGameConfig->quick_animation);
 		CoreUtils::loc_info info = CoreUtils::ReadLocInfo(pbuf, mainGame->dInfo.compat_mode);
 		info.controler = mainGame->LocalPlayer(info.controler);
 		if(!PlayChant(SoundManager::CHANT::SUMMON, code))
 			Play(SoundManager::SFX::FLIP);
+		auto lock = LockIf();
 		ClientCard* pcard = mainGame->dField.GetCard(info.controler, info.location, info.sequence);
 		if(!pcard)
 			return true;
 		pcard->SetCode(code);
 		pcard->position = info.position;
 		if(!mainGame->dInfo.isCatchingUp) {
-			std::unique_lock<epro::mutex> lock(mainGame->gMutex);
 			event_string = epro::sprintf(gDataManager->GetSysString(1607), gDataManager->GetName(code));
 			mainGame->dField.MoveCard(pcard, summon_timing.move_frames);
 			mainGame->WaitFrameSignal(summon_timing.settle_frames, lock);
@@ -4346,6 +4349,8 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->showcardcode = code;
 			mainGame->showcarddif = 0;
 			mainGame->showcard = 1;
+			// Align the activation reveal with the short Quick animation.
+			const auto activation_frames = gGameConfig->quick_animation ? 12 : 30;
 			pcard->is_highlighting = true;
 			if(pcard->location & 0x30) {
 				constexpr float milliseconds = 5.0f * 1000.0f / 60.0f;
@@ -4356,10 +4361,10 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				pcard->smooth_move = false;
 				pcard->is_moving = true;
 				pcard->aniFrame = milliseconds;
-				mainGame->WaitFrameSignal(30, lock);
+				mainGame->WaitFrameSignal(activation_frames, lock);
 				mainGame->dField.MoveCard(pcard, 5);
 			} else
-				mainGame->WaitFrameSignal(30, lock);
+				mainGame->WaitFrameSignal(activation_frames, lock);
 			pcard->is_highlighting = false;
 		}
 		mainGame->dField.current_chain.chain_card = pcard;

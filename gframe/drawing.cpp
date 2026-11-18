@@ -389,8 +389,8 @@ void Game::DrawCard(ClientCard* pcard) {
 	// Cards from the two non-focused allied fields stay in the client model so
 	// their complete state survives a team-field swap.  They are projected off
 	// screen by ClientField and must not be submitted to the renderer.
-	if(pcard->draw_scale <= 0.0f)
-		return;
+	// Advance the animation even when a team member's field is not visible.
+	// Skipping the update here could resume a stale tween after a field swap.
 	if(pcard->aniFrame > 0) {
 		uint32_t movetime = std::min<uint32_t>(delta_time, pcard->aniFrame);
 		if(pcard->is_moving) {
@@ -422,6 +422,8 @@ void Game::DrawCard(ClientCard* pcard) {
 				pcard->UpdateDrawCoordinates(true);
 		}
 	}
+	if(pcard->draw_scale <= 0.0f)
+		return;
 	matManager.mCard.AmbientColor = 0xffffffff;
 	matManager.mCard.DiffuseColor = ((int)std::round(pcard->curAlpha) << 24) | 0xffffff;
 	driver->setTransform(irr::video::ETS_WORLD, pcard->mTransform);
@@ -1088,7 +1090,7 @@ void Game::DrawSpec() {
 			for(auto& color : matManager.c2d) color = tint;
 			driver->draw2DImage(cardtxt, drawrect2, cardrect, 0, matManager.c2d, true);
 			driver->draw2DImage(imageManager.tMask, ResizeWin(574, 150, 574 + (showcarddif > CARD_IMG_WIDTH ? CARD_IMG_WIDTH : showcarddif), 404),
-								Scale<irr::s32>(CARD_IMG_HEIGHT - showcarddif, 0, CARD_IMG_HEIGHT - (showcarddif > CARD_IMG_WIDTH ? showcarddif - CARD_IMG_WIDTH : 0), CARD_IMG_HEIGHT), 0, 0, true);
+								Scale<irr::s32>(CARD_IMG_HEIGHT - showcarddif, 0, CARD_IMG_HEIGHT - (showcarddif > CARD_IMG_WIDTH ? showcarddif - CARD_IMG_WIDTH : 0), CARD_IMG_HEIGHT), 0, matManager.c2d, true);
 			showcarddif += (gGameConfig->quick_animation ? 2200.0f : 900.0f)
 				* (float)delta_time / 1000.0f;
 			if(std::round(showcarddif) >= CARD_IMG_HEIGHT) {
@@ -1106,7 +1108,7 @@ void Game::DrawSpec() {
 			const auto tint = (static_cast<irr::u32>(std::round(closing*255.f)) << 24) | 0xffffff;
 			for(auto& color : matManager.c2d) color = tint;
 			driver->draw2DImage(cardtxt, drawrect2, cardrect, 0, matManager.c2d, true);
-			driver->draw2DImage(imageManager.tMask, ResizeWin(574 + showcarddif, 150, 751, 404), Scale(0, 0, CARD_IMG_WIDTH - showcarddif, 254), 0, 0, true);
+			driver->draw2DImage(imageManager.tMask, ResizeWin(574 + showcarddif, 150, 751, 404), Scale(0, 0, CARD_IMG_WIDTH - showcarddif, 254), 0, matManager.c2d, true);
 			showcarddif += (gGameConfig->quick_animation ? 2200.0f : 900.0f)
 				* (float)delta_time / 1000.0f;
 			if(showcarddif >= CARD_IMG_WIDTH) {
@@ -1155,7 +1157,8 @@ void Game::DrawSpec() {
 			auto rect = ResizeWin(662 - showcarddif * (CARD_IMG_WIDTH_F / CARD_IMG_HEIGHT_F), 277 - showcarddif, 662 + showcarddif * (CARD_IMG_WIDTH_F / CARD_IMG_HEIGHT_F), 277 + showcarddif);
 			driver->draw2DImage(cardtxt, rect, cardrect, 0, matManager.c2d, true);
 			if(showcarddif < 127.0f) {
-				showcarddif += (540.0f / 1000.0f) * (float)delta_time;
+				showcarddif += (gGameConfig->quick_animation ? 820.0f : 540.0f)
+						* (float)delta_time / 1000.0f;
 				if(showcarddif > 127.0f)
 					showcarddif = 127.0f;
 			}

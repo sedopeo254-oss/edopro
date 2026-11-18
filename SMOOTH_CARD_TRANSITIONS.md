@@ -42,3 +42,20 @@ Stable five-mode branch: `feature/inherited-duel-succession-v1-20261105` (untouc
 4. Replay seek/rewind and field switches, with hidden-card identities intact.
 5. Mid-duel 2v1 teammate switch and Inherited Duel Kaiba/Noah successors.
 6. Multiple attacks and field display focusing in 3v1 and Battle Royale.
+
+## Quick-animation synchronization follow-up (2026-11-18)
+
+- Fix: 12-frame Quick Summon previews previously faded out while the message
+  still blocked for 22/30 frames. Quick now uses a matching 12-frame reveal,
+  4-frame settle and 8-frame card movement. The original non-Quick timings
+  are preserved in every mode, including 3v1 replay.
+- Fix: Quick activation previews also wait 12 rather than 30 frames, including
+  effect/card hint previews. Masks share their cards' fade opacity.
+- Fix: Flip Summon updates card identity and position under the render mutex.
+- Fix: hidden team-field cards now advance their animation state while remaining
+  undrawn, so subsequent view switches do not resume stale movement.
+- Tests: added quick/non-quick timing regression and source path assertions.
+
+**Limit:** CI builds and deterministic tests cannot certify 100% real-duel
+correctness. A five-mode Windows multiplayer/replay acceptance run remains
+necessary to verify rendering, animations, targeting, privacy and long chains.

@@ -11,10 +11,12 @@ struct SummonTiming {
 	uint8_t move_frames;
 };
 
-constexpr SummonTiming GetSummonTiming(bool is_replay, bool is_three_vs_one) {
-	// Keep live duels and all stock modes unchanged. 3v1 replay animations are
-	// balanced because a projected field/private-pile update already surrounds
-	// each summon: slower than the fast profile, but still below the stock pause.
+constexpr SummonTiming GetSummonTiming(bool is_replay, bool is_three_vs_one,
+		bool quick_animation = false) {
+	// Quick previews must end at the same time as their packet wait.
+	// Normal timing remains unchanged, including the 3v1 replay profile.
+	if(quick_animation)
+		return SummonTiming{ 12, 4, 8 };
 	return is_replay && is_three_vs_one
 		? SummonTiming{ 22, 8, 8 }
 		: SummonTiming{ 30, 11, 10 };
