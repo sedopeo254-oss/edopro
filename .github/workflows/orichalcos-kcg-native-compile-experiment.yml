@@ -26,6 +26,9 @@ jobs:
           git config user.email "test@example.invalid"
           git fetch --no-tags https://github.com/knight00/ocgcore-KCG.git master
           git merge -X ours --no-commit --no-ff FETCH_HEAD
+          # Restore the modern multiplayer build manifest instead of KCG's
+          # legacy Meson defaults (removed in Meson 1.x).
+          git show HEAD:meson.build > meson.build
           grep -Fq '#define EFFECT_ORICA' effect_constants.h
           grep -Fq 'EFFECT_ORICA_SZONE' card.cpp
           grep -Fq 'EFFECT_ORICA_SZONE' field.cpp
