@@ -43,6 +43,12 @@ jobs:
           mapfile -t objects < <(ninja -C /tmp/anime-zone-core-build -t targets all | grep -F 'libocgcore.so.p/' | grep -F '.cpp.o:' | cut -d: -f1)
           test "${#objects[@]}" -ge 17
           ninja -C /tmp/anime-zone-core-build "${objects[@]}"
+      - name: Check Orichalcos script capability and protected fallback
+        shell: bash
+        run: |
+          sudo apt-get install -y lua5.4
+          lua5.4 .github/tests/orichalcos_script_test.lua multiplayer-anime-cards/c291.lua
+          lua5.4 .github/tests/surprise_attack_same_turn_test.lua multiplayer-anime-cards/c319.lua
       - name: Preserve established multiplayer and succession tests
         shell: bash
         run: |
