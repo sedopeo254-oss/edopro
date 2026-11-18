@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/inherited-duel-succession-v1-20261105
+      - feature/smooth-card-transitions-20261118
   pull_request:
   workflow_dispatch:
 
