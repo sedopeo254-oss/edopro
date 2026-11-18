@@ -1,0 +1,45 @@
+name: Orichalcos Native KCG Compatibility Audit
+
+on:
+  push:
+    branches:
+      - feature/inherited-duel-succession-v1-20261105
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Compare native KCG Core with multi-mode Core safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ocgcore
+          git fetch --no-tags https://github.com/knight00/ocgcore-KCG.git master
+          base=$(git merge-base HEAD FETCH_HEAD || true)
+          echo "Current five-mode Core SHA: $(git rev-parse HEAD)"
+          echo "Uploaded ocgcore.dll PDB indicates source ocgcore-KCG"
+          echo "KCG source SHA: $(git rev-parse FETCH_HEAD)"
+          echo "Common source ancestor: ${base:-NONE}"
+          if [ -z "$base" ]; then
+            echo "No common ancestor; a direct engine replacement is unsafe."
+            exit 0
+          fi
+          set +e
+          git merge --no-commit --no-ff FETCH_HEAD >/tmp/orichalcos-merge-report.txt 2>&1
+          result=$?
+          set -e
+          echo "KCG source merge exit code: $result"
+          echo "Conflicts (these must be manually reconciled to retain five modes):"
+          git diff --name-only --diff-filter=U || true
+          echo "Conflict count: $(git diff --name-only --diff-filter=U | wc -l)"
+          echo "Native Orichalcos depends on battle/field/card/lua/client protocol,"
+          echo "not just the Lua constants EFFECT_ORICA or LOCATION_RSZONE."
+          git merge --abort || true
