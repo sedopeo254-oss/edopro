@@ -83,13 +83,17 @@ assert(has_code(EFFECT_UPDATE_ATTACK),"500 ATK remains")
 assert(has_code(EFFECT_CANNOT_ACTIVATE),"other non-Orichalcos Field Spells blocked")
 assert(has_code(EFFECT_INDESTRUCTABLE_EFFECT),"protection remains")
 assert(type(s.restore_original_forms)=="function","fusion restore callback exists")
--- All extension constants become available => original 17 effects,
--- including the S/T monster zone and monster battle shielding, reappear.
+-- Imported KCG Lua constants alone must NOT activate unsupported native
+-- zone mechanics on the custom five-mode Core.
 EFFECT_ORICA=4001
 EFFECT_ORICA_SZONE=4002
 EFFECT_SANCT_MZONE=4003
 LOCATION_RMZONE=4
 LOCATION_RSZONE=8
+s,card=initialize()
+assert(s.has_orica_core==false,"Lua constants alone must not enable back-row combat")
+assert(#card.effects==13,"unsupported zone mechanics must remain inactive")
+Duel={SupportsOrichalcosZones=function()return true end}
 s,card=initialize()
 assert(s.has_orica_core==true)
 assert(#card.effects==17,"expected full native effects, got "..#card.effects)
