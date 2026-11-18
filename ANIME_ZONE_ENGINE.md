@@ -30,3 +30,12 @@ This branch must not be represented as anime-complete before that validation.
 5. Enable native capability only when full-duel tests pass.
 
 KCG binaries are unnecessary.
+
+## Second stage completed in experimental source
+- Script requests for LOCATION_RMZONE / LOCATION_RSZONE are converted to
+  physical MZONE/SZONE in Duel.MoveToField, CheckLocation and GetLocationCount.
+- Lua Card.IsLocation and field matching/group queries recognize virtual rows.
+- Physical privacy and owner/duelist state are still managed by the original
+  custom engine: no KCG code is included in this branch.
+- These APIs are not automatically enabled in c291 until the complete
+  summon, permanent rear-zone marker and UI/replay path is tested.

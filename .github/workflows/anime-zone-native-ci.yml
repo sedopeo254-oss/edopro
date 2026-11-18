@@ -29,6 +29,10 @@ jobs:
           grep -Fq 'physical_row(current.location)' ocgcore/card.cpp
           grep -Fq 'EFFECT_ANIME_BACKROW_MONSTER' ocgcore/effect_constants.h
           grep -Fq 'DUEL_INHERITED_DUEL' ocgcore/ocgapi_constants.h
+          grep -Fq 'if(location & LOCATION_RSZONE)' ocgcore/field.cpp
+          grep -Fq 'auto location = lua_get<uint16_t>(L, 2)' ocgcore/libduel.cpp
+          grep -Fq 'if(virtual_rear)' ocgcore/libduel.cpp
+          grep -Fq 'if(loc == LOCATION_RSZONE)' ocgcore/libcard.cpp
       - name: Compile all native Core C++ objects
         shell: bash
         run: |
