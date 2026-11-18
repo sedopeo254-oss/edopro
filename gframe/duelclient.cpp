@@ -3154,6 +3154,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(!mainGame->dField.deck_reversed && !pcard->is_reversed)
 				pcard->dRot.set(0, irr::core::PI / milliseconds, 0);
 			else pcard->dRot.set(0, 0, 0);
+			pcard->smooth_move = false;
 			pcard->is_moving = true;
 			pcard->aniFrame = milliseconds;
 			mainGame->WaitFrameSignal(45, lock);
@@ -3209,6 +3210,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			else
 				pcard->dPos.set(0.75f / milliseconds, 0, 0);
 			pcard->dRot.set(0, irr::core::PI / milliseconds, 0);
+			pcard->smooth_move = false;
 			pcard->is_moving = true;
 			pcard->aniFrame = milliseconds;
 			mainGame->WaitFrameSignal(45, lock);
@@ -3269,6 +3271,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					if(((location == LOCATION_DECK) && mainGame->dField.deck_reversed) || pcard->is_reversed || (pcard->position & POS_FACEUP))
 						pcard->dRot.set(0, 0, 0);
 					else pcard->dRot.set(0, irr::core::PI / milliseconds, 0);
+					pcard->smooth_move = false;
 					pcard->is_moving = true;
 					pcard->aniFrame = milliseconds;
 					mainGame->WaitFrameSignal(45, lock);
@@ -3305,6 +3308,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 						pcard->dRot.set(0, irr::core::PI / milliseconds, 0);
 					else
 						pcard->dRot.set(irr::core::PI / milliseconds, 0, 0);
+					pcard->smooth_move = false;
 					pcard->is_moving = true;
 					pcard->aniFrame = milliseconds;
 				} else if (location == LOCATION_SZONE) {
@@ -3313,6 +3317,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					constexpr float milliseconds = 5.0f * 1000.0f / 60.0f;
 					pcard->dPos.set(0, 0, 0);
 					pcard->dRot.set(0, irr::core::PI / milliseconds, 0);
+					pcard->smooth_move = false;
 					pcard->is_moving = true;
 					pcard->aniFrame = milliseconds;
 				}
@@ -3378,6 +3383,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					constexpr float milliseconds = 3.0f * 1000.0f / 60.0f;
 					pcard->dPos.set((rand() * 1.2f / RAND_MAX - 0.2f) / milliseconds, 0, 0);
 					pcard->dRot.set(0, 0, 0);
+					pcard->smooth_move = false;
 					pcard->is_moving = true;
 					pcard->aniFrame = milliseconds;
 				}
@@ -3427,6 +3433,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 						constexpr float milliseconds = 5.0f * 1000.0f / 60.0f;
 						pcard->dPos.set(0, 0, 0);
 						pcard->dRot.set(1.322f / milliseconds, irr::core::PI / milliseconds, 0);
+						pcard->smooth_move = false;
 						pcard->is_moving = true;
 						pcard->is_hovered = false;
 						pcard->aniFrame = milliseconds;
@@ -3439,6 +3446,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				constexpr float milliseconds = 5.0f * 1000.0f / 60.0f;
 				pcard->dPos.set((3.9f - pcard->curPos.X) / milliseconds, 0, 0);
 				pcard->dRot.set(0, 0, 0);
+				pcard->smooth_move = false;
 				pcard->is_moving = true;
 				pcard->is_hovered = false;
 				pcard->aniFrame = milliseconds;
@@ -3504,6 +3512,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 						constexpr float milliseconds = 3.0f * 1000.0f / 60.0f;
 						pcard->dPos.set((rand() * 1.2f / RAND_MAX - 0.2f) / milliseconds, 0, 0);
 						pcard->dRot.set(0, 0, 0);
+						pcard->smooth_move = false;
 						pcard->is_moving = true;
 						pcard->aniFrame = milliseconds;
 					}
@@ -3648,6 +3657,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				constexpr float milliseconds = 10.0f * 1000.0f / 60.0f;
 				mc[i]->dPos.set((3.95f - mc[i]->curPos.X) / milliseconds, 0, 0.5f / milliseconds);
 				mc[i]->dRot.set(0, 0, 0);
+				mc[i]->smooth_move = false;
 				mc[i]->is_moving = true;
 				mc[i]->aniFrame = milliseconds;
 			}
@@ -4021,6 +4031,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 						pcard->dPos.set(-1.5f / milliseconds, 0, 0);
 						pcard->dRot.set(0, 0, 0);
 						if (previous.controler == 1) pcard->dPos.X *= -0.1f;
+						pcard->smooth_move = false;
 						pcard->is_moving = true;
 						pcard->aniFrame = milliseconds;
 						mainGame->WaitFrameSignal(5, lock);
@@ -4231,7 +4242,12 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				pcard->SetCode(code);
 			pcard->position = info.position;
 			pcard->is_public = true;
-			pcard->UpdateDrawCoordinates(true);
+			// A preceding MSG_MOVE already animated the Special Summon.
+			// Do not snap to the destination halfway through Quick Animation.
+			if(mainGame->dInfo.isCatchingUp)
+				pcard->UpdateDrawCoordinates(true);
+			else if(!pcard->is_moving)
+				mainGame->dField.MoveCard(pcard, summon_timing.move_frames);
 		}
 		if(!code || !PlayChant(SoundManager::CHANT::SUMMON, code))
 			Play(SoundManager::SFX::SPECIAL_SUMMON);
@@ -4241,6 +4257,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			if(code) {
 				mainGame->showcardcode = code;
 				mainGame->showcarddif = 1;
+				mainGame->showcardp = 0;
 				mainGame->showcard = 5;
 				mainGame->WaitFrameSignal(summon_timing.reveal_frames, lock);
 				mainGame->showcard = 0;
@@ -4333,6 +4350,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				if(info.controler == 1) shift *= -1.0f;
 				pcard->dPos.set(shift, 0, 0);
 				pcard->dRot.set(0, 0, 0);
+				pcard->smooth_move = false;
 				pcard->is_moving = true;
 				pcard->aniFrame = milliseconds;
 				mainGame->WaitFrameSignal(30, lock);
@@ -4494,6 +4512,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				if(info.controler == 1) shift *= -1.0f;
 				pcard->dPos.set(shift, 0, 0);
 				pcard->dRot.set(0, 0, 0);
+				pcard->smooth_move = false;
 				pcard->is_moving = true;
 				pcard->aniFrame = milliseconds;
 				mainGame->WaitFrameSignal(30, lock);
@@ -4632,10 +4651,19 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 			mainGame->dField.AddCard(pcard, player, LOCATION_HAND, 0);
 			Play(SoundManager::SFX::DRAW);
 		}
-		for(auto* hand_card : mainGame->dField.hand[player])
-			if(hand_card)
+		for(auto* hand_card : mainGame->dField.hand[player]) {
+			if(!hand_card)
+				continue;
+			if(mainGame->dInfo.isCatchingUp)
 				hand_card->UpdateDrawCoordinates(true);
+			else
+				mainGame->dField.MoveCard(hand_card,
+					multiplayer_replay_animation::GetDrawMoveFrames(
+						mainGame->dInfo.isReplay,
+						mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)));
+		}
 		mainGame->should_refresh_hands = true;
+		mainGame->dField.RefreshHandHitboxes();
 		event_string = epro::sprintf(gDataManager->GetSysString(1611 + player), count);
 		mainGame->dField.CaptureBattleRoyaleReplayPrivatePiles();
 		return true;
@@ -4736,7 +4764,21 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 				pcard->position = drawn.position;
 				mainGame->dField.AddCard(pcard, side, LOCATION_HAND, 0);
 			}
-			mainGame->dField.RefreshAllCards();
+			// Multiplayer-private draws animate only the affected hand.
+			// A whole-field refresh would teleport all moving cards.
+			for(auto* hand_card : mainGame->dField.hand[side]) {
+				if(!hand_card)
+					continue;
+				if(mainGame->dInfo.isCatchingUp)
+					hand_card->UpdateDrawCoordinates(true);
+				else
+					mainGame->dField.MoveCard(hand_card,
+						multiplayer_replay_animation::GetDrawMoveFrames(
+							mainGame->dInfo.isReplay,
+							mainGame->dInfo.HasFieldFlag(DUEL_3_V_1)));
+			}
+			mainGame->dField.RefreshHandHitboxes();
+			mainGame->should_refresh_hands = true;
 		}
 		for(uint32_t i = 0; i < sounds; ++i)
 			Play(SoundManager::SFX::DRAW);
@@ -5835,6 +5877,7 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 					if(player == 0) pcard->dPos.Y = 2.0f / milliseconds;
 					else pcard->dPos.Y = -3.0f / milliseconds;
 					pcard->dRot.set(0, 0, 0);
+					pcard->smooth_move = false;
 					pcard->is_moving = true;
 					pcard->aniFrame = milliseconds;
 				}

@@ -23,7 +23,7 @@ constexpr SummonTiming GetSummonTiming(bool is_replay, bool is_three_vs_one) {
 constexpr uint8_t GetDrawMoveFrames(bool is_replay, bool is_three_vs_one) {
 	// A 12-frame batch movement is visible and deliberate without restoring
 	// the old full-pile rebuild or any blocking wait.
-	return is_replay && is_three_vs_one ? 12 : 8;
+	return is_replay && is_three_vs_one ? 14 : 12;
 }
 
 constexpr uint8_t GetBattleRoyaleDrawMoveFrames(bool is_replay,

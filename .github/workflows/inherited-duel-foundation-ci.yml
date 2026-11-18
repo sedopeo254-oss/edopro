@@ -64,6 +64,11 @@ jobs:
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -pedantic -Iocgcore ocgcore/tests/surprise_battle_phase_tests.cpp -o /tmp/surprise_battle_phase_test
           /tmp/surprise_battle_phase_test
+      - name: Verify quick card preview and eased animation
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/card_motion_test.cpp -o /tmp/card_motion_test
+          /tmp/card_motion_test
+          python3 .github/tests/test_card_transitions.py
       - name: Re-run existing multiplayer state tests
         run: sh ./ocgcore/tests/run_multiplayer_state_tests.sh
       - name: Re-run existing multiplayer field tests
