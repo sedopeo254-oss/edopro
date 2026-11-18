@@ -4236,6 +4236,9 @@ int DuelClient::ClientAnalyze(const uint8_t* msg, uint32_t len) {
 		info.controler = mainGame->LocalPlayer(summon_core_side);
 		if(auto* pcard = mainGame->dField.GetCard(info.controler, info.location,
 				info.sequence, info.position); pcard) {
+			// Rendering and duel packet processing share the card transform.
+			// Never start a new tween while the render thread owns this data.
+			auto lock = LockIf();
 			// Always rebind a public Special Summon. A hidden Deck Master may
 			// already have the correct numeric code while still using the card back.
 			if(code)
