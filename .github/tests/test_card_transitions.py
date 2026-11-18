@@ -12,6 +12,11 @@ assert "pcard->motion_delta_pos = trans - pcard->motion_start_pos;" in field
 assert "card_motion::MotionProgress(" in drawing
 assert "pcard->smooth_move = false;" in drawing
 assert "card_motion::OverlayOpacity(" in drawing
+# The activation effect now finishes inside the 12-frame Quick animation
+# wait instead of flashing immediately and lingering under the next packet.
+assert drawing.count("2200.0f : 900.0f") == 2
+assert "opening*255.f" in drawing and "closing*255.f" in drawing
+assert "y *= card_motion::OverlayOpacity(showcardp,12.f);" in drawing
 assert "return is_replay && is_three_vs_one ? 14 : 12;" in replay
 summon=client.split("case MSG_SPSUMMONING: {",1)[1].split("case MSG_SPSUMMONED: {",1)[0]
 assert "if(mainGame->dInfo.isCatchingUp)" in summon

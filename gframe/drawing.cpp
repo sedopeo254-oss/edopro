@@ -1080,10 +1080,17 @@ void Game::DrawSpec() {
 		case 1: {
 			auto cardtxt = imageManager.GetTextureCard(showcardcode, imgType::ART);
 			auto cardrect = irr::core::rect<irr::s32>(irr::core::vector2di(0, 0), irr::core::dimension2di(cardtxt->getOriginalSize()));
-			driver->draw2DImage(cardtxt, drawrect2, cardrect);
+			// In quick mode the activation preview enters smoothly instead
+			// of instantly displaying a fully opaque card on its first frame.
+			const float opening = gGameConfig->quick_animation
+				? card_motion::SmoothStep(showcarddif/(CARD_IMG_HEIGHT*.18f)) : 1.f;
+			const auto tint = (static_cast<irr::u32>(std::round(opening*255.f)) << 24) | 0xffffff;
+			for(auto& color : matManager.c2d) color = tint;
+			driver->draw2DImage(cardtxt, drawrect2, cardrect, 0, matManager.c2d, true);
 			driver->draw2DImage(imageManager.tMask, ResizeWin(574, 150, 574 + (showcarddif > CARD_IMG_WIDTH ? CARD_IMG_WIDTH : showcarddif), 404),
 								Scale<irr::s32>(CARD_IMG_HEIGHT - showcarddif, 0, CARD_IMG_HEIGHT - (showcarddif > CARD_IMG_WIDTH ? showcarddif - CARD_IMG_WIDTH : 0), CARD_IMG_HEIGHT), 0, 0, true);
-			showcarddif += (900.0f / 1000.0f) * (float)delta_time;
+			showcarddif += (gGameConfig->quick_animation ? 2200.0f : 900.0f)
+				* (float)delta_time / 1000.0f;
 			if(std::round(showcarddif) >= CARD_IMG_HEIGHT) {
 				showcard = 2;
 				showcarddif = 0;
@@ -1093,9 +1100,15 @@ void Game::DrawSpec() {
 		case 2: {
 			auto cardtxt = imageManager.GetTextureCard(showcardcode, imgType::ART);
 			auto cardrect = irr::core::rect<irr::s32>(irr::core::vector2di(0, 0), irr::core::dimension2di(cardtxt->getOriginalSize()));
-			driver->draw2DImage(cardtxt, drawrect2, cardrect);
+			const float closing = gGameConfig->quick_animation
+				? card_motion::SmoothStep(
+					(CARD_IMG_WIDTH-showcarddif)/(CARD_IMG_WIDTH*.22f)) : 1.f;
+			const auto tint = (static_cast<irr::u32>(std::round(closing*255.f)) << 24) | 0xffffff;
+			for(auto& color : matManager.c2d) color = tint;
+			driver->draw2DImage(cardtxt, drawrect2, cardrect, 0, matManager.c2d, true);
 			driver->draw2DImage(imageManager.tMask, ResizeWin(574 + showcarddif, 150, 751, 404), Scale(0, 0, CARD_IMG_WIDTH - showcarddif, 254), 0, 0, true);
-			showcarddif += (900.0f / 1000.0f) * (float)delta_time;
+			showcarddif += (gGameConfig->quick_animation ? 2200.0f : 900.0f)
+				* (float)delta_time / 1000.0f;
 			if(showcarddif >= CARD_IMG_WIDTH) {
 				showcard = 0;
 			}
@@ -1163,6 +1176,10 @@ void Game::DrawSpec() {
 			auto cardrect = irr::core::rect<irr::s32>(irr::core::vector2di(0, 0), irr::core::dimension2di(cardtxt->getOriginalSize()));
 			irr::core::vector2di corner[4];
 			float y = sin(showcarddif * irr::core::PI / 180.0f) * CARD_IMG_HEIGHT;
+			// The fast Normal/Flip Summon animation also contracts smoothly
+			// before its 12-frame wait expires; it no longer pops out.
+			if(gGameConfig->quick_animation)
+				y *= card_motion::OverlayOpacity(showcardp,12.f);
 			auto a = ResizeWin(574 - (CARD_IMG_HEIGHT - y) * 0.3f, (150 + CARD_IMG_HEIGHT) - y, 751 + (CARD_IMG_HEIGHT - y) * 0.3f, 150 + CARD_IMG_HEIGHT);
 			auto b = ResizeWin(574, 150, 574 + CARD_IMG_WIDTH, 404);
 			corner[0] = a.UpperLeftCorner;

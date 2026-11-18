@@ -21,6 +21,7 @@ int main(){
 		check(now>=prev&&now<=1,"monotonic");
 		prev=now;
 	}
+	// All three known summon windows, including the compact 12-frame profile.
 	for(const auto total:{12.f,22.f,30.f}){
 		check(OverlayOpacity(0,total)==0.f,"preview starts invisible");
 		check(OverlayOpacity(total,total)==0.f,"preview fades out");
