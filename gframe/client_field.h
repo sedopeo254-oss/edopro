@@ -10,6 +10,7 @@
 #include <vector3d.h>
 #include <vector2d.h>
 #include "multiplayer_battle_royale_replay.h"
+#include "pending_action_confirm.h"
 
 namespace ygo {
 
@@ -111,6 +112,9 @@ public:
 	bool last_chain;
 	bool deck_reversed;
 	bool conti_selecting;
+	PendingActionConfirmation pending_action;
+	void StagePendingAction(std::uint8_t msg, std::int32_t response, PendingActionKind kind);
+	void ResetPendingAction();
 
 	ClientField();
 	void Clear();

@@ -16,6 +16,7 @@
 #include "game_config.h"
 #include <irrlicht.h>
 #include "duelclient.h"
+#include <cstring>
 #include "client_card.h"
 #include "materials.h"
 #include "image_manager.h"
@@ -6107,10 +6108,42 @@ void DuelClient::SwapField() {
 	}
 }
 
-void DuelClient::SendResponse() {
+void DuelClient::SendResponse(bool confirm_pending_action) {
+	auto& msg = mainGame->dInfo.curMsg;
+	auto& pending = mainGame->dField.pending_action;
+	if(confirm_pending_action) {
+		// Stale/replay/spectator confirmations never reach the Core.
+		if(!pending.active || pending.message != msg || answered.load()
+				|| !mainGame->dInfo.isInDuel || mainGame->dInfo.isReplay
+				|| mainGame->dInfo.isCatchingUp || mainGame->dInfo.player_type == 7
+				|| mainGame->dInfo.local_player_eliminated) {
+			mainGame->dField.ResetPendingAction();
+			return;
+		}
+		const auto value = pending.response;
+		mainGame->dField.ResetPendingAction();
+		SetResponseI(value);
+	} else {
+		// Hold eligible commands before sending them, not after a Core change.
+		// Mandatory zone/position prompts never receive fake cancel responses.
+		if(pending.active)
+			return;
+		if(!answered.load() && response_buf.size() == sizeof(std::int32_t)
+				&& mainGame->dInfo.isInDuel && !mainGame->dInfo.isReplay
+				&& !mainGame->dInfo.isCatchingUp && mainGame->dInfo.player_type != 7
+				&& !mainGame->dInfo.local_player_eliminated) {
+			std::int32_t response{};
+			std::memcpy(&response, response_buf.data(), sizeof(response));
+			const auto kind = ClassifyPendingAction(msg, response,
+				mainGame->dField.chain_forced);
+			if(kind != PendingActionKind::None) {
+				mainGame->dField.StagePendingAction(msg, response, kind);
+				return;
+			}
+		}
+	}
 	if(answered.exchange(true))
 		return;
-	auto& msg = mainGame->dInfo.curMsg;
 	switch(msg) {
 	case MSG_SELECT_BATTLECMD:
 	case MSG_SELECT_IDLECMD: {

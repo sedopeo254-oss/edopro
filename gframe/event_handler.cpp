@@ -59,6 +59,35 @@ namespace ygo {
 std::string showing_repo = "";
 
 bool ClientField::OnEvent(const irr::SEvent& event) {
+	// Prevent other duel input while a chosen response is still held locally.
+	if(pending_action.active) {
+		if(event.EventType == irr::EET_GUI_EVENT) {
+			if(event.GUIEvent.EventType == irr::gui::EGET_BUTTON_CLICKED) {
+				const int id = event.GUIEvent.Caller->getID();
+				if(id == BUTTON_PENDING_ACTION_CONFIRM) {
+					DuelClient::SendResponse(true);
+					return true;
+				}
+				if(id == BUTTON_PENDING_ACTION_CANCEL) {
+					const bool decline_chain = pending_action.message == MSG_SELECT_CHAIN
+						&& !chain_forced;
+					ResetPendingAction();
+					if(decline_chain) {
+						// Optional chains legally accept the original -1 decline.
+						DuelClient::SetResponseI(-1);
+						DuelClient::SendResponse();
+					}
+					// Idle/Battle prompt is still open, so just discard the choice.
+					return true;
+				}
+			}
+			return true;
+		}
+		if(event.EventType == irr::EET_KEY_INPUT_EVENT)
+			return true;
+		if(event.EventType == irr::EET_MOUSE_INPUT_EVENT)
+			return false; // Let Irrlicht deliver GUI button clicks.
+	}
 	bool stopPropagation = false;
 	if(OnCommonEvent(event, stopPropagation))
 		return stopPropagation;
@@ -440,7 +469,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					break;
 				for(size_t i = 0; i < summonable_cards.size(); ++i) {
 					if(summonable_cards[i] == clicked_card) {
-						ClearCommandFlag();
+						// Preserve choices until the confirmed response is sent.
 						DuelClient::SetResponseI(static_cast<uint32_t>(i) << 16);
 						DuelClient::SendResponse();
 						break;
@@ -455,7 +484,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 						break;
 					for(size_t i = 0; i < spsummonable_cards.size(); ++i) {
 						if(spsummonable_cards[i] == clicked_card) {
-							ClearCommandFlag();
+							// Preserve choices until the confirmed response is sent.
 							DuelClient::SetResponseI((static_cast<uint32_t>(i) << 16) + 1);
 							DuelClient::SendResponse();
 							break;

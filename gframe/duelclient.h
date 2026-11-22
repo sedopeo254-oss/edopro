@@ -88,7 +88,7 @@ public:
 	static inline void SetResponseI(int respI) {
 		return SetResponse<int32_t>(respI);
 	}
-	static void SendResponse();
+	static void SendResponse(bool confirm_pending_action = false);
 	static void SendPacketToServer(uint8_t proto) {
 		if(!client_bev)
 			return;

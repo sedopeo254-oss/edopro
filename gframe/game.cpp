@@ -874,6 +874,15 @@ void Game::Initialize() {
 	btnCancelOrFinish = AlignElementWithParent(env->addButton(Scale(205, 230, 295, 265), 0, BUTTON_CANCEL_OR_FINISH, gDataManager->GetSysString(1295).data()));
 	defaultStrings.emplace_back(btnCancelOrFinish, 1295);
 	btnCancelOrFinish->setVisible(false);
+	// Action buttons occupy the red-marked empty area beside Chain controls.
+	btnPendingActionCancel = AlignElementWithParent(env->addButton(
+		Scale(325, 125, 372, 160), nullptr, BUTTON_PENDING_ACTION_CANCEL, L"Cancel"));
+	btnPendingActionConfirm = AlignElementWithParent(env->addButton(
+		Scale(374, 125, 422, 160), nullptr, BUTTON_PENDING_ACTION_CONFIRM, L"Confirm"));
+	btnPendingActionCancel->setToolTipText(L"Discard an uncommitted action");
+	btnPendingActionConfirm->setToolTipText(L"Commit this action to the Duel engine");
+	btnPendingActionCancel->setVisible(false);
+	btnPendingActionConfirm->setVisible(false);
 	//leave/surrender/exit
 	btnLeaveGame = AlignElementWithParent(env->addButton(Scale(205, 5, 295, 80), 0, BUTTON_LEAVE_GAME, L""));
 	btnLeaveGame->setVisible(false);

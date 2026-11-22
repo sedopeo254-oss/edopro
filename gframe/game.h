@@ -709,6 +709,9 @@ struct game_field_elements {
 
 	//cancel or finish
 	irr::gui::IGUIButton* btnCancelOrFinish;
+	// Only displayed while a local Summon/Set/Activate command is uncommitted.
+	irr::gui::IGUIButton* btnPendingActionCancel = nullptr;
+	irr::gui::IGUIButton* btnPendingActionConfirm = nullptr;
 };
 
 class Game final : public info_panel_elements, public main_menu_panel_elements, public lan_panel_elements, public host_creation_panel_elements,

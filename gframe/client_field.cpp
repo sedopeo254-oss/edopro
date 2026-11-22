@@ -50,7 +50,24 @@ ClientField::ClientField() {
 		szone[p].resize(8, nullptr);
 	}
 }
+void ClientField::StagePendingAction(std::uint8_t msg, std::int32_t response,
+		PendingActionKind kind) {
+	if(kind == PendingActionKind::None || !pending_action.Stage(msg, response))
+		return;
+	if(mainGame && mainGame->btnPendingActionCancel)
+		mainGame->btnPendingActionCancel->setVisible(true);
+	if(mainGame && mainGame->btnPendingActionConfirm)
+		mainGame->btnPendingActionConfirm->setVisible(true);
+}
+void ClientField::ResetPendingAction() {
+	pending_action.Reset();
+	if(mainGame && mainGame->btnPendingActionCancel)
+		mainGame->btnPendingActionCancel->setVisible(false);
+	if(mainGame && mainGame->btnPendingActionConfirm)
+		mainGame->btnPendingActionConfirm->setVisible(false);
+}
 void ClientField::Clear() {
+	ResetPendingAction();
 	auto ClearVector = [](auto& vec) {
 		for(auto& pcard : vec)
 			delete pcard;
