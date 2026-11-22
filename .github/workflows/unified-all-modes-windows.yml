@@ -52,6 +52,7 @@ jobs:
           python3 .github/tests/test_card_transitions.py
           c++ -std=c++17 -Wall -Wextra -Werror -pedantic -I. .github/tests/pending_action_confirm_test.cpp -o /tmp/pending_action_confirm
           /tmp/pending_action_confirm
+          python3 .github/tests/test_pending_action_ui.py
       - name: Test anime Lua scripts and Deck Masters
         shell: bash
         run: |

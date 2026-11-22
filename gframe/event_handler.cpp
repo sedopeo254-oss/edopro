@@ -59,34 +59,51 @@ namespace ygo {
 std::string showing_repo = "";
 
 bool ClientField::OnEvent(const irr::SEvent& event) {
-	// Prevent other duel input while a chosen response is still held locally.
+	// Do not send a Summon/Set/Activate response until the player confirms.
+	// GUI focus notifications MUST NOT be consumed: Irrlicht interprets
+	// returning true from FOCUSED/FOCUS_LOST as a veto of the focus change.
 	if(pending_action.active) {
+		const auto cancel_pending = [this] {
+			const bool decline_chain = pending_action.message == MSG_SELECT_CHAIN
+				&& !chain_forced;
+			ResetPendingAction();
+			if(decline_chain) {
+				// The optional-chain decline is already supported by the Core.
+				DuelClient::SetResponseI(-1);
+				DuelClient::SendResponse();
+			}
+		};
 		if(event.EventType == irr::EET_GUI_EVENT) {
-			if(event.GUIEvent.EventType == irr::gui::EGET_BUTTON_CLICKED) {
-				const int id = event.GUIEvent.Caller->getID();
+			const auto gui_type = event.GUIEvent.EventType;
+			if(gui_type == irr::gui::EGET_ELEMENT_FOCUSED
+					|| gui_type == irr::gui::EGET_ELEMENT_FOCUS_LOST)
+				return false;
+			if(gui_type == irr::gui::EGET_BUTTON_CLICKED) {
+				const auto id = event.GUIEvent.Caller->getID();
 				if(id == BUTTON_PENDING_ACTION_CONFIRM) {
 					DuelClient::SendResponse(true);
 					return true;
 				}
 				if(id == BUTTON_PENDING_ACTION_CANCEL) {
-					const bool decline_chain = pending_action.message == MSG_SELECT_CHAIN
-						&& !chain_forced;
-					ResetPendingAction();
-					if(decline_chain) {
-						// Optional chains legally accept the original -1 decline.
-						DuelClient::SetResponseI(-1);
-						DuelClient::SendResponse();
-					}
-					// Idle/Battle prompt is still open, so just discard the choice.
+					cancel_pending();
 					return true;
 				}
+				if(id == BUTTON_LEAVE_GAME || id == BUTTON_RESTART_SINGLE) {
+					// Surrender/restart cannot be disabled by this feature.
+					ResetPendingAction();
+				} else
+					return true; // Ignore unrelated action buttons.
+			} else {
+				return false; // Let Irrlicht handle hover and focus normally.
 			}
+		}
+		if(event.EventType == irr::EET_KEY_INPUT_EVENT) {
+			if(event.KeyInput.PressedDown && event.KeyInput.Key == irr::KEY_ESCAPE)
+				cancel_pending();
 			return true;
 		}
-		if(event.EventType == irr::EET_KEY_INPUT_EVENT)
-			return true;
 		if(event.EventType == irr::EET_MOUSE_INPUT_EVENT)
-			return false; // Let Irrlicht deliver GUI button clicks.
+			return false; // Irrlicht must receive mouse clicks for GUI focus.
 	}
 	bool stopPropagation = false;
 	if(OnCommonEvent(event, stopPropagation))

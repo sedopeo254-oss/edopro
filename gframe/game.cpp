@@ -879,8 +879,6 @@ void Game::Initialize() {
 		Scale(325, 125, 372, 160), nullptr, BUTTON_PENDING_ACTION_CANCEL, L"Cancel"));
 	btnPendingActionConfirm = AlignElementWithParent(env->addButton(
 		Scale(374, 125, 422, 160), nullptr, BUTTON_PENDING_ACTION_CONFIRM, L"Confirm"));
-	btnPendingActionCancel->setToolTipText(L"Discard an uncommitted action");
-	btnPendingActionConfirm->setToolTipText(L"Commit this action to the Duel engine");
 	btnPendingActionCancel->setVisible(false);
 	btnPendingActionConfirm->setVisible(false);
 	//leave/surrender/exit

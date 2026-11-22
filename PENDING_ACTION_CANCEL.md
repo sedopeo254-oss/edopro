@@ -33,3 +33,14 @@ be undone merely by sending -1. This avoids desynchronizing multiplayer.
 3. Manually test Cancel/Confirm for each listed action in all five modes,
    with Quick Card Animation on/off, optional/forced chain prompts,
    replay playback and disconnection mid-prompt.
+
+## Windows follow-up: buttons visible but not clickable
+
+Fixed an Irrlicht GUI focus event regression. The first version returned
+`true` for every GUI event while an action was pending, inadvertently
+**rejecting** `EGET_ELEMENT_FOCUSED` / `EGET_ELEMENT_FOCUS_LOST`.
+This can prevent button clicks although hovering still displays a tooltip.
+Focus and hover events now propagate normally, while unrelated duel commands
+remain blocked. Surrender/Restart and Escape can safely dismiss the staged
+choice. Removed intrusive button tooltips. The old modes and Core remain
+unchanged. `.github/tests/test_pending_action_ui.py` protects this fix.
