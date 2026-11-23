@@ -44,3 +44,20 @@ Focus and hover events now propagate normally, while unrelated duel commands
 remain blocked. Surrender/Restart and Escape can safely dismiss the staged
 choice. Removed intrusive button tooltips. The old modes and Core remain
 unchanged. `.github/tests/test_pending_action_ui.py` protects this fix.
+
+## Quick Cancel — one-click workflow (2026-11-23)
+
+The previous Cancel+Confirm buttons worked but required an extra user click for
+every normal action. The new experimental branch removes the Confirm button.
+
+The client now **automatically commits the original unmodified command** after
+500 ms for Normal/Special Summon and Monster/Spell/Trap Set, or 300 ms for
+Activate (including optional chain activation). Before this grace period,
+**Cancel (Esc)** discards the unsent command. Hovering over Cancel pauses the
+automatic commit, allowing time to click it. Moving away permits commit after
+the existing grace period. This is a short cancellation window, not an Undo
+after the Core has processed a command.
+
+Only the local game client and the existing tests/workflow have changed. Live
+duel modes all retain their original engine protocol and field ownership.
+Replays, spectators and eliminated players cannot stage this action.

@@ -875,12 +875,10 @@ void Game::Initialize() {
 	defaultStrings.emplace_back(btnCancelOrFinish, 1295);
 	btnCancelOrFinish->setVisible(false);
 	// Action buttons occupy the red-marked empty area beside Chain controls.
+	// One click to choose an action; no Confirm click is required.
 	btnPendingActionCancel = AlignElementWithParent(env->addButton(
-		Scale(325, 125, 372, 160), nullptr, BUTTON_PENDING_ACTION_CANCEL, L"Cancel"));
-	btnPendingActionConfirm = AlignElementWithParent(env->addButton(
-		Scale(374, 125, 422, 160), nullptr, BUTTON_PENDING_ACTION_CONFIRM, L"Confirm"));
+		Scale(325, 125, 430, 160), nullptr, BUTTON_PENDING_ACTION_CANCEL, L"Cancel (Esc)"));
 	btnPendingActionCancel->setVisible(false);
-	btnPendingActionConfirm->setVisible(false);
 	//leave/surrender/exit
 	btnLeaveGame = AlignElementWithParent(env->addButton(Scale(205, 5, 295, 80), 0, BUTTON_LEAVE_GAME, L""));
 	btnLeaveGame->setVisible(false);
@@ -2207,6 +2205,10 @@ bool Game::MainLoop() {
 		}
 		driver->endScene();
 		gMutex.unlock();
+		// Commit locally staged commands automatically after the brief
+		// cancellation window. Never call this under the drawing mutex.
+		if(dField.pending_action.ShouldAutoCommit())
+			DuelClient::SendResponse(true);
 		if(closeDuelWindow)
 			CloseDuelWindow();
 		if (DuelClient::try_needed) {

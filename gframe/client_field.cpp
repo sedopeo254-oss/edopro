@@ -56,15 +56,11 @@ void ClientField::StagePendingAction(std::uint8_t msg, std::int32_t response,
 		return;
 	if(mainGame && mainGame->btnPendingActionCancel)
 		mainGame->btnPendingActionCancel->setVisible(true);
-	if(mainGame && mainGame->btnPendingActionConfirm)
-		mainGame->btnPendingActionConfirm->setVisible(true);
 }
 void ClientField::ResetPendingAction() {
 	pending_action.Reset();
 	if(mainGame && mainGame->btnPendingActionCancel)
 		mainGame->btnPendingActionCancel->setVisible(false);
-	if(mainGame && mainGame->btnPendingActionConfirm)
-		mainGame->btnPendingActionConfirm->setVisible(false);
 }
 void ClientField::Clear() {
 	ResetPendingAction();

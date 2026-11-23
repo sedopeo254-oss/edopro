@@ -78,12 +78,19 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 			if(gui_type == irr::gui::EGET_ELEMENT_FOCUSED
 					|| gui_type == irr::gui::EGET_ELEMENT_FOCUS_LOST)
 				return false;
+			if(gui_type == irr::gui::EGET_ELEMENT_HOVERED
+					&& event.GUIEvent.Caller == mainGame->btnPendingActionCancel) {
+				// A quick mouse move to Cancel pauses the deadline.
+				pending_action.hovering_cancel = true;
+				return false;
+			}
+			if(gui_type == irr::gui::EGET_ELEMENT_LEFT
+					&& event.GUIEvent.Caller == mainGame->btnPendingActionCancel) {
+				pending_action.hovering_cancel = false;
+				return false;
+			}
 			if(gui_type == irr::gui::EGET_BUTTON_CLICKED) {
 				const auto id = event.GUIEvent.Caller->getID();
-				if(id == BUTTON_PENDING_ACTION_CONFIRM) {
-					DuelClient::SendResponse(true);
-					return true;
-				}
 				if(id == BUTTON_PENDING_ACTION_CANCEL) {
 					cancel_pending();
 					return true;

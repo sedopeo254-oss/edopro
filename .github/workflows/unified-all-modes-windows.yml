@@ -6,6 +6,7 @@ on:
       - feature/inherited-duel-succession-v1-20261105
       - feature/smooth-card-transitions-20261118
       - feature/pending-action-cancel-20261122
+      - feature/quick-cancel-auto-commit-20261123
   workflow_dispatch:
 
 permissions:

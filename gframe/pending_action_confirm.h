@@ -1,6 +1,7 @@
 #ifndef EDOPRO_PENDING_ACTION_CONFIRM_H
 #define EDOPRO_PENDING_ACTION_CONFIRM_H
 #include <cstdint>
+#include <chrono>
 #include "ocgapi_constants.h"
 
 namespace ygo {
@@ -32,11 +33,22 @@ constexpr PendingActionKind ClassifyPendingAction(std::uint8_t msg,
 }
 
 struct PendingActionConfirmation {
+	using Clock = std::chrono::steady_clock;
+	// The short grace period removes the need for a second Confirm click.
+	// Hovering Cancel pauses the timer so accidental moves remain cancellable.
+	static constexpr std::chrono::milliseconds DelayFor(PendingActionKind action) {
+		return action == PendingActionKind::Activate
+			? std::chrono::milliseconds{300}
+			: std::chrono::milliseconds{500};
+	}
 	bool active = false;
+	bool hovering_cancel = false;
+	Clock::time_point armed_at{};
 	std::uint8_t message = 0;
 	std::int32_t response = 0;
 	PendingActionKind kind = PendingActionKind::None;
-	bool Stage(std::uint8_t msg, std::int32_t value) {
+	bool Stage(std::uint8_t msg, std::int32_t value,
+			Clock::time_point now = Clock::now()) {
 		if(active)
 			return false;
 		const auto next=ClassifyPendingAction(msg,value);
@@ -46,10 +58,16 @@ struct PendingActionConfirmation {
 		message=msg;
 		response=value;
 		kind=next;
+		armed_at=now;
+		hovering_cancel=false;
 		return true;
+	}
+	bool ShouldAutoCommit(Clock::time_point now = Clock::now()) const {
+		return active && !hovering_cancel && now - armed_at >= DelayFor(kind);
 	}
 	void Reset() {
 		active=false;
+		hovering_cancel=false;
 		message=0;
 		response=0;
 		kind=PendingActionKind::None;

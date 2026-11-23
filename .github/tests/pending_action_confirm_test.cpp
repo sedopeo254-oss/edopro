@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <initializer_list>
+#include <chrono>
 
 using namespace ygo;
 static void check(bool b,const char* what) {
@@ -31,7 +32,18 @@ int main(){
 		"no fake cancellation for zone prompts");
 	check(ClassifyPendingAction(MSG_SELECT_POSITION,0)==PendingActionKind::None,
 		"no fake cancellation for position prompts");
-	check(action.Stage(MSG_SELECT_IDLECMD,(2<<16)|3),"can stage Monster Set");
+	const auto start = PendingActionConfirmation::Clock::now();
+	check(action.Stage(MSG_SELECT_IDLECMD,(2<<16)|3,start),"can stage Monster Set");
+	check(!action.ShouldAutoCommit(start + std::chrono::milliseconds{499}),
+		"set stays cancellable for the entire 500ms window");
+	check(action.ShouldAutoCommit(start + std::chrono::milliseconds{500}),
+		"set autocommits without an extra click after 500ms");
+	action.hovering_cancel = true;
+	check(!action.ShouldAutoCommit(start + std::chrono::seconds{5}),
+		"hovering Cancel pauses autocommit");
+	action.hovering_cancel = false;
+	check(action.ShouldAutoCommit(start + std::chrono::seconds{5}),
+		"leaving Cancel permits autocommit");
 	check(action.active&&action.message==MSG_SELECT_IDLECMD&&
 		action.response==((2<<16)|3)&&action.kind==PendingActionKind::MonsterSet,
 		"exact original response retained");
@@ -39,7 +51,13 @@ int main(){
 	action.Reset();
 	check(!action.active&&action.kind==PendingActionKind::None,
 		"cancel does not commit a response");
-	check(action.Stage(MSG_SELECT_CHAIN,0),"new action after cancel");
+	check(action.Stage(MSG_SELECT_CHAIN,0,start),"new action after cancel");
+	check(!action.ShouldAutoCommit(start + std::chrono::milliseconds{299}),
+		"activation gets a short 300ms window");
+	check(action.ShouldAutoCommit(start + std::chrono::milliseconds{300}),
+		"activation autocommits after 300ms");
 	action.Reset();
+	check(!action.ShouldAutoCommit(start + std::chrono::seconds{10}),
+		"no timer fires after a canceled action");
 	std::cout<<"Pending Action Confirmation: PASS\n";
 }
